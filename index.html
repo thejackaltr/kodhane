@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f1220">
+  <title>Kodhane: Ajans Tycoon</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💻</text></svg>">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">&lt;/&gt;</span>
+      <div>
+        <h1>Kodhane</h1>
+        <small>Ajans Tycoon</small>
+      </div>
+    </div>
+    <div class="money-box">
+      <div class="money" id="money">0 TL</div>
+      <div class="rate" id="rate">0 TL/sn</div>
+    </div>
+  </header>
+
+  <section class="stage-card" id="stageCard">
+    <div class="stage-row">
+      <div class="stage-icon" id="stageIcon">🏠</div>
+      <div class="stage-info">
+        <div class="stage-label">Şirket aşaması</div>
+        <div class="stage-name" id="stageName">Freelancer</div>
+        <div class="stage-desc" id="stageDesc">Evde bir laptop ve bolca çay.</div>
+      </div>
+      <div class="stage-bonus" id="stageBonus">+%0 üretim</div>
+    </div>
+    <div class="progress"><div class="progress-fill" id="stageProgress"></div></div>
+    <div class="stage-next" id="stageNext">Sonraki aşama: Ev Ofisi</div>
+  </section>
+
+  <div id="boostBar" class="boost-bar hidden"></div>
+
+  <main class="layout">
+    <section class="panel click-panel">
+      <button id="clickBtn" class="click-btn" aria-label="Kod yaz">
+        <span class="click-emoji">⌨️</span>
+        <span class="click-text">Kod yaz</span>
+        <span class="click-value" id="clickValue">+1 TL</span>
+      </button>
+      <div class="click-hint">Her tık bir satır kod, her satır biraz para.</div>
+      <div id="floaters" class="floaters"></div>
+    </section>
+
+    <section class="panel gen-panel">
+      <div class="panel-head">
+        <h2>Ekip</h2>
+        <div class="qty" role="group" aria-label="Alım miktarı">
+          <button data-qty="1" class="active">x1</button>
+          <button data-qty="10">x10</button>
+          <button data-qty="max">Maks</button>
+        </div>
+      </div>
+      <div id="genList" class="gen-list"></div>
+    </section>
+
+    <section class="panel side-panel">
+      <nav class="tabs">
+        <button data-tab="upgrades" class="active">Geliştirmeler <span id="upgBadge" class="badge hidden">0</span></button>
+        <button data-tab="stats">İstatistikler</button>
+        <button data-tab="prestige">Yatırım Turu</button>
+      </nav>
+      <div class="tab" id="tab-upgrades">
+        <div id="upgList" class="upg-list"></div>
+      </div>
+      <div class="tab hidden" id="tab-stats">
+        <dl class="stats" id="statsList"></dl>
+        <div class="stat-actions">
+          <button id="saveBtn" class="btn ghost">Şimdi kaydet</button>
+          <button id="resetBtn" class="btn danger">Kaydı sıfırla</button>
+        </div>
+        <p class="save-note" id="saveNote">Oyun her 10 saniyede bir otomatik kaydedilir.</p>
+      </div>
+      <div class="tab hidden" id="tab-prestige">
+        <div class="prestige">
+          <p>Şirketini yatırımcılara sun, her şeyi sıfırla ama <b>kalıcı üretim bonusu</b> kazan. Her <b>Yatırımcı Hissesi</b> tüm kazançlara <b>+%10</b> ekler.</p>
+          <dl class="stats">
+            <div><dt>Mevcut hisseler</dt><dd id="prShares">0</dd></div>
+            <div><dt>Kalıcı bonus</dt><dd id="prBonus">+%0</dd></div>
+            <div><dt>Bu turda kazanılacak</dt><dd id="prGain">0</dd></div>
+            <div><dt>Bir sonraki hisse için</dt><dd id="prNext">-</dd></div>
+          </dl>
+          <button id="prestigeBtn" class="btn primary" disabled>Yatırım turuna çık</button>
+          <p class="save-note">İlk hisse için bu turda en az 100 Mn TL kazanmalısın.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <button id="clientOffer" class="client-offer hidden">
+    <span class="co-emoji">📨</span>
+    <span class="co-body">
+      <b>Müşteri projesi!</b>
+      <span id="coText">Bir müşteri acil iş teklif ediyor</span>
+      <span class="co-timer"><span id="coTimerFill"></span></span>
+    </span>
+  </button>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-emoji" id="modalEmoji">👋</div>
+      <h3 id="modalTitle">Başlık</h3>
+      <p id="modalText"></p>
+      <div class="modal-actions" id="modalActions"></div>
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>

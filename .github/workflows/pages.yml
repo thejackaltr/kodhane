@@ -1,0 +1,81 @@
+name: GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # Ekran görüntüleri (PNG) ilk yüklemede metin tabanlı araçla gönderilemediği için
+      # eksikse Playwright testleriyle yeniden üretilir ve depoya bir kez eklenir.
+      - name: Check screenshots
+        id: shots
+        run: |
+          if [ -f screenshots/midgame-1280x800.png ]; then echo "missing=false" >> "$GITHUB_OUTPUT"; else echo "missing=true" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Set up Python
+        if: steps.shots.outputs.missing == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Generate screenshots with Playwright
+        if: steps.shots.outputs.missing == 'true'
+        continue-on-error: true
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
+          mkdir -p screenshots
+          python -m http.server 8765 --bind 127.0.0.1 >/dev/null 2>&1 &
+          sleep 2
+          sed "s#/workspace/idle-ajans/#${GITHUB_WORKSPACE}/#g" tests/test_idle.py > /tmp/test_idle_ci.py
+          python /tmp/test_idle_ci.py
+          ls -la screenshots
+
+      - name: Commit generated screenshots
+        if: steps.shots.outputs.missing == 'true'
+        continue-on-error: true
+        run: |
+          if ls screenshots/*.png >/dev/null 2>&1; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add screenshots/*.png
+            git commit -m "Ekran görüntülerini ekle (Playwright ile üretildi)"
+            git push origin HEAD:main
+          fi
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
