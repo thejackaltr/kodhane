@@ -17,7 +17,7 @@ const END=3*3600;
 for(t=0;t<END;t++){
   CPS = t<600?5:(t<1800?1:0);
   for(let i=0;i<CPS;i++) K.doClick();
-  K.tick(1);
+  K.tick(1); if(K.checkAchievements) K.checkAchievements();
   for(let k=0;k<50;k++){const b=bestAction(); if(b && K.state.money>=b.cost){ b.type==='g'?K.buyGen(b.id,1):K.buyUpgrade(b.id);} else break;}
   const si=K.stageIndex(K.state.runEarned); if(!(si in times)){times[si]=t; console.log('stage',K.STAGES[si].name,'at',K.fmtTime(t),'tps',K.fmt(K.tps()));}
   if([60,180,300,600,1200,1800,3600,5400,7200,10799].includes(t)) console.log(K.fmtTime(t),'earned',K.fmt(K.state.runEarned),'tps',K.fmt(K.tps()),'owned',K.totalOwned(),'upg',K.state.upgrades.length,'shares',K.sharesGain(), JSON.stringify(K.state.gens));

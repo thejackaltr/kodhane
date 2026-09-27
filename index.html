@@ -3,9 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0f1220">
+  <meta name="theme-color" content="#0b0e1a">
+  <meta name="description" content="Kodhane: Ajans Tycoon — Türkçe yazılım ajansı idle oyunu. Kod yaz, ekibini büyüt, ajansını global bir holdinge dönüştür.">
   <title>Kodhane: Ajans Tycoon</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💻</text></svg>">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Kodhane">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -35,22 +42,28 @@
     </div>
     <div class="progress"><div class="progress-fill" id="stageProgress"></div></div>
     <div class="stage-next" id="stageNext">Sonraki aşama: Ev Ofisi</div>
+    <div class="chips">
+      <span class="chip" id="repChip">⭐ İtibar 0</span>
+      <span class="chip" id="achChip">🏅 Başarım 0</span>
+      <span class="chip" id="streakChip">🔥 Seri 0 gün</span>
+    </div>
   </section>
 
   <div id="boostBar" class="boost-bar hidden"></div>
+  <div id="falBar" class="fal-bar hidden"></div>
 
   <main class="layout">
-    <section class="panel click-panel">
+    <section class="panel click-panel" id="panelKod">
       <button id="clickBtn" class="click-btn" aria-label="Kod yaz">
         <span class="click-emoji">⌨️</span>
         <span class="click-text">Kod yaz</span>
         <span class="click-value" id="clickValue">+1 TL</span>
       </button>
-      <div class="click-hint">Her tık bir satır kod, her satır biraz para.</div>
+      <div class="click-hint">Her tık bir satır kod, her satır biraz para. Arada bir <b>kritik tık</b> gelir!</div>
       <div id="floaters" class="floaters"></div>
     </section>
 
-    <section class="panel gen-panel">
+    <section class="panel gen-panel" id="panelEkip">
       <div class="panel-head">
         <h2>Ekip</h2>
         <div class="qty" role="group" aria-label="Alım miktarı">
@@ -62,26 +75,41 @@
       <div id="genList" class="gen-list"></div>
     </section>
 
-    <section class="panel side-panel">
-      <nav class="tabs">
-        <button data-tab="upgrades" class="active">Geliştirmeler <span id="upgBadge" class="badge hidden">0</span></button>
-        <button data-tab="stats">İstatistikler</button>
-        <button data-tab="prestige">Yatırım Turu</button>
+    <section class="panel side-panel" id="panelSide">
+      <nav class="tabs" aria-label="Paneller">
+        <button data-tab="upgrades" class="active">Geliştirme <span id="upgBadge" class="badge hidden">0</span></button>
+        <button data-tab="daily">Görevler</button>
+        <button data-tab="achievements">Başarımlar</button>
+        <button data-tab="stats">İstatistik</button>
+        <button data-tab="prestige">Yatırım</button>
       </nav>
       <div class="tab" id="tab-upgrades">
         <div id="upgList" class="upg-list"></div>
       </div>
+      <div class="tab hidden" id="tab-daily">
+        <div class="streak-box" id="streakBox"></div>
+        <div id="taskList" class="task-list"></div>
+        <p class="save-note">Görevler her gün gece yarısı (cihaz saatine göre) yenilenir. Üç görevi de bitirirsen seri artar; bir gün kaçırırsan seri sıfırlanır.</p>
+      </div>
+      <div class="tab hidden" id="tab-achievements">
+        <p class="ach-head" id="achHead"></p>
+        <div id="achGrid" class="ach-grid"></div>
+      </div>
       <div class="tab hidden" id="tab-stats">
         <dl class="stats" id="statsList"></dl>
+        <div class="stat-actions">
+          <button id="soundBtn" class="btn ghost" aria-pressed="false">🔇 Ses: Kapalı</button>
+          <button id="vibBtn" class="btn ghost" aria-pressed="true">📳 Titreşim: Açık</button>
+        </div>
         <div class="stat-actions">
           <button id="saveBtn" class="btn ghost">Şimdi kaydet</button>
           <button id="resetBtn" class="btn danger">Kaydı sıfırla</button>
         </div>
-        <p class="save-note" id="saveNote">Oyun her 10 saniyede bir otomatik kaydedilir.</p>
+        <p class="save-note" id="saveNote">Oyun her 10 saniyede bir otomatik kaydedilir. Ana ekrana ekleyip çevrimdışı da oynayabilirsin.</p>
       </div>
       <div class="tab hidden" id="tab-prestige">
         <div class="prestige">
-          <p>Şirketini yatırımcılara sun, her şeyi sıfırla ama <b>kalıcı üretim bonusu</b> kazan. Her <b>Yatırımcı Hissesi</b> tüm kazançlara <b>+%10</b> ekler.</p>
+          <p>Şirketini yatırımcılara sun, her şeyi sıfırla ama <b>kalıcı üretim bonusu</b> kazan. Her <b>Yatırımcı Hissesi</b> tüm kazançlara <b>+%10</b> ekler. Başarımların, itibarın ve günlük serin korunur.</p>
           <dl class="stats">
             <div><dt>Mevcut hisseler</dt><dd id="prShares">0</dd></div>
             <div><dt>Kalıcı bonus</dt><dd id="prBonus">+%0</dd></div>
@@ -95,6 +123,14 @@
     </section>
   </main>
 
+  <nav class="bottom-nav" id="bottomNav" aria-label="Ana menü">
+    <button data-view="kod" class="active"><span class="nav-ico">⌨️</span>Kod</button>
+    <button data-view="ekip"><span class="nav-ico">👥</span>Ekip</button>
+    <button data-view="upgrades"><span class="nav-ico">⬆️</span>Geliştir<span id="navUpgBadge" class="badge nav-badge hidden">0</span></button>
+    <button data-view="daily"><span class="nav-ico">📅</span>Görevler</button>
+    <button data-view="prestige"><span class="nav-ico">💼</span>Yatırım</button>
+  </nav>
+
   <button id="clientOffer" class="client-offer hidden">
     <span class="co-emoji">📨</span>
     <span class="co-body">
@@ -104,7 +140,24 @@
     </span>
   </button>
 
-  <div id="toast" class="toast hidden"></div>
+  <div id="eventCard" class="event-card hidden" role="dialog" aria-live="polite" aria-labelledby="evTitle">
+    <div class="ev-head">
+      <span class="ev-icon" id="evIcon">📣</span>
+      <span class="ev-kicker">Ajans olayı</span>
+      <button class="ev-later" id="evLater">Sonra</button>
+    </div>
+    <h3 id="evTitle"></h3>
+    <p id="evText"></p>
+    <div class="ev-choices" id="evChoices"></div>
+    <div class="ev-timer"><span id="evTimerFill"></span></div>
+  </div>
+
+  <div id="toast" class="toasts" aria-live="polite"></div>
+
+  <div id="updateBar" class="update-bar hidden">
+    <span>✨ Yeni sürüm hazır.</span>
+    <button id="updateBtn" class="btn">Yenile</button>
+  </div>
 
   <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
     <div class="modal-card">

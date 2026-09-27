@@ -21,6 +21,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Generate PNG icons
+        run: |
+          python3 tools/make_icons.py .
+          test -s icon-192.png && test -s icon-512.png && test -s apple-touch-icon.png
+
+      - name: Stamp service worker version
+        run: |
+          sed -i "s/__BUILD__/${GITHUB_SHA::7}-${GITHUB_RUN_NUMBER}/" sw.js
+          grep -n "var BUILD" sw.js
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
