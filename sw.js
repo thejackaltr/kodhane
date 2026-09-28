@@ -36,7 +36,7 @@ self.addEventListener('fetch', function (e) {
   // Supabase (giriş/bulut kaydı), jsDelivr CDN ve diğer tüm dış istekler hiçbir zaman
   // önbelleğe alınmaz ve yakalanmaz; yalnızca GET ile istenen kendi dosyalarımız önbellekten sunulur.
   if (req.method !== 'GET' || url.origin !== self.location.origin) return;
-  if (/(^|\.)supabase\.(co|in)$/.test(url.hostname) || url.hostname === 'supabase.teserix.com' || url.hostname === 'cdn.jsdelivr.net') return;
+  if (/(^|\.)supabase\.(co|in)$/.test(url.hostname) || url.hostname === 'kodhane-api.teserix.com' || url.hostname === 'supabase.teserix.com' || url.hostname === 'cdn.jsdelivr.net') return;
   // Giriş bağlantısından dönüşte (?code=, ?error=) sayfa doğrudan ağdan gelsin.
   if (req.mode === 'navigate' && /[?&](code|error|error_code|error_description|token_hash)=/.test(url.search)) return;
   var isApp = req.mode === 'navigate' && /\/(index\.html)?$/.test(url.pathname);

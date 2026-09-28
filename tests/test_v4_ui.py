@@ -92,7 +92,8 @@ with sync_playwright() as p:
         if init:
             c.add_init_script(init)
         c.route(FAKE + '/**', fake)
-        c.route('https://supabase.teserix.com/**', lambda r: (real_hits.append(r.request.url), r.abort()))
+        for _h in ('https://kodhane-api.teserix.com/**', 'https://supabase.teserix.com/**'):
+            c.route(_h, lambda r: (real_hits.append(r.request.url), r.abort()))
         c.route('https://cdn.jsdelivr.net/**', lambda r: r.abort())
         return c
 
@@ -221,7 +222,7 @@ with sync_playwright() as p:
     pg.reload(); pg.wait_for_selector('#clickBtn')
     pg.wait_for_function("!document.getElementById('modal').classList.contains('hidden')", timeout=9000)
     check('once only: Sıralama not again; next session shows Açık Ofis news', modal_title(pg) == 'Kodhane ailesine yeni oyun: Açık Ofis!' and
-          pg.inner_text('#modalText') == 'Kendi ofisini kur, masaları yerleştir, ekibini büyüt. Kodhane hesabınla giriş yapabilirsin.' and
+          pg.inner_text('#modalText') == 'Kendi ofisini kur, masaları yerleştir, ekibini büyüt. E-postana gelen 6 haneli kodla giriş yap, ilerlemen buluta kaydolsun.' and
           [x.strip() for x in pg.locator('#modalActions button').all_inner_texts()] == ['Kapat', "Açık Ofis'i dene"], pg.inner_text('#modal'))
     with c.expect_page(timeout=5000) as newp:
         pg.click('#modalActions button:has-text("Açık Ofis\'i dene")')

@@ -16,7 +16,7 @@
   if (!K || typeof document === 'undefined') return;
 
   var CFG = {
-    url: 'https://supabase.teserix.com',
+    url: 'https://kodhane-api.teserix.com',
     key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3OTA1NjI1NzAsImV4cCI6MTg5MzQ1NjAwMCwicm9sZSI6ImFub24iLCJpc3MiOiJzdXBhYmFzZSJ9._ugMmDZoHw2uolYZUT5xeQbM3xiZnoCu9WZUv5-iNjk',
     sdk: 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js',
     sri: 'sha384-Rj26LVGvoeRVR6+mwQmFfcR3QOBEwT+ZmuCWpuiqeTzJpCs0ER4ITAWGb4Hiy3Ok',
@@ -33,8 +33,8 @@
   // Kod bekleme adımı (ör. iPhone ana ekran uygulaması e-postaya geçerken kapanırsa) kısa süre hatırlanır.
   var PENDING_KEY = 'kodhane_auth_pending';
   var PENDING_TTL_MS = 60 * 60 * 1000;
-  // Supabase Cloud (*.supabase.co/in) ya da Teserix'in kendi Supabase'i (supabase.teserix.com)
-  var configured = /^https:\/\/([a-z0-9-]+\.supabase\.(co|in)|supabase\.teserix\.com)$/.test(CFG.url) && CFG.key.indexOf('__') !== 0 ||
+  // Supabase Cloud (*.supabase.co/in) ya da Teserix'te Kodhane'nin kendi Supabase'i (kodhane-api.teserix.com; eski adı supabase.teserix.com da geçerli)
+  var configured = /^https:\/\/([a-z0-9-]+\.supabase\.(co|in)|(kodhane-api|supabase)\.teserix\.com)$/.test(CFG.url) && CFG.key.indexOf('__') !== 0 ||
     !!(root.KODHANE_CLOUD_CONFIG && root.KODHANE_CLOUD_CONFIG.url);
 
   var C = {

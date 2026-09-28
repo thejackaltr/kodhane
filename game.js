@@ -986,7 +986,7 @@
       action: 'Sıralamaya bak', count: 'news_leaderboard',
       eligible: function () { return !!(Core.newsNeedsLeaderboard && Core.newsNeedsLeaderboard()); } },
     { id: 'acik_ofis', emoji: '🪑', title: 'Kodhane ailesine yeni oyun: Açık Ofis!',
-      text: function () { return 'Kendi ofisini kur, masaları yerleştir, ekibini büyüt. Kodhane hesabınla giriş yapabilirsin.'; },
+      text: function () { return 'Kendi ofisini kur, masaları yerleştir, ekibini büyüt. E-postana gelen 6 haneli kodla giriş yap, ilerlemen buluta kaydolsun.'; },
       action: 'Açık Ofis\'i dene', count: 'news_acikofis',
       url: 'https://thejackaltr.github.io/kodhane-acik-ofis/?utm_source=kodhane&utm_medium=news&utm_campaign=acikofis_v1',
       eligible: function () { return true; } }

@@ -77,7 +77,8 @@ with sync_playwright() as p:
     ctx.add_init_script(INIT)
     # Bu testler gerçek Supabase'e asla istek atmaz (Sıralama sekmesi misafirken herkese açık RPC'yi çağırır).
     sb_hits = []
-    ctx.route('https://supabase.teserix.com/**', lambda r: (sb_hits.append(r.request.url), r.abort('connectionrefused')))
+    for _h in ('https://kodhane-api.teserix.com/**', 'https://supabase.teserix.com/**'):
+        ctx.route(_h, lambda r: (sb_hits.append(r.request.url), r.abort('connectionrefused')))
     page = ctx.new_page()
     errors = []
     watch(page, errors)
@@ -440,7 +441,8 @@ with sync_playwright() as p:
     # ---------------------------------------------------------------- mobil (390x844)
     mctx = b.new_context(viewport={'width': 390, 'height': 844}, device_scale_factor=2, is_mobile=True, has_touch=True, locale='tr-TR')
     mctx.add_init_script(INIT)
-    mctx.route('https://supabase.teserix.com/**', lambda r: r.abort('connectionrefused'))
+    for _h in ('https://kodhane-api.teserix.com/**', 'https://supabase.teserix.com/**'):
+        mctx.route(_h, lambda r: r.abort('connectionrefused'))
     mp = mctx.new_page(); merr = []
     watch(mp, merr)
     mev = mp.evaluate

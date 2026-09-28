@@ -27,7 +27,8 @@ URL = BASE + '/index.html'
 SS = os.path.join(ROOT, 'screenshots') + os.sep
 os.makedirs(SS, exist_ok=True)
 FAKE = 'https://kodhane-test.supabase.co'
-PROD_URL = 'https://supabase.teserix.com'
+PROD_URL = 'https://kodhane-api.teserix.com'
+OLD_PROD_URL = 'https://supabase.teserix.com'  # eski adres: aynı Supabase, geçiş süresince çalışır
 PAGES = 'https://thejackaltr.github.io/kodhane/'
 SAVES_PATH = '/rest/v1/kodhane_saves'
 PROFILES_PATH = '/rest/v1/kodhane_profiles'
@@ -283,15 +284,17 @@ def jwt_claims(tok):
         return {}
 
 
-check('config: URL is shared Teserix Supabase', re.search(r"url: '([^']+)'", CLOUD_JS).group(1) == PROD_URL)
+check('config: URL is Kodhane\'s own Supabase (kodhane-api.teserix.com)', re.search(r"url: '([^']+)'", CLOUD_JS).group(1) == PROD_URL)
 check('config: namespaced table kodhane_saves', re.search(r"table: '([^']+)'", CLOUD_JS).group(1) == 'kodhane_saves')
 check('config: embedded key is the publishable anon key (never service_role)', jwt_claims(PROD_KEY).get('role') == 'anon', jwt_claims(PROD_KEY).get('role'))
 _conf = re.compile(CONF_RE)
-check('config: is-configured accepts supabase.teserix.com and *.supabase.co',
-      bool(_conf.match(PROD_URL)) and bool(_conf.match('https://abcd1234.supabase.co')), CONF_RE)
+check('config: is-configured accepts kodhane-api.teserix.com, the old supabase.teserix.com and *.supabase.co',
+      bool(_conf.match(PROD_URL)) and bool(_conf.match(OLD_PROD_URL)) and bool(_conf.match('https://abcd1234.supabase.co')), CONF_RE)
 check('config: is-configured rejects look-alikes',
       not any(_conf.match(u) for u in ('https://supabase.teserix.com.evil.io', 'https://evil.io/supabase.teserix.com', 'http://supabase.teserix.com',
-                                         'https://xsupabase.teserix.com', 'https://supabase.teserix.com/')))
+                                         'https://xsupabase.teserix.com', 'https://supabase.teserix.com/',
+                                         'https://kodhane-api.teserix.com.evil.io', 'http://kodhane-api.teserix.com', 'https://xkodhane-api.teserix.com',
+                                         'https://kodhane-api.teserix.com/', 'https://kodhane.teserix.com')))
 
 with sync_playwright() as p:
     b = p.chromium.launch()
@@ -645,7 +648,7 @@ with sync_playwright() as p:
     ctx.set_offline(False)
     ctx.close()
 
-    # ------------------------------------------------------------ 11) üretim yapılandırması: GitHub Pages yolu + supabase.teserix.com (geçersiz kılma yok)
+    # ------------------------------------------------------------ 11) üretim yapılandırması: GitHub Pages yolu + kodhane-api.teserix.com (geçersiz kılma yok)
     fake = FakeSupabase()
     ctx = b.new_context(locale='tr-TR', service_workers='block', viewport={'width': 1280, 'height': 800})
     served = []
@@ -673,7 +676,7 @@ with sync_playwright() as p:
     page.fill('#accEmail', 'oyuncu@example.com')
     page.click('#accSend')
     ok = wait_until(page, "document.getElementById('accMsg').textContent.includes('gönderildi')")
-    check('prod: magic link request goes to supabase.teserix.com/auth/v1/otp', ok and len(fake.otp) == 1, json.dumps(fake.otp))
+    check('prod: magic link request goes to kodhane-api.teserix.com/auth/v1/otp', ok and len(fake.otp) == 1, json.dumps(fake.otp))
     check('prod: magic-link redirect is exactly ' + PAGES, fake.otp and fake.otp[0]['redirect_to'] == PAGES, fake.otp and fake.otp[0]['redirect_to'])
     check('prod: no page/console errors', not perrs and not errs, '; '.join(perrs + errs))
     ctx.close()
