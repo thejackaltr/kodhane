@@ -382,6 +382,22 @@
     if (visible()) onShown();
   }
 
+  // Anonim sayaç (haber gösterimi/tıklaması): yalnızca olay adı gider; kullanıcı kimliği, IP vb. saklanmaz.
+  var COUNT_RPC = 'kodhane_count_event';
+  function countEvent(name) {
+    if (!configured() || !isOnline()) return;
+    var cfg = cloud().config;
+    try {
+      fetch(cfg.url + '/rest/v1/rpc/' + COUNT_RPC, {
+        method: 'POST', keepalive: true, credentials: 'omit',
+        headers: { apikey: cfg.key, Authorization: 'Bearer ' + cfg.key, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ p_event: String(name) })
+      }).catch(function () {});
+    } catch (e) {}
+  }
+  K.countEvent = countEvent;
+  K.newsNeedsLeaderboard = configured; // Sıralama haberi yalnızca sıralama kullanılabilirse gösterilir
+
   K.onLeaderboardShown = onShown;
   K.onCloudRender = onCloudRender;
   K.leaderboard = {

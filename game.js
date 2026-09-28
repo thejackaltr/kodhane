@@ -1,6 +1,7 @@
-/* Kodhane: Ajans Tycoon — v3
+/* Kodhane: Ajans Tycoon — v4 (yeni aşamalar + Halka Arz + Borsa Payı Ağacı)
  * Vanilla JS, derleme adımı yok. Tüm oyun metinleri Türkçe.
- * v1 kayıtları ('kodhane_ajans_save_v1') ilk açılışta otomatik olarak v2 biçimine taşınır.
+ * v1 kayıtları ('kodhane_ajans_save_v1') ilk açılışta otomatik olarak taşınır; v2/v3 kayıtları kayıpsız v4 alanlarını alır.
+ * Denge sayıları CFG (ayarlar) ve tablolarda durur; açıklama metinleri sayıları bu ayarlardan okur.
  * Bulut kaydı (isteğe bağlı giriş) cloud.js içindedir; oyun onsuz da tam çalışır.
  */
 (function (root) {
@@ -9,12 +10,12 @@
   // ------------------------------------------------------------------
   // Tanımlar (denge değerleri)
   // ------------------------------------------------------------------
-  var VERSION = '3.1.0';
+  var VERSION = '4.0.0';
+  var SAVE_VERSION = 3; // kayıt biçimi (v4 oyun sürümü)
   var SAVE_KEY = 'kodhane_ajans_save_v2';
   var LEGACY_KEYS = ['kodhane_ajans_save_v1'];
   var SETTINGS_KEY = 'kodhane_ayarlar_v1';
   var COST_GROWTH = 1.15;
-  var OFFLINE_CAP_SEC = 8 * 3600;
   var AUTOSAVE_MS = 10000;
   var BASE_CLICK = 1;
   var CRIT_CHANCE = 0.05;
@@ -22,6 +23,39 @@
   var ACH_BONUS = 0.01;        // her başarım kalıcı +%1 üretim
   var REP_MAX = 100;
   var REP_OFFER_BONUS = 0.01;  // her itibar puanı müşteri projesi ödemelerine +%1
+
+  // v4 ayarları: sabit sayı yok, metinler de buradan okur
+  var CFG = {
+    offlineCapHours: 8,          // çevrimdışı kazanç sınırı (Uzaktan Çalışma / Gece Vardiyası ile artar)
+    offerSec: 10,                // müşteri projesi teklifinin ekranda kalma süresi
+    offerFirst: [45, 90],        // ilk teklif aralığı (sn)
+    offerEvery: [60, 180],       // sonraki teklifler (sn)
+    stageModalSec: 7,            // aşama tebrik penceresi kendiliğinden kapanma süresi
+    newsDelaySec: 4,             // oturum açıldıktan sonra haberin gösterilmesi için bekleme
+    newsPerSession: 1,           // oturum başına en fazla haber
+    halkaArz: {
+      rounds: 3,                 // Halka Arz, bu döngüde bu kadar Yatırım Turu'ndan sonra açılır
+      k: 1,                      // hisse = max(ilk ? firstMin : 0, floor(k * (döngü kazancı / threshold)^(1/3)))
+      threshold: 1e14,
+      firstMin: 1
+    },
+    tree: {
+      costs: [1, 3, 6],          // her dalda 1., 2., 3. düğüm (Borsa Payı)
+      clickMult: 2,              // Parmak Hızı
+      flowChance: 0.05, flowMult: 10, // Akış Hâli
+      clickPct: 0.01,            // Kısayol Ustası
+      genMult: 1.5,              // İyi Referans
+      startGens: [['stajyer', 5], ['junior', 2]], // Hazır Kadro
+      costGrowth: 1.14,          // İK Anlaşması
+      offerFreq: 0.75,           // Sadık Müşteri: teklif aralığı çarpanı
+      offerSec: 15,              // Esnek Teslim
+      offerPayMult: 2,           // Referans Zinciri
+      offlineHours1: 12,         // Uzaktan Çalışma
+      shareBoost: 0.25,          // Yatırımcı Güveni
+      offlineHours2: 24          // Gece Vardiyası (üst sınır)
+    },
+    utm: { stage: 'asama_paylasim', ipo: 'halka_arz' } // paylaşım bağlantısı kampanya etiketleri
+  };
 
   var GENERATORS = [
     { id: 'stajyer',  name: 'Stajyer',               icon: '🧑‍🎓', base: 15,        tps: 0.2,   desc: 'Kahve getirir, bazen de kod yazar.' },
@@ -31,7 +65,11 @@
     { id: 'pm',       name: 'Proje Yöneticisi',      icon: '📋',   base: 130000,    tps: 260,   desc: 'Toplantıları toplantıyla planlar.' },
     { id: 'ai',       name: 'Yapay Zekâ Kod Ajanı',  icon: '🤖',   base: 1400000,   tps: 1400,  desc: 'Gece gündüz yorulmadan commit atar.' },
     { id: 'sunucu',   name: 'Sunucu Odası',          icon: '🖥️',   base: 20000000,  tps: 7800,  desc: 'Uğultusu para sesi gibidir.' },
-    { id: 'ofis',     name: 'Yurt Dışı Ofis',        icon: '🌍',   base: 330000000, tps: 44000, desc: 'Güneş hiç batmayan ajans.' }
+    { id: 'ofis',     name: 'Yurt Dışı Ofis',        icon: '🌍',   base: 330000000, tps: 44000, desc: 'Güneş hiç batmayan ajans.' },
+    // v4: her yeni aşama bir çalışan tipi açar (stage = gereken aşama sırası)
+    { id: 'arge',     name: 'Ar-Ge Kampüsü',         icon: '🏛️',   base: 6.0e9,     tps: 3.0e5, stage: 6, desc: 'Her fikrin bir prototipi, her prototipin bir toplantısı var.' },
+    { id: 'yzlab',    name: 'Yapay Zekâ Araştırmacısı', icon: '🧪', base: 1.2e11,    tps: 2.5e6, stage: 7, desc: 'Modeli eğitiyor; model de onu.' },
+    { id: 'mars',     name: 'Mars Ekibi',            icon: '👩‍🚀', base: 3.0e12,    tps: 2.0e7, stage: 8, desc: 'Günlük stand-up 20 dakika gecikmeyle başlar.' }
   ];
   var DEV_IDS = ['stajyer', 'junior', 'senior', 'ai'];
 
@@ -45,7 +83,10 @@
     pm:       [['Kanban Panosu', '🗂️'], ['Çevik Sertifika', '🏃'], ['Toplantısız Cuma', '🚫'], ['Yol Haritası Ustası', '🗺️'], ['Gantt Şeması Sanatı', '📐']],
     ai:       [['Daha Büyük Bağlam Penceresi', '🧠'], ['İnce Ayarlı Model', '🎛️'], ['Ajan Sürüsü', '🐝'], ['Kendini Test Eden Kod', '✅'], ['Tekillik Toplantısı', '🌀']],
     sunucu:   [['Sıvı Soğutma', '💧'], ['Otomatik Ölçekleme', '📈'], ['Yeşil Enerji', '🌱'], ['Kendi Veri Merkezin', '🏗️'], ['Kuantum Rafı', '⚛️']],
-    ofis:     [['Berlin Şubesi', '🥨'], ['Dubai Şubesi', '🏙️'], ['Tokyo Şubesi', '🗼'], ['New York Genel Merkezi', '🗽'], ['Ay Üssü Şubesi', '🌙']]
+    ofis:     [['Berlin Şubesi', '🥨'], ['Dubai Şubesi', '🏙️'], ['Tokyo Şubesi', '🗼'], ['New York Genel Merkezi', '🗽'], ['Ay Üssü Şubesi', '🌙']],
+    arge:     [['Prototip Atölyesi', '🛠️'], ['Patent Duvarı', '📜'], ['Kuluçka Merkezi', '🐣'], ['Kampüs Servisi', '🚌'], ['Uzay Asansörü Taslağı', '🛗']],
+    yzlab:    [['GPU Kümesi', '🎮'], ['Temiz Veri Seti', '🧼'], ['Hizalama Ekibi', '📏'], ['Kendini Eğiten Model', '♻️'], ['Genel Zekâ Toplantısı', '🧠']],
+    mars:     [['Basınçlı Ofis Kubbesi', '🫧'], ['Kızıl Toz Filtresi', '🌪️'], ['Gecikmeli Toplantı Protokolü', '📡'], ['Yerel Kahve Serası', '🌱'], ['Olympus Genel Merkezi', '🏔️']]
   };
 
   var UPGRADES = [];
@@ -95,8 +136,49 @@
     { name: 'Butik Stüdyo',   icon: '🏢', at: 50000,      desc: 'Küçük ama tatlı bir ekip, ilk kurumsal müşteriler.', msg: 'Kapıda adınız yazıyor. Müşteri artık ‘ekibiniz kaç kişi?’ diye sormaya çekinmiyor.' },
     { name: 'Ajans',          icon: '🚀', at: 1000000,    desc: 'Kendi binan, kendi tabelan.', msg: 'Artık ‘biz’ diyorsunuz ve bunu gerçekten ciddi söylüyorsunuz.' },
     { name: 'Dev Ajans',      icon: '🏙️', at: 50000000,   desc: 'Plaza katları, yüzlerce proje.', msg: 'Toplantı odalarına gezegen adı koyma zamanı geldi.' },
-    { name: 'Global Holding', icon: '🌐', at: 2500000000, desc: 'Kıtalar arası bir teknoloji devi.', msg: 'Tebrikler! Artık logoyu büyütmeyi siz istiyorsunuz.' }
+    { name: 'Global Holding', icon: '🌐', at: 2500000000, desc: 'Kıtalar arası bir teknoloji devi.', msg: 'Tebrikler! Artık logoyu büyütmeyi siz istiyorsunuz.' },
+    { name: 'Teknoloji Devi', icon: '🛰️', at: 1e15, desc: 'Müşteriler sırada, hepsi acil.', msg: 'Tebrikler! Artık müşteri aramıyorsunuz, müşteriler sizi arıyor. Hepsi de \'acil\' diyor.' },
+    { name: 'Yapay Zekâ Laboratuvarı', icon: '🧬', at: 1e19, desc: 'Kodu model yazıyor, siz yön veriyorsunuz.', msg: 'Tebrikler! Kodu artık yapay zekâ yazıyor, siz de ona \'biraz daha büyüt\' diyorsunuz.' },
+    { name: 'Mars Ofisi', icon: '🔴', at: 1e23, desc: 'Kızıl gezegende ilk ajans.', msg: 'Tebrikler! Mars\'tasınız. Mesajlar 20 dakikada geliyor, revize talepleri yine de anında.' }
   ];
+  // Aşamaya göre hafif tema rengi (arka plan ve tebrik penceresi)
+  var STAGE_TINTS = ['#7c5cff', '#8b6cff', '#5c8dff', '#22d3a6', '#ffb347', '#4fc3f7', '#00e5ff', '#b388ff', '#ff5a3c'];
+  // Borsa Payı Ağacı (Halka Arz ile kazanılan Borsa Payı ile alınır; halka arzdan sonra da kalır).
+  // Her dalda 3 düğüm sırayla açılır; maliyetler CFG.tree.costs. Açıklamalar sayıları CFG'den okur.
+  var T = CFG.tree;
+  var TREE = [
+    { id: 'kod', name: 'Kod', icon: '⌨️', nodes: [
+      { id: 'kod_1', name: 'Parmak Hızı', desc: function () { return 'Klavye alev aldı. \'Kod yaz\' kazancı ×' + num(T.clickMult) + '.'; } },
+      { id: 'kod_2', name: 'Akış Hâli', desc: function () { return 'Kulaklık takıldı, dünya sustu. Her tıklamada %' + num(T.flowChance * 100) + ' ihtimalle ×' + num(T.flowMult) + ' kazanç.'; } },
+      { id: 'kod_3', name: 'Kısayol Ustası', desc: function () { var p = T.clickPct * 100; return 'Fareye gerek kalmadı. Her tıklama saniyelik gelirinin %' + num(p) + '\'' + sfxAcc3(p) + ' de getirir.'; } }
+    ] },
+    { id: 'ekip', name: 'Ekip', icon: '👥', nodes: [
+      { id: 'ekip_1', name: 'İyi Referans', desc: function () { return 'Eski çalışanların seni her yerde övüyor. Tüm çalışanlar ×' + num(T.genMult) + ' üretir.'; } },
+      { id: 'ekip_2', name: 'Hazır Kadro', desc: function () {
+        var parts = T.startGens.map(function (x) { var g = GEN_BY_ID[x[0]]; return x[1] + ' ' + (g.short || g.name); });
+        return 'Kapıda sıra var. Her sıfırlamadan sonra ' + parts.join(' ve ') + ' ile başlarsın.'; } },
+      { id: 'ekip_3', name: 'İK Anlaşması', desc: function () {
+        var a = Math.round((COST_GROWTH - 1) * 100), b = Math.round((T.costGrowth - 1) * 100);
+        return 'Maaş pazarlığı artık çay eşliğinde. Her yeni çalışanın fiyat artışı %' + a + '\'' + sfxAbl(a) + ' %' + b + '\'' + sfxDat(b) + ' iner.'; } }
+    ] },
+    { id: 'musteri', name: 'Müşteri', icon: '🤝', nodes: [
+      { id: 'musteri_1', name: 'Sadık Müşteri', desc: function () { return 'Aynı müşteri, yine aynı logo. Proje teklifleri daha sık gelir.'; } },
+      { id: 'musteri_2', name: 'Esnek Teslim', desc: function () { return '\'Yarına yetişir mi?\' artık \'Öbür güne olur mu?\' oldu. Teklif süresi ' + CFG.offerSec + ' saniyeden ' + T.offerSec + ' saniyeye çıkar.'; } },
+      { id: 'musteri_3', name: 'Referans Zinciri', desc: function () { return 'Her müşteri bir müşteri daha getiriyor. Proje ödülleri ×' + num(T.offerPayMult) + '.'; } }
+    ] },
+    { id: 'yatirim', name: 'Yatırım', icon: '📈', nodes: [
+      { id: 'yatirim_1', name: 'Uzaktan Çalışma', desc: function () { return 'Ekip evden de çalışıyor. Çevrimdışı kazanç sınırı ' + CFG.offlineCapHours + ' saatten ' + T.offlineHours1 + ' saate çıkar.'; } },
+      { id: 'yatirim_2', name: 'Yatırımcı Güveni', desc: function () { return 'Sunum slaytları artık animasyonlu. Yatırım turu bonusu %' + num(T.shareBoost * 100) + ' güçlenir.'; } },
+      { id: 'yatirim_3', name: 'Gece Vardiyası', desc: function () { return 'Ofisin ışığı hiç sönmüyor. Çevrimdışı kazanç sınırı ' + T.offlineHours2 + ' saate çıkar.'; } }
+    ] }
+  ];
+  var NODE_BY_ID = {};
+  TREE.forEach(function (br) { br.nodes.forEach(function (n, i) { n.branch = br.id; n.index = i; n.prev = i ? br.nodes[i - 1].id : null; NODE_BY_ID[n.id] = n; }); });
+  function nodeCost(n) { return CFG.tree.costs[n.index]; }
+  var GEN_BY_ID = {};
+  GENERATORS.forEach(function (g) { GEN_BY_ID[g.id] = g; });
+  GEN_BY_ID.junior.short = 'Junior';
+
   var STAGE_BONUS = 0.10; // her aşama +%10 üretim ve tıklama
   var PRESTIGE_UNIT = 1e8; // hisse = floor(sqrt(turKazancı / 1e8))
   var SHARE_BONUS = 0.10;
@@ -104,7 +186,8 @@
   // ------------------------------------------------------------------
   // Sayı biçimlendirme (Türkçe)
   // ------------------------------------------------------------------
-  var SUFFIXES = ['', 'Bin', 'Mn', 'Mr', 'Tn', 'Kat', 'Kent', 'Sek', 'Sep', 'Okt', 'Non', 'Des'];
+  // Kısaltmalar Katrilyon (Kat) ve Kentilyon'a (Kent) kadar; ötesi bilimsel gösterim (1,23e21)
+  var SUFFIXES = ['', 'Bin', 'Mn', 'Mr', 'Tn', 'Kat', 'Kent'];
   function groupTR(intStr) { return intStr.replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
   function fixedTR(n, d) {
     var s = n.toFixed(d);
@@ -113,7 +196,7 @@
     if (parts[1] && /[1-9]/.test(parts[1])) out += ',' + parts[1].replace(/0+$/, '');
     return out;
   }
-  // En büyük sonekin (Des = 1e33) ötesi bilimsel gösterim: 1,2e36 (Türkçe ondalık virgülü, '+' yok)
+  // En büyük sonekin (Kent = 1e18) ötesi bilimsel gösterim: 1,2e21 (Türkçe ondalık virgülü, '+' yok)
   function sciTR(n) {
     var p = n.toExponential(2).split('e');
     var m = p[0].replace(/\.?0+$/, '').replace('.', ',');
@@ -142,6 +225,22 @@
   }
   function fmtSec(s) { return Math.round(s) + ' sn'; }
   function pct(x) { return Math.round(x * 100); }
+  function num(x) { return fixedTR(x, 2); } // ayar sayılarını metne yazar: 1.5 -> "1,5"
+  // Türkçe ek uyumu (sayılar için): %1'ini, %15'ten, %14'e ...
+  function numWord(n) {
+    n = Math.abs(Math.round(n));
+    var ones = ['sıfır', 'bir', 'iki', 'üç', 'dört', 'beş', 'altı', 'yedi', 'sekiz', 'dokuz'];
+    var tens = ['', 'on', 'yirmi', 'otuz', 'kırk', 'elli', 'altmış', 'yetmiş', 'seksen', 'doksan'];
+    if (n % 10) return ones[n % 10];
+    if (n % 100) return tens[(n % 100) / 10];
+    if (n === 0) return 'sıfır';
+    return n % 1000 ? 'yüz' : 'bin';
+  }
+  function lastVowel(w) { var m = w.match(/[aeıioöuü](?=[^aeıioöuü]*$)/); return m ? m[0] : 'e'; }
+  function sfx4(v) { return /[aı]/.test(v) ? 'ı' : /[ei]/.test(v) ? 'i' : /[ou]/.test(v) ? 'u' : 'ü'; }
+  function sfxAcc3(n) { var w = numWord(n), v = lastVowel(w), i = sfx4(v); return (/[aeıioöuü]$/.test(w) ? 's' + i + 'n' + i : i + 'n' + i); }
+  function sfxAbl(n) { var w = numWord(n), front = /[eiöü]/.test(lastVowel(w)); return (/[çfhkpsşt]$/.test(w) ? 't' : 'd') + (front ? 'en' : 'an'); }
+  function sfxDat(n) { var w = numWord(n), front = /[eiöü]/.test(lastVowel(w)); return (/[aeıioöuü]$/.test(w) ? 'y' : '') + (front ? 'e' : 'a'); }
 
   // ------------------------------------------------------------------
   // Durum
@@ -154,11 +253,14 @@
     GENERATORS.forEach(function (g) { gens[g.id] = 0; });
     var now = Date.now();
     return {
-      version: 2, money: 0, runEarned: 0, totalEarned: 0, clicks: 0, clickEarned: 0,
+      version: SAVE_VERSION, money: 0, runEarned: 0, totalEarned: 0, clicks: 0, clickEarned: 0,
       playTime: 0, startedAt: now, lastSaved: now, gens: gens, upgrades: [],
       shares: 0, prestigeCount: 0, boostLeft: 0, eventsClicked: 0, offlineEarned: 0, stage: 0,
       buffs: [], achievements: [], critClicks: 0, eventsResolved: 0, logoAccepted: 0, revisions: 0,
-      meetings: 0, serverCrashes: 0, reputation: 0, noMeetingSec: 0, daily: newDaily()
+      meetings: 0, serverCrashes: 0, reputation: 0, noMeetingSec: 0, daily: newDaily(),
+      // v4
+      ipoShares: 0, ipoSharesEarned: 0, ipoCount: 0, cycleEarned: 0, cycleRounds: 0, tree: [], stageBest: 0,
+      newsSeen: [], newsPending: []
     };
   }
   var S = newState();
@@ -168,17 +270,27 @@
   function chance(p) { return rnd() < p; }
 
   function has(id) { return S.upgrades.indexOf(id) !== -1; }
+  function hasNode(id) { return S.tree.indexOf(id) !== -1; }
+  function costGrowth() { return hasNode('ekip_3') ? CFG.tree.costGrowth : COST_GROWTH; }
+  function offlineCapSec() { return 3600 * (hasNode('yatirim_3') ? CFG.tree.offlineHours2 : hasNode('yatirim_1') ? CFG.tree.offlineHours1 : CFG.offlineCapHours); }
+  function shareBonus() { return SHARE_BONUS * (1 + (hasNode('yatirim_2') ? CFG.tree.shareBoost : 0)); }
+  function offerSec() { return hasNode('musteri_2') ? CFG.tree.offerSec : CFG.offerSec; }
+  function offerFreq() { return hasNode('musteri_1') ? CFG.tree.offerFreq : 1; }
+  function offerPayMult() { return hasNode('musteri_3') ? CFG.tree.offerPayMult : 1; }
+  function genUnlocked(g) { return !g.stage || S.stageBest >= g.stage; }
   function totalOwned() { var t = 0; for (var k in S.gens) t += S.gens[k]; return t; }
-  function stageIndex(earned) {
+  function stageIndexOf(earned) {
     var i = 0;
     for (var j = 0; j < STAGES.length; j++) if (earned >= STAGES[j].at) i = j;
     return i;
   }
+  function stageIndex(earned) { return stageIndexOf(earned); }
   function achMult() { return 1 + ACH_BONUS * S.achievements.length; }
   function globalMult() {
     var m = 1 + STAGE_BONUS * stageIndex(S.runEarned);
-    m *= 1 + SHARE_BONUS * S.shares;
+    m *= 1 + shareBonus() * S.shares;
     m *= achMult();
+    if (hasNode('ekip_1')) m *= CFG.tree.genMult;
     S.upgrades.forEach(function (id) { var u = UPG_BY_ID[id]; if (u && u.type === 'all') m *= u.all; });
     return m;
   }
@@ -211,7 +323,9 @@
       var u = UPG_BY_ID[id];
       if (u && u.type === 'click') { if (u.click) mult *= u.click; if (u.clickPct) p += u.clickPct; }
     });
-    var stageShare = (1 + STAGE_BONUS * stageIndex(S.runEarned)) * (1 + SHARE_BONUS * S.shares);
+    if (hasNode('kod_1')) mult *= CFG.tree.clickMult;
+    if (hasNode('kod_3')) p += CFG.tree.clickPct;
+    var stageShare = (1 + STAGE_BONUS * stageIndex(S.runEarned)) * (1 + shareBonus() * S.shares);
     return BASE_CLICK * mult * stageShare + p * baseTps();
   }
   function clickValue() { return clickBase() * boostMult() * buffMult('click'); }
@@ -228,13 +342,15 @@
   function meeting() { S.meetings++; S.noMeetingSec = 0; }
   function genCost(g, n) {
     n = n || 1;
-    var first = g.base * Math.pow(COST_GROWTH, S.gens[g.id]);
-    return first * (Math.pow(COST_GROWTH, n) - 1) / (COST_GROWTH - 1);
+    var cg = costGrowth();
+    var first = g.base * Math.pow(cg, S.gens[g.id]);
+    return first * (Math.pow(cg, n) - 1) / (cg - 1);
   }
   function maxAffordable(g) {
-    var first = g.base * Math.pow(COST_GROWTH, S.gens[g.id]);
-    if (S.money < first) return 0;
-    return Math.floor(Math.log(S.money * (COST_GROWTH - 1) / first + 1) / Math.log(COST_GROWTH));
+    var cg = costGrowth();
+    var first = g.base * Math.pow(cg, S.gens[g.id]);
+    if (!genUnlocked(g) || S.money < first) return 0;
+    return Math.floor(Math.log(S.money * (cg - 1) / first + 1) / Math.log(cg));
   }
   function upgradeUnlocked(u) {
     if (u.req.gen) return S.gens[u.req.gen] >= u.req.count;
@@ -246,7 +362,7 @@
       .sort(function (a, b) { return a.cost - b.cost; });
   }
   function earn(x, src) {
-    S.money += x; S.runEarned += x; S.totalEarned += x;
+    S.money += x; S.runEarned += x; S.totalEarned += x; S.cycleEarned += x;
     if (src !== 'offline' && src !== 'task') taskProgress('earn', x);
   }
 
@@ -254,6 +370,9 @@
   function doClick(forceCrit) {
     var crit = forceCrit === true || (forceCrit !== false && rnd() < CRIT_CHANCE);
     var v = clickValue() * (crit ? CRIT_MULT : 1);
+    var flow = hasNode('kod_2') && rnd() < CFG.tree.flowChance;
+    if (flow) v *= CFG.tree.flowMult;
+    Core.lastFlow = flow;
     earn(v); S.clicks++; S.clickEarned += v;
     if (crit) { S.critClicks++; taskProgress('crit', 1); }
     taskProgress('click', 1);
@@ -261,8 +380,8 @@
     return v;
   }
   function buyGen(id, n) {
-    var g = GENERATORS.filter(function (x) { return x.id === id; })[0];
-    if (!g) return false;
+    var g = GEN_BY_ID[id];
+    if (!g || !genUnlocked(g)) return false;
     if (n === 'max') n = maxAffordable(g);
     n = n || 1;
     if (n < 1) return false;
@@ -283,15 +402,52 @@
   function nextShareAt() { var n = sharesGain() + 1; return n * n * PRESTIGE_UNIT; }
   var KEEP_ON_PRESTIGE = ['totalEarned', 'clicks', 'clickEarned', 'playTime', 'startedAt', 'eventsClicked', 'offlineEarned',
     'achievements', 'critClicks', 'eventsResolved', 'logoAccepted', 'revisions', 'meetings', 'serverCrashes',
-    'reputation', 'noMeetingSec', 'daily'];
+    'reputation', 'noMeetingSec', 'daily',
+    'ipoShares', 'ipoSharesEarned', 'ipoCount', 'cycleEarned', 'tree', 'stageBest', 'newsSeen', 'newsPending'];
+  // Sıfırlama sonrası (Yatırım Turu ve Halka Arz): Hazır Kadro başlangıç çalışanları
+  function resetTo(keep) {
+    S = newState();
+    for (var k in keep) S[k] = keep[k];
+    if (hasNode('ekip_2')) CFG.tree.startGens.forEach(function (x) { if (S.gens[x[0]] !== undefined) S.gens[x[0]] += x[1]; });
+  }
   function doPrestige() {
     var gain = sharesGain();
     if (gain < 1) return 0;
-    var keep = { shares: S.shares + gain, prestigeCount: S.prestigeCount + 1 };
+    var keep = { shares: S.shares + gain, prestigeCount: S.prestigeCount + 1, cycleRounds: S.cycleRounds + 1 };
     KEEP_ON_PRESTIGE.forEach(function (k) { keep[k] = S[k]; });
-    S = newState();
-    for (var k in keep) S[k] = keep[k];
+    resetTo(keep);
     return gain;
+  }
+  // ---- Halka Arz (ikinci prestij): kasa, çalışanlar, geliştirmeler ve yatırım turu bonusu (Yatırımcı Hisseleri) sıfırlanır;
+  // Borsa Payı Ağacı, başarımlar ve sıralamadaki toplam kazanç (totalEarned) kalır.
+  function ipoUnlocked() { return S.cycleRounds >= CFG.halkaArz.rounds; }
+  function ipoGain() {
+    var H = CFG.halkaArz;
+    var g = Math.floor(H.k * Math.cbrt(Math.max(0, S.cycleEarned) / H.threshold) + 1e-9);
+    return Math.max(S.ipoCount === 0 ? H.firstMin : 0, g);
+  }
+  function doIpo() {
+    if (!ipoUnlocked()) return 0;
+    var gain = ipoGain();
+    if (gain < 1) return 0;
+    var keep = { prestigeCount: S.prestigeCount };
+    KEEP_ON_PRESTIGE.forEach(function (k) { keep[k] = S[k]; });
+    keep.ipoShares = S.ipoShares + gain; keep.ipoSharesEarned = S.ipoSharesEarned + gain; keep.ipoCount = S.ipoCount + 1;
+    keep.cycleEarned = 0;
+    resetTo(keep);
+    return gain;
+  }
+  function nodeState(id) {
+    var n = NODE_BY_ID[id];
+    if (!n) return 'none';
+    if (hasNode(id)) return 'owned';
+    if (n.prev && !hasNode(n.prev)) return 'locked';
+    return S.ipoShares >= nodeCost(n) ? 'ready' : 'poor';
+  }
+  function buyNode(id) {
+    if (nodeState(id) !== 'ready') return false;
+    S.ipoShares -= nodeCost(NODE_BY_ID[id]); S.tree.push(id);
+    return true;
   }
   // Simülasyon/ilerleme
   function tick(dt) {
@@ -463,7 +619,8 @@
     { id: 'gorev_1', icon: '✅', name: 'Günü Kurtardın', desc: 'Bir günün tüm görevlerini tamamla', test: function () { return S.daily.daysCompleted >= 1; } },
     { id: 'seri_3', icon: '🔥', name: 'Üç Gün Üst Üste', desc: '3 günlük seri yap', test: function () { return S.daily.best >= 3; } },
     { id: 'seri_7', icon: '📆', name: 'Haftalık Rutin', desc: '7 günlük seri yap', test: function () { return S.daily.best >= 7; } },
-    { id: 'yatirim_1', icon: '💼', name: 'İlk Yatırım', desc: 'İlk Yatırım Turunu tamamla', test: function () { return S.prestigeCount >= 1; } }
+    { id: 'yatirim_1', icon: '💼', name: 'İlk Yatırım', desc: 'İlk Yatırım Turunu tamamla', test: function () { return S.prestigeCount >= 1; } },
+    { id: 'borsa_zili', icon: '🔔', name: 'Borsa Zili', desc: 'İlk halka arzını yaptın.', test: function () { return S.ipoCount >= 1; } }
   ];
   var ACH_BY_ID = {};
   ACHIEVEMENTS.forEach(function (a) { ACH_BY_ID[a.id] = a; });
@@ -511,17 +668,18 @@
     for (var k = 0; k < pool.length && tasks.length < 3; k++) {
       var type = pool[k];
       var t = { type: type, target: 1, progress: 0, done: false, reward: 0 };
-      if (type === 'click') t.target = [150, 250, 350, 500, 500, 600][si];
-      else if (type === 'offer') t.target = [2, 2, 3, 3, 3, 3][si];
-      else if (type === 'event') t.target = [1, 1, 2, 2, 2, 3][si];
-      else if (type === 'crit') t.target = [3, 4, 5, 6, 8, 10][si];
+      var sj = Math.min(si, 5); // yeni aşamalarda son değerler geçerli
+      if (type === 'click') t.target = [150, 250, 350, 500, 500, 600][sj];
+      else if (type === 'offer') t.target = [2, 2, 3, 3, 3, 3][sj];
+      else if (type === 'event') t.target = [1, 1, 2, 2, 2, 3][sj];
+      else if (type === 'crit') t.target = [3, 4, 5, 6, 8, 10][sj];
       else if (type === 'earn') t.target = niceRound(Math.max(500, baseTps() * 900));
       else if (type === 'upgrade') { if (totalOwned() < 1) continue; t.target = si >= 2 ? 2 : 1; }
       else if (type === 'hire') {
         var idx = 0;
         GENERATORS.forEach(function (g, gi) { if (S.gens[g.id] > 0) idx = gi; });
         t.gen = GENERATORS[idx].id;
-        t.target = [5, 3, 2, 1, 1, 1, 1, 1][idx];
+        t.target = [5, 3, 2][idx] || 1;
       }
       tasks.push(t);
     }
@@ -604,6 +762,14 @@
     base.upgrades = base.upgrades.filter(function (id) { var ok = UPG_BY_ID[id] && !seen[id]; seen[id] = 1; return ok; });
     seen = {};
     base.achievements = base.achievements.filter(function (id) { var ok = ACH_BY_ID[id] && !seen[id]; seen[id] = 1; return ok; });
+    // v4 alanları: ağaç sırası korunur (önceki düğüm yoksa sonraki geçersiz), haber bayrakları yalnızca bilinen kimlikler
+    seen = {};
+    base.tree = base.tree.filter(function (id) { var n = NODE_BY_ID[id]; var ok = n && !seen[id] && (!n.prev || seen[n.prev]); seen[id] = 1; return ok; });
+    base.newsSeen = base.newsSeen.filter(function (id, i, a) { return typeof id === 'string' && NEWS_BY_ID[id] && a.indexOf(id) === i; });
+    base.newsPending = base.newsPending.filter(function (id, i, a) { return typeof id === 'string' && NEWS_BY_ID[id] && a.indexOf(id) === i; });
+    ['ipoShares', 'ipoSharesEarned', 'ipoCount', 'cycleRounds', 'stageBest', 'shares', 'prestigeCount'].forEach(function (k) {
+      base[k] = Math.max(0, Math.floor(base[k]));
+    });
     base.buffs = base.buffs.filter(function (b) {
       return b && isNum(b.mult) && isNum(b.left) && b.left > 0 && (b.kind === 'prod' || b.kind === 'click');
     });
@@ -613,20 +779,59 @@
       base.daily = nd;
     }
     base.reputation = Math.max(0, Math.min(REP_MAX, base.reputation));
-    base.version = 2;
+    // v2/v3 (oyun v1-v3) -> kayıt v3 (oyun v4): kayıpsız taşıma
+    if (Core.loadedVersion < SAVE_VERSION) {
+      base.cycleEarned = base.totalEarned;          // henüz halka arz yok: döngü = tüm zamanlar
+      base.cycleRounds = base.prestigeCount;        // şimdiye kadarki yatırım turları Halka Arz koşuluna sayılır
+      base.stageBest = Math.max(base.stage, stageIndexOf(base.runEarned));
+      if (base.stageBest >= 5 && base.newsPending.indexOf('yeni_asama') === -1) base.newsPending.push('yeni_asama');
+    }
+    base.cycleEarned = Math.min(base.totalEarned, Math.max(base.cycleEarned, base.runEarned));
+    base.stageBest = Math.max(base.stageBest, base.stage, stageIndexOf(base.runEarned));
+    base.version = SAVE_VERSION;
     S = base;
     return S;
   }
   function applyOffline(now) {
     var elapsed = Math.max(0, ((now || Date.now()) - S.lastSaved) / 1000);
-    var sec = Math.min(elapsed, OFFLINE_CAP_SEC);
+    var cap = offlineCapSec();
+    var sec = Math.min(elapsed, cap);
     var gain = baseTps() * sec;
     if (gain > 0) { earn(gain, 'offline'); S.offlineEarned += gain; }
-    return { elapsed: elapsed, sec: sec, gain: gain, capped: elapsed > OFFLINE_CAP_SEC };
+    return { elapsed: elapsed, sec: sec, gain: gain, capped: elapsed > cap, capHours: cap / 3600 };
+  }
+
+  // ------------------------------------------------------------------
+  // Oyun içi haberler: sırayla, oturum başına en fazla CFG.newsPerSession; oyuncu başına bir kez (kayıtta newsSeen)
+  // ------------------------------------------------------------------
+  var NEWS = [
+    { id: 'yeni_asama', emoji: '🛰️', title: 'Global Holding son durak değilmiş.',
+      text: function () { return 'Yeni aşama açıldı: ' + STAGES[6].name + '.'; },
+      eligible: function () { return S.newsPending.indexOf('yeni_asama') !== -1; } },
+    { id: 'siralama', emoji: '🏆', title: 'Yeni: Sıralama!',
+      text: function () { return 'Toplam kazancınla listeye gir. Yatırım turu yapsan da yerin korunur.'; },
+      action: 'Sıralamaya bak', count: 'news_leaderboard',
+      eligible: function () { return !!(Core.newsNeedsLeaderboard && Core.newsNeedsLeaderboard()); } }
+  ];
+  var NEWS_BY_ID = {};
+  NEWS.forEach(function (n) { NEWS_BY_ID[n.id] = n; });
+  function nextNews() {
+    for (var i = 0; i < NEWS.length; i++) {
+      var n = NEWS[i];
+      if (S.newsSeen.indexOf(n.id) === -1 && n.eligible()) return n;
+    }
+    return null;
+  }
+  function markNewsSeen(id) {
+    if (S.newsSeen.indexOf(id) === -1) S.newsSeen.push(id);
+    S.newsPending = S.newsPending.filter(function (x) { return x !== id; });
   }
 
   var Core = {
-    VERSION: VERSION, GENERATORS: GENERATORS, UPGRADES: UPGRADES, STAGES: STAGES, EVENTS: EVENTS, ACHIEVEMENTS: ACHIEVEMENTS,
+    VERSION: VERSION, SAVE_VERSION: SAVE_VERSION, CFG: CFG, TREE: TREE, NEWS: NEWS, STAGE_TINTS: STAGE_TINTS,
+    hasNode: hasNode, nodeState: nodeState, nodeCost: nodeCost, buyNode: buyNode, ipoUnlocked: ipoUnlocked, ipoGain: ipoGain, doIpo: doIpo,
+    costGrowth: costGrowth, offlineCapSec: offlineCapSec, shareBonus: shareBonus, offerSec: offerSec, offerFreq: offerFreq, offerPayMult: offerPayMult,
+    genUnlocked: genUnlocked, nextNews: nextNews, markNewsSeen: markNewsSeen, sfxAcc3: sfxAcc3, sfxAbl: sfxAbl, sfxDat: sfxDat, GENERATORS: GENERATORS, UPGRADES: UPGRADES, STAGES: STAGES, EVENTS: EVENTS, ACHIEVEMENTS: ACHIEVEMENTS,
     fmt: fmt, tl: tl, fmtTime: fmtTime,
     get state() { return S; }, set state(v) { S = v; }, newState: newState,
     tps: tps, baseTps: baseTps, clickValue: clickValue, clickBase: clickBase, genCost: genCost, genTps: genTps, maxAffordable: maxAffordable,
@@ -746,8 +951,10 @@
     var res = applyOffline(Date.now());
     lastStageShown = stageIndex(S.runEarned);
     S.stage = Math.max(S.stage, lastStageShown);
+    S.stageBest = Math.max(S.stageBest, S.stage);
     checkDaily();
     checkAchievements();
+    treeSig = '';
     queue = queue.filter(function (n) { return n.type !== 'ach' && n.type !== 'newday'; });
     upgSig = ''; achSig = '';
     setCounter('money', S.money, true);
@@ -832,7 +1039,20 @@
     GENERATORS.forEach(function (g, i) {
       var r = genRows[g.id];
       var owned = S.gens[g.id];
-      var revealed = owned > 0 || i === 0 || S.gens[GENERATORS[i - 1].id] > 0 || S.runEarned >= g.base;
+      if (!genUnlocked(g)) {
+        // yeni aşamanın çalışanı: aşamaya ulaşınca açılır (bir sonraki kilitli olan gösterilir)
+        if (revealedNext) { r.btn.classList.add('hidden'); return; }
+        revealedNext = true;
+        var stg = STAGES[g.stage];
+        r.btn.classList.remove('hidden', 'affordable');
+        r.btn.classList.add('locked'); r.btn.disabled = true;
+        r.name.textContent = '???';
+        r.sub.textContent = stg.icon + ' ' + stg.name + ' aşamasında açılır';
+        r.owned.textContent = '';
+        r.cost.textContent = tl(g.base);
+        return;
+      }
+      var revealed = owned > 0 || i === 0 || S.gens[GENERATORS[i - 1].id] > 0 || S.runEarned >= g.base || !!g.stage;
       if (!revealed) {
         if (revealedNext) { r.btn.classList.add('hidden'); return; }
         revealedNext = true;
@@ -924,10 +1144,15 @@
       if (i > S.stage) {
         S.stage = i;
         el.stageCard.classList.remove('levelup'); void el.stageCard.offsetWidth; el.stageCard.classList.add('levelup');
-        toast('🎉 ' + st.icon + ' ' + st.name + ' — ' + st.msg + ' (+%' + Math.round(i * STAGE_BONUS * 100) + ' üretim)', 6000);
+        var firstEver = i > S.stageBest;
+        if (firstEver) S.stageBest = i;
+        // İlk kez ulaşılan aşama: tam ekran kısa tebrik; sonraki turlarda yeniden ulaşınca yalnızca bildirim
+        if (firstEver && !quiet()) showStageUp(i);
+        else toast('🎉 ' + st.icon + ' ' + st.name + ' — ' + st.msg + ' (+%' + Math.round(i * STAGE_BONUS * 100) + ' üretim)', 6000);
         sfx('stage'); vibrate([15, 40, 15]);
       }
     }
+    applyTint(Math.max(i, 0));
     el.repChip.textContent = '⭐ İtibar ' + S.reputation + ' · müşteri ödemeleri +%' + Math.round(S.reputation * REP_OFFER_BONUS * 100);
     el.achChip.textContent = '🏅 Başarım ' + S.achievements.length + '/' + ACHIEVEMENTS.length + ' · +%' + S.achievements.length + ' üretim';
     el.streakChip.textContent = '🔥 Seri ' + (S.daily.streak || 0) + ' gün';
@@ -952,6 +1177,8 @@
       ['Çevrimdışı kazanç', tl(S.offlineEarned)],
       ['Oynama süresi', fmtTime(S.playTime)],
       ['Yatırım turu sayısı', fmt(S.prestigeCount)],
+      ['Halka arz sayısı', fmt(S.ipoCount)],
+      ['Borsa Payı (harcanabilir / toplam)', fmt(S.ipoShares) + ' / ' + fmt(S.ipoSharesEarned)],
       ['Sürüm', 'v' + VERSION]
     ];
     var html = rows.map(function (r) { return '<div><dt>' + r[0] + '</dt><dd>' + r[1] + '</dd></div>'; }).join('');
@@ -959,11 +1186,55 @@
   }
   function renderPrestige() {
     el.prShares.textContent = fmt(S.shares);
-    el.prBonus.textContent = '+%' + fmt(S.shares * SHARE_BONUS * 100);
+    el.prBonus.textContent = '+%' + fmt(S.shares * shareBonus() * 100);
+    el.prPer.textContent = '+%' + num(shareBonus() * 100);
     var g = sharesGain();
     el.prGain.textContent = fmt(g) + ' hisse';
     el.prNext.textContent = tl(nextShareAt()) + ' tur kazancı';
     el.prestigeBtn.disabled = g < 1;
+    renderIpo();
+  }
+  // Halka Arz bölümü + Borsa Payı Ağacı
+  var treeSig = '';
+  function renderIpo() {
+    var open = ipoUnlocked(), H = CFG.halkaArz;
+    el.ipoSection.classList.toggle('locked', !open);
+    el.ipoLock.classList.toggle('hidden', open);
+    if (!open) el.ipoLock.textContent = '🔒 ' + H.rounds + ' yatırım turundan sonra açılır. (' + Math.min(S.cycleRounds, H.rounds) + '/' + H.rounds + ')';
+    var gain = ipoGain();
+    el.ipoShares.textContent = fmt(S.ipoShares);
+    el.ipoGain.textContent = fmt(gain) + ' Borsa Payı';
+    el.ipoCount.textContent = fmt(S.ipoCount);
+    el.ipoBtn.disabled = !open || gain < 1;
+    var sig = S.tree.join(',') + '|' + S.ipoShares;
+    if (sig === treeSig) return;
+    treeSig = sig;
+    el.treeGrid.innerHTML = '';
+    TREE.forEach(function (br) {
+      var box = document.createElement('div'); box.className = 'tree-branch'; box.dataset.branch = br.id;
+      var h = document.createElement('h4'); h.textContent = br.icon + ' ' + br.name; box.appendChild(h);
+      br.nodes.forEach(function (n) {
+        var st = nodeState(n.id), cost = nodeCost(n);
+        var b = document.createElement('button'); b.type = 'button';
+        b.className = 'tree-node ' + st; b.dataset.node = n.id; b.disabled = st !== 'ready';
+        var nm = document.createElement('b'); nm.textContent = n.name;
+        var c = document.createElement('span'); c.className = 'tn-cost'; c.textContent = st === 'owned' ? '✓' : cost + ' 🪙';
+        var d = document.createElement('small'); d.textContent = n.desc();
+        var m = document.createElement('small'); m.className = 'tn-state'; m.textContent = nodeStateText(n, st);
+        b.appendChild(nm); b.appendChild(c); b.appendChild(d); b.appendChild(m);
+        b.addEventListener('click', function () {
+          if (buyNode(n.id)) { toast('🪙 ' + n.name + ' — Alındı! Bu bonus artık kalıcı.', 3500); sfx('buy'); vibrate(12); treeSig = ''; save(); renderAll(); }
+        });
+        box.appendChild(b);
+      });
+      el.treeGrid.appendChild(box);
+    });
+  }
+  function nodeStateText(n, st) {
+    if (st === 'owned') return 'Alındı! Bu bonus artık kalıcı.';
+    if (st === 'locked') return 'Önce ' + NODE_BY_ID[n.prev].name + ' gerekli.';
+    if (st === 'poor') return nodeCost(n) + ' Borsa Payı gerekiyor. Bir halka arz daha?';
+    return nodeCost(n) + ' Borsa Payı ile al';
   }
   function renderDaily() {
     var D = S.daily;
@@ -1065,8 +1336,8 @@
   // Müşteri projesi etkinliği
   var offer = { visible: false, until: 0, nextAt: 0, kind: null, amount: 0 };
   function scheduleOffer(first) {
-    var min = first ? 45 : 60, max = first ? 90 : 180;
-    offer.nextAt = Date.now() + (min + Math.random() * (max - min)) * 1000;
+    var r = first ? CFG.offerFirst : CFG.offerEvery, f = offerFreq();
+    offer.nextAt = Date.now() + (r[0] + Math.random() * (r[1] - r[0])) * f * 1000;
   }
   var OFFER_TEXTS = [
     'Bir e-ticaret sitesi acil yenileme istiyor',
@@ -1078,11 +1349,12 @@
   ];
   function spawnOffer(kind) {
     offer.visible = true;
-    offer.until = Date.now() + 10000;
+    offer.dur = offerSec() * 1000;
+    offer.until = Date.now() + offer.dur;
     offer.kind = kind || (Math.random() < 0.65 ? 'cash' : 'boost');
     var t = OFFER_TEXTS[Math.floor(Math.random() * OFFER_TEXTS.length)];
     if (offer.kind === 'cash') {
-      offer.amount = Math.max(clickValue() * 40, baseTps() * (60 + Math.random() * 60), 50) * repMult();
+      offer.amount = Math.max(clickValue() * 40, baseTps() * (60 + Math.random() * 60), 50) * repMult() * offerPayMult();
       el.coText.textContent = t + ' — ' + tl(offer.amount) + ' ödeme!';
     } else {
       el.coText.textContent = t + ' — 30 sn boyunca tüm kazanç x2!';
@@ -1108,7 +1380,7 @@
     var now = Date.now();
     if (offer.visible) {
       var left = offer.until - now;
-      el.coTimerFill.style.width = Math.max(0, left / 100) + '%';
+      el.coTimerFill.style.width = Math.max(0, left / (offer.dur || 10000) * 100) + '%';
       if (left <= 0) hideOffer();
     } else if (now >= offer.nextAt && el.modal.classList.contains('hidden')) {
       spawnOffer();
@@ -1186,12 +1458,74 @@
     }
   }
 
+  // ---- v4: tema rengi, aşama tebrik penceresi, paylaşım, haberler
+  function quiet() { return !!root.KODHANE_QUIET; } // testler: tebrik penceresi ve haberler kapalı
+  var tintShown = -1;
+  function applyTint(i) {
+    if (i === tintShown) return;
+    tintShown = i;
+    document.documentElement.style.setProperty('--stage-tint', STAGE_TINTS[i] || STAGE_TINTS[STAGE_TINTS.length - 1]);
+  }
+  var suTimer = 0;
+  function showStageUp(i) {
+    var st = STAGES[i];
+    el.stageUp.dataset.stage = i;
+    el.stageUp.style.setProperty('--su-tint', STAGE_TINTS[i] || STAGE_TINTS[0]);
+    el.suIcon.textContent = st.icon;
+    el.suTitle.textContent = st.name;
+    el.suMsg.textContent = st.msg;
+    el.suBonus.textContent = '+%' + Math.round(i * STAGE_BONUS * 100) + ' üretim';
+    el.stageUp.classList.remove('hidden');
+    clearTimeout(suTimer);
+    suTimer = setTimeout(hideStageUp, CFG.stageModalSec * 1000);
+  }
+  function hideStageUp() { clearTimeout(suTimer); el.stageUp.classList.add('hidden'); }
+  function shareLink(campaign) {
+    var base;
+    try { base = location.origin + location.pathname.replace(/index\.html$/, ''); } catch (e) { base = 'https://thejackaltr.github.io/kodhane/'; }
+    if (!/^https?:/.test(base)) base = 'https://thejackaltr.github.io/kodhane/';
+    return base + '?utm_source=paylasim&utm_medium=sosyal&utm_campaign=' + encodeURIComponent(campaign);
+  }
+  // Sıralamadaki paylaşım yapısı: Web Share, yoksa panoya kopyala, o da yoksa metni göster
+  function shareText(text) {
+    Core.lastShare = text;
+    if (navigator.share) { navigator.share({ text: text }).catch(function () {}); }
+    else if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { toast('📋 Paylaşım metni kopyalandı.', 3000); }, function () { toast(text, 6000); });
+    } else toast(text, 6000);
+  }
+  var news = { t0: Date.now(), shown: 0 };
+  function maybeShowNews(now) {
+    if (quiet() || news.shown >= CFG.newsPerSession || now - news.t0 < CFG.newsDelaySec * 1000) return;
+    if (!el.modal.classList.contains('hidden') || !el.stageUp.classList.contains('hidden') || evs.visible || offer.visible) return;
+    var acc = $('accountPanel');
+    if (acc && !acc.classList.contains('hidden')) return;
+    var n = nextNews();
+    if (!n) return;
+    news.shown++;
+    markNewsSeen(n.id);
+    save();
+    if (n.count) countEvent(n.count + '_shown');
+    var buttons = [];
+    if (n.action) {
+      buttons.push({ label: 'Kapat', cls: 'ghost' });
+      buttons.push({ label: n.action, cls: 'primary', onClick: function () {
+        if (n.count) countEvent(n.count + '_click');
+        if (isMobile()) setView('siralama'); else selectTab('siralama');
+      } });
+    } else buttons.push({ label: 'Tamam', cls: 'primary' });
+    modal({ emoji: n.emoji, title: n.title, html: '', buttons: buttons });
+    el.modalText.textContent = n.text();
+    Core.lastNews = n.id;
+  }
+  function countEvent(name) { if (typeof Core.countEvent === 'function') { try { Core.countEvent(name); } catch (e) {} } }
+
   function showWelcomeBack(res) {
     if (!res || res.elapsed < 60 || res.gain <= 0) return;
     modal({
       emoji: '👋', title: 'Tekrar hoş geldin!',
       html: 'Sen yokken ekibin <b>' + fmtTime(res.sec) + '</b> boyunca çalıştı ve <b>' + tl(res.gain) + '</b> kazandı.' +
-        (res.capped ? '<br><small>Çevrimdışı kazanç en fazla 8 saat için hesaplanır.</small>' : ''),
+        (res.capped ? '<br><small>Çevrimdışı kazanç en fazla ' + fmt(res.capHours) + ' saat için hesaplanır.</small>' : ''),
       buttons: [{ label: 'Harika, devam!', cls: 'primary' }]
     });
   }
@@ -1265,12 +1599,15 @@
       'upgBadge', 'navUpgBadge', 'statsList', 'saveBtn', 'resetBtn', 'saveNote', 'soundBtn', 'vibBtn', 'prShares', 'prBonus',
       'prGain', 'prNext', 'prestigeBtn', 'streakBox', 'taskList', 'achHead', 'achGrid', 'clientOffer', 'coText', 'coTimerFill',
       'eventCard', 'evIcon', 'evTitle', 'evText', 'evChoices', 'evLater', 'evTimerFill', 'toast', 'updateBar', 'updateBtn',
-      'modal', 'modalEmoji', 'modalTitle', 'modalText', 'modalActions', 'panelKod', 'panelEkip', 'panelSide', 'bottomNav'
+      'modal', 'modalEmoji', 'modalTitle', 'modalText', 'modalActions', 'panelKod', 'panelEkip', 'panelSide', 'bottomNav',
+      'prPer', 'ipoSection', 'ipoLock', 'ipoBody', 'ipoShares', 'ipoGain', 'ipoCount', 'ipoBtn', 'treeGrid',
+      'stageUp', 'suIcon', 'suTitle', 'suMsg', 'suBonus', 'suShare', 'suClose'
     ].forEach(function (id) { el[id] = $(id); });
 
     var offlineRes = load();
     lastStageShown = stageIndex(S.runEarned);
     S.stage = Math.max(S.stage, lastStageShown);
+    S.stageBest = Math.max(S.stageBest, S.stage);
     checkDaily();
     var retro = checkAchievements();
     queue = queue.filter(function (n) { return n.type !== 'ach' && n.type !== 'newday'; });
@@ -1378,6 +1715,37 @@
       });
     });
 
+    el.ipoBtn.addEventListener('click', function () {
+      var g = ipoGain();
+      if (!ipoUnlocked() || g < 1) return;
+      modal({
+        emoji: '🔔', title: 'Halka arz et?',
+        html: 'Kasa, çalışanlar ve ofis sıfırlanacak. Karşılığında kalıcı Borsa Payı kazanacaksın. Sıralamadaki puanın olduğu gibi kalır.' +
+          '<br><small>Kazanacağın: <b>' + fmt(g) + ' Borsa Payı</b>. Yatırımcı hisselerin de sıfırlanır; Borsa Payı Ağacı ve başarımların kalır.</small>',
+        buttons: [
+          { label: 'Vazgeç', cls: 'ghost' },
+          { label: 'Halka arz et', cls: 'primary', onClick: function () {
+            doIpo(); lastStageShown = 0; upgSig = ''; treeSig = ''; checkAchievements(); save(); renderAll();
+            sfx('stage'); vibrate([20, 60, 20]);
+            modal({
+              emoji: '🔔', title: 'Borsa zili çaldı!',
+              html: 'Artık halka açık bir şirketsin. Borsa Payların: <b>' + fmt(S.ipoShares) + '</b>',
+              buttons: [
+                { label: '📣 Paylaş', cls: 'ghost', onClick: function () { shareText('Kodhane\'de şirketimi halka arz ettim, borsa zili çaldı! ' + shareLink(CFG.utm.ipo)); } },
+                { label: 'Tamam', cls: 'primary' }
+              ]
+            });
+          } }
+        ]
+      });
+    });
+    el.suClose.addEventListener('click', hideStageUp);
+    el.suShare.addEventListener('click', function () {
+      var st = STAGES[el.stageUp.dataset.stage | 0];
+      shareText('Kodhane\'de artık ' + st.name + ' aşamasındayım! Sen de ajansını kur: ' + shareLink(CFG.utm.stage));
+    });
+    el.stageUp.addEventListener('click', function (e) { if (e.target === el.stageUp) hideStageUp(); });
+
     window.addEventListener('beforeunload', save);
     window.addEventListener('pagehide', save);
     document.addEventListener('visibilitychange', function () { if (document.hidden) save(); });
@@ -1385,7 +1753,7 @@
     var last = Date.now(), slow = 0;
     setInterval(function () {
       var now = Date.now();
-      var dt = Math.min((now - last) / 1000, OFFLINE_CAP_SEC);
+      var dt = Math.min((now - last) / 1000, offlineCapSec());
       last = now;
       tick(dt);
       updateOffer();
@@ -1393,6 +1761,7 @@
       if (++slow >= 10) { slow = 0; checkDaily(); }
       checkAchievements();
       drainQueue();
+      maybeShowNews(now);
       renderAll();
     }, 100);
     setInterval(save, AUTOSAVE_MS);
@@ -1418,6 +1787,8 @@
   Core.SAVE_KEY = SAVE_KEY; Core.LEGACY_KEYS = LEGACY_KEYS; Core.SETTINGS_KEY = SETTINGS_KEY;
   Core.applySave = applySave; Core.toast = toast; Core.isResetting = function () { return resetting; };
   Core.activeTab = function () { return activeTab; };
+  Core.showStageUp = showStageUp; Core.hideStageUp = hideStageUp; Core.shareLink = shareLink; Core.shareText = shareText;
+  Core.maybeShowNews = maybeShowNews; Core.newsSession = news;
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();

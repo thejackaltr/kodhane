@@ -116,7 +116,7 @@
       </div>
       <div class="tab hidden" id="tab-prestige">
         <div class="prestige">
-          <p>Şirketini yatırımcılara sun, her şeyi sıfırla ama <b>kalıcı üretim bonusu</b> kazan. Her <b>Yatırımcı Hissesi</b> tüm kazançlara <b>+%10</b> ekler. Başarımların, itibarın ve günlük serin korunur.</p>
+          <p>Şirketini yatırımcılara sun, her şeyi sıfırla ama <b>kalıcı üretim bonusu</b> kazan. Her <b>Yatırımcı Hissesi</b> tüm kazançlara <b id="prPer">+%10</b> ekler. Başarımların, itibarın ve günlük serin korunur.</p>
           <dl class="stats">
             <div><dt>Mevcut hisseler</dt><dd id="prShares">0</dd></div>
             <div><dt>Kalıcı bonus</dt><dd id="prBonus">+%0</dd></div>
@@ -126,6 +126,23 @@
           <button id="prestigeBtn" class="btn primary" disabled>Yatırım turuna çık</button>
           <p class="save-note">İlk hisse için bu turda en az 100 Mn TL kazanmalısın.</p>
         </div>
+        <section class="ipo" id="ipoSection" aria-labelledby="ipoTitle">
+          <h3 id="ipoTitle">🔔 Halka Arz</h3>
+          <p class="ipo-lock hidden" id="ipoLock"></p>
+          <div class="ipo-body" id="ipoBody">
+            <dl class="stats">
+              <div><dt>Borsa Payların</dt><dd id="ipoShares">0</dd></div>
+              <div><dt>Bu halka arzda kazanılacak</dt><dd id="ipoGain">0</dd></div>
+              <div><dt>Halka arz sayısı</dt><dd id="ipoCount">0</dd></div>
+            </dl>
+            <button id="ipoBtn" class="btn primary" disabled>Halka arz et</button>
+            <div class="tree">
+              <h3 class="tree-title">Borsa Payı Ağacı</h3>
+              <p class="tree-note">Buradaki her şey halka arzdan sonra da kalır.</p>
+              <div id="treeGrid" class="tree-grid"></div>
+            </div>
+          </div>
+        </section>
       </div>
       <div class="tab hidden" id="tab-siralama">
         <div class="lb-head">
@@ -178,6 +195,20 @@
   <div id="updateBar" class="update-bar hidden">
     <span>✨ Yeni sürüm hazır.</span>
     <button id="updateBtn" class="btn">Yenile</button>
+  </div>
+
+  <div id="stageUp" class="stage-up hidden" role="dialog" aria-modal="true" aria-labelledby="suTitle">
+    <div class="su-card">
+      <div class="su-icon" id="suIcon">🌐</div>
+      <div class="su-kicker" id="suKicker">Yeni aşama</div>
+      <h2 id="suTitle">Aşama</h2>
+      <p id="suMsg"></p>
+      <p class="su-bonus" id="suBonus"></p>
+      <div class="su-actions">
+        <button id="suShare" type="button" class="btn ghost">📣 Paylaş</button>
+        <button id="suClose" type="button" class="btn primary">Devam</button>
+      </div>
+    </div>
   </div>
 
   <div id="modal" class="modal hidden" role="dialog" aria-modal="true">

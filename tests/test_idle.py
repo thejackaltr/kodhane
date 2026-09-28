@@ -44,6 +44,7 @@ def check(name, cond, info=''):
 
 
 INIT = """
+window.KODHANE_QUIET = true; // v4 tebrik penceresi ve haberler burada kapalı (kendi testleri test_v4.py içinde)
 (() => { try {
   const off = sessionStorage.getItem('kh_offline');
   if (off) { sessionStorage.removeItem('kh_offline');
@@ -96,18 +97,18 @@ with sync_playwright() as p:
     st = ev('Kodhane.state')
     tps = ev('Kodhane.baseTps()')
     check('migrate: money kept', v1['money'] <= st['money'] <= v1['money'] + tps * 5 + 1, f"money={st['money']:.1f}")
-    check('migrate: staff kept', st['gens'] == v1['gens'], json.dumps(st['gens']))
+    check('migrate: staff kept', {k: v for k, v in st['gens'].items() if k in v1['gens']} == v1['gens'] and all(st['gens'][k] == 0 for k in st['gens'] if k not in v1['gens']), json.dumps(st['gens']))
     check('migrate: upgrades kept', st['upgrades'] == v1['upgrades'], json.dumps(st['upgrades']))
     check('migrate: shares/prestige kept', st['shares'] == 3 and st['prestigeCount'] == 1)
     check('migrate: lifetime earnings kept', st['totalEarned'] >= 9e6 and st['runEarned'] >= 2.5e6 and st['clicks'] == 777 and st['eventsClicked'] == 5)
     check('migrate: stage kept', st['stage'] >= 3 and page.inner_text('#stageName') == 'Ajans', page.inner_text('#stageName'))
-    check('migrate: new fields + version 2', st['version'] == 2 and isinstance(st['daily'], dict) and st['reputation'] == 0)
+    check('migrate: new fields + version 3', st['version'] == 3 and isinstance(st['daily'], dict) and st['reputation'] == 0)
     check('migrate: v2 key written, v1 kept as backup', ev("!!localStorage.getItem('kodhane_ajans_save_v2')") and ev("localStorage.getItem('kodhane_ajans_save_v1')") == v1s)
     check('migrate: toast shown', 'taşındı' in page.inner_text('#toast'), page.inner_text('#toast').replace('\n', ' / ')[:160])
     check('migrate: retro achievements', 'kazanc_1m' in st['achievements'] and 'asama_3' in st['achievements'], json.dumps(st['achievements']))
     page.reload(); page.wait_for_selector('#clickBtn'); page.wait_for_timeout(300)
     st2 = ev('Kodhane.state')
-    check('migrate: survives reload from v2', ev('Kodhane.loadedVersion') == 2 and st2['gens'] == v1['gens'] and st2['shares'] == 3 and st2['money'] >= v1['money'])
+    check('migrate: survives reload from v2', ev('Kodhane.loadedVersion') == 3 and st2['gens'] == st['gens'] and st2['shares'] == 3 and st2['money'] >= v1['money'])
 
     # ---------------------------------------------------------------- yeni oyun: temel akış
     page.goto(BASE + '/README.md'); ev('localStorage.clear()')
@@ -236,11 +237,11 @@ with sync_playwright() as p:
     check('lb: own row inside top list is not pinned twice', view2['pinned'] is None and view2['me']['nickname'] == 'ben' and len(view2['top']) == 2)
     check('lb: empty view', ev("Kodhane.leaderboard.buildView([], 50).empty") is True)
     check('lb: share text', ev(LB + ".shareText(7, 'https://thejackaltr.github.io/kodhane/')") == 'Kodhane sıralamasında #7. sıradayım! Sen de ajansını kur: https://thejackaltr.github.io/kodhane/')
-    check('lb: stage label + medal badges', ev(LB + '.stageLabel(5)') == '🌐 Global Holding' and ev(LB + '.stageLabel(null)') == '' and ev(LB + '.stageLabel(7)') == 'Aşama 8' and ev("[1,2,3,4].map(Kodhane.leaderboard.rankBadge).join(' ')") == '🥇 🥈 🥉 #4')
+    check('lb: stage label + medal badges', ev(LB + '.stageLabel(5)') == '🌐 Global Holding' and ev(LB + '.stageLabel(null)') == '' and ev(LB + '.stageLabel(8)') == '🔴 Mars Ofisi' and ev(LB + '.stageLabel(12)') == 'Aşama 13' and ev("[1,2,3,4].map(Kodhane.leaderboard.rankBadge).join(' ')") == '🥇 🥈 🥉 #4')
     check('lb: same number format as the game', ev("Kodhane.tl(9.25e9)") == '9,25 Mr TL')
     big = ev("[1e30, 1.234e30, 9.99e32, 1e36, 1.2e36, 1.25e21, 9007199254740993, 1.7976931348623157e308, NaN].map(Kodhane.tl)")
-    check('huge numbers: suffixes up to Des, then scientific 1,2e36 (no int overflow)',
-          big == ['1 Non TL', '1,23 Non TL', '999 Non TL', '1e36 TL', '1,2e36 TL', '1,25 Sek TL', '9,01 Kat TL', '1,8e308 TL', '0 TL'], str(big))
+    check('huge numbers: suffixes up to Kentilyon, then scientific (no int overflow)',
+          big == ['1e30 TL', '1,23e30 TL', '9,99e32 TL', '1e36 TL', '1,2e36 TL', '1,25e21 TL', '9,01 Kat TL', '1,8e308 TL', '0 TL'] and ev("[1.5e18, 9.99e20].map(Kodhane.tl)") == ['1,5 Kent TL', '999 Kent TL'], str(big))
     check('huge numbers: leaderboard row with score 1e30 is valid', ev("Kodhane.leaderboard.buildView([{rank:1,nickname:'x',score:1e30,stage:5,is_me:false}], 50).top.length") == 1)
 
     # ---------------------------------------------------------------- olay kartları
@@ -282,7 +283,7 @@ with sync_playwright() as p:
     for aid in ['tik_1', 'kritik_1', 'kazanc_1k', 'localhost', 'logo_5', 'revize_7', 'toplantisiz']:
         check('achievement unlocked: ' + aid, aid in ach)
     check('achievements give +1% each', abs(ev('Kodhane.achMult()') - (1 + 0.01 * len(ach))) < 1e-9, f"{len(ach)} ach")
-    check('achievement count 20-30', 20 <= ev('Kodhane.ACHIEVEMENTS.length') <= 30, str(ev('Kodhane.ACHIEVEMENTS.length')))
+    check('achievement count 20-31', 20 <= ev('Kodhane.ACHIEVEMENTS.length') <= 31, str(ev('Kodhane.ACHIEVEMENTS.length')))
     # olay geliştirmeleri
     ev("Kodhane.state.buffs = []; Kodhane.state.upgrades.push('kahve_fali')"); page.wait_for_timeout(300)
     check('Kahve Falı shows next event', page.is_visible('#falBar') and 'Kahve falı' in page.inner_text('#falBar'), page.inner_text('#falBar'))
@@ -438,6 +439,7 @@ with sync_playwright() as p:
 
     # ---------------------------------------------------------------- mobil (390x844)
     mctx = b.new_context(viewport={'width': 390, 'height': 844}, device_scale_factor=2, is_mobile=True, has_touch=True, locale='tr-TR')
+    mctx.add_init_script(INIT)
     mctx.route('https://supabase.teserix.com/**', lambda r: r.abort('connectionrefused'))
     mp = mctx.new_page(); merr = []
     watch(mp, merr)
@@ -505,6 +507,7 @@ with sync_playwright() as p:
     check('safe-area: viewport-fit=cover + black-translucent + theme-color', 'viewport-fit=cover' in html and 'content="black-translucent"' in html and 'name="theme-color" content="#0b0e1a"' in html)
     # Normal tarayıcıda (inset 0) üst çubuk eskisi gibi en üstte, 8px iç boşlukla
     sctx = b.new_context(viewport={'width': 390, 'height': 844}, device_scale_factor=3, is_mobile=True, has_touch=True, locale='tr-TR')
+    sctx.add_init_script(INIT)
     sp = sctx.new_page(); serr = []
     sp.on('pageerror', lambda e: serr.append(str(e)))
     sp.goto(URL); sp.wait_for_selector('#clickBtn')

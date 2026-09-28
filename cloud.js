@@ -187,6 +187,14 @@
     return !(sameGame && num(loser.totalEarned) <= num(winner.totalEarned) && loserTime <= winnerTime);
   }
 
+  function mergeSeen(a, b) {
+    var out = [];
+    [a, b].forEach(function (arr) {
+      (Array.isArray(arr) ? arr : []).forEach(function (id) { if (typeof id === 'string' && out.indexOf(id) === -1) out.push(id); });
+    });
+    return out;
+  }
+
   function reconcile() {
     if (!C.user || C.reconciling) return Promise.resolve();
     C.reconciling = true;
@@ -208,7 +216,10 @@
       var cloudTime = Date.parse(row.updated_at) || num(cloud.lastSaved);
       var cE = num(cloud.totalEarned), lE = num(local.totalEarned);
       var cloudWins = cE > lE || (cE === lE && cloudTime > localTime);
+      // Görülen haberler iki kayıttan birleşir: bir cihazda kapatılan haber diğerinde tekrar çıkmaz.
+      var seen = mergeSeen(local.newsSeen, cloud.newsSeen);
       if (cloudWins) {
+        cloud = Object.assign({}, cloud, { newsSeen: seen });
         var backedUp = needsBackup(local, localTime, cloud, cloudTime);
         if (backedUp) backup(local);
         var res = K.applySave(cloud);
@@ -217,6 +228,9 @@
         toast('☁️ Buluttaki kaydın yüklendi' + (backedUp ? ' (bu cihazdaki kayıt yedeklendi).' : '.') +
           (res && res.gain > 0 ? ' Çevrimdışı kazanç: +' + K.tl(res.gain) : ''), 5000);
         return push(true);
+      }
+      if (K.state && Array.isArray(K.state.newsSeen)) {
+        seen.forEach(function (id) { if (K.markNewsSeen && K.state.newsSeen.indexOf(id) === -1) K.markNewsSeen(id); });
       }
       if (needsBackup(cloud, cloudTime, local, localTime)) {
         backup(cloud);

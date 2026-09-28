@@ -32,6 +32,7 @@ PAGES = 'https://thejackaltr.github.io/kodhane/'
 SAVES_PATH = '/rest/v1/kodhane_saves'
 PROFILES_PATH = '/rest/v1/kodhane_profiles'
 RPC_PATH = '/rest/v1/rpc/kodhane_leaderboard'
+COUNT_PATH = '/rest/v1/rpc/kodhane_count_event'
 STORAGE_KEY = 'kodhane_auth_v1'
 BACKUP_KEY = 'kodhane_ajans_save_backup'
 SAVE_KEY = 'kodhane_ajans_save_v2'
@@ -117,6 +118,7 @@ class FakeSupabase:
         self.rpc_calls = []  # (authorization kullanıcı mı, p_limit, p_game)
         self.hidden = set()  # yöneticinin gizlediği uid'ler
         self.pending = set() # puanı makul bulunmayan (kontrol edilen) uid'ler
+        self.events = []     # anonim haber sayacı çağrıları: (p_event, kullanıcı jetonu var mı)
 
     @staticmethod
     def nick_key(n):
@@ -189,6 +191,11 @@ class FakeSupabase:
             self.rpc_calls.append((bool(claims), body.get('p_limit'), body.get('p_game')))
             self.last_board = self.board(claims['sub'] if claims else None, int(body.get('p_limit') or 50), body.get('p_game', 'kodhane'))
             return self.reply(route, 200, self.last_board)
+        if u.path == COUNT_PATH and method == 'POST':
+            body = json.loads(req.post_data or '{}')
+            ok = body.get('p_event') in ('news_leaderboard_shown', 'news_leaderboard_click')
+            self.events.append((body.get('p_event'), bool(claims)))
+            return self.reply(route, 200, ok)
         if u.path == PROFILES_PATH:
             if not claims:
                 return self.reply(route, 401, {'code': '42501', 'message': 'permission denied for table kodhane_profiles'})
@@ -240,10 +247,11 @@ class FakeSupabase:
         return sum(1 for m, p, _ in self.log if m == method and p == path)
 
 
-def cfg_script(extra=None):
+def cfg_script(extra=None, quiet=True):
     cfg = {'url': FAKE, 'key': 'sb_publishable_test_key'}
     cfg.update(extra or {})
-    return 'window.KODHANE_CLOUD_CONFIG = %s;' % json.dumps(cfg)
+    # KODHANE_QUIET: v4 aşama tebrik penceresi ve haberler kapalı (yalnızca haber testlerinde açık)
+    return ('window.KODHANE_QUIET = true; ' if quiet else '') + 'window.KODHANE_CLOUD_CONFIG = %s;' % json.dumps(cfg)
 
 
 def local_save(total, started, clicks=10, money=100.0, last_saved=None):
@@ -288,14 +296,14 @@ check('config: is-configured rejects look-alikes',
 with sync_playwright() as p:
     b = p.chromium.launch()
 
-    def new_ctx(fake, mobile=False, extra_cfg=None, init=None, sw='block', cdn='serve'):
+    def new_ctx(fake, mobile=False, extra_cfg=None, init=None, sw='block', cdn='serve', quiet=True):
         opts = dict(locale='tr-TR', service_workers=sw)
         if mobile:
             opts.update(viewport={'width': 390, 'height': 844}, device_scale_factor=2, is_mobile=True, has_touch=True)
         else:
             opts.update(viewport={'width': 1280, 'height': 800})
         ctx = b.new_context(**opts)
-        ctx.add_init_script(cfg_script(extra_cfg))
+        ctx.add_init_script(cfg_script(extra_cfg, quiet))
         if init:
             ctx.add_init_script(init)
         ctx.route(FAKE + '/**', fake.handle)
@@ -391,7 +399,7 @@ with sync_playwright() as p:
     check('login: URL cleaned', page.url == BASE + '/', page.url)
     check('login: session persisted', page.evaluate("!!localStorage.getItem('%s')" % STORAGE_KEY))
     row = fake.rows.get(UID_A)
-    check('first login: local save uploaded', row is not None and row['data']['clicks'] == 42 and row['data']['totalEarned'] >= 5000 and row['save_version'] == 2,
+    check('first login: local save uploaded', row is not None and row['data']['clicks'] == 42 and row['data']['totalEarned'] >= 5000 and row['save_version'] == 3,
           json.dumps(row)[:200] if row else 'no row')
     check('first login: no backup needed', page.evaluate("localStorage.getItem('%s')" % BACKUP_KEY) is None)
     check('login: header shows signed-in state', 'signed' in page.get_attribute('#accountBtn', 'class'))
@@ -624,7 +632,7 @@ with sync_playwright() as p:
     wait_until(page, '!!navigator.serviceWorker.controller', 5000)
     keys = page.evaluate("caches.keys()")
     cached = page.evaluate("caches.keys().then(ks => Promise.all(ks.map(k => caches.open(k).then(c => c.keys())))).then(a => a.flat().map(r => r.url))")
-    check('sw: cache version bumped (v3.x)', any(re.match(r'kodhane-v3(\.\d+)?-', k) for k in keys), str(keys))
+    check('sw: cache version bumped (v4.0)', any(re.match(r'kodhane-v4\.0-', k) for k in keys), str(keys))
     check('sw: cloud.js cached for offline', any(u.endswith('/cloud.js') for u in cached))
     check('sw: never caches Supabase/CDN', not any(('supabase' in u) or ('jsdelivr' in u) for u in cached), str([u for u in cached if 'http' in u and BASE not in u]))
     ctx.set_offline(True)
@@ -728,19 +736,19 @@ with sync_playwright() as p:
     # ------------------------------------------------------------ 12b) Çok büyük puanlar (2^53 üstü, ~1e30, en büyük sonekin ötesi)
     # Sunucu puanı numeric döndürür: JSON'da uzun tam sayı olarak gelir (ör. 1234000000000000000000000000000).
     fake = FakeSupabase()
-    fake.others = [('Holding X', 15 * 10 ** 39, 5), ('Trilyoner', 1234 * 10 ** 27, 5), ('IkiUzeri53', 2 ** 53 + 2, 4), ('<img src=x onerror="window.__xss=1">', 5.5e6, 7)]
+    fake.others = [('Holding X', 15 * 10 ** 39, 5), ('Trilyoner', 1234 * 10 ** 27, 5), ('IkiUzeri53', 2 ** 53 + 2, 4), ('<img src=x onerror="window.__xss=1">', 5.5e6, 12)]
     ctx = new_ctx(fake)
     page, errs, perrs = open_page(ctx)
     page.click('[data-tab="siralama"]')
     ok = wait_until(page, "document.querySelectorAll('#lbList .lb-row').length === 4")
     scores = page.evaluate("[...document.querySelectorAll('#lbList .lb-score')].map(e => e.textContent)")
-    check('huge scores: parsed and formatted (1,5e40 / 1,23 Non / 9 Kat / 5,5 Mn)', ok and scores == ['1,5e40 TL', '1,23 Non TL', '9,01 Kat TL', '5,5 Mn TL'], str(scores))
+    check('huge scores: parsed and formatted (1,5e40 / 1,23e30 / 9 Kat / 5,5 Mn)', ok and scores == ['1,5e40 TL', '1,23e30 TL', '9,01 Kat TL', '5,5 Mn TL'], str(scores))
     check('huge scores: ~1e30 parsed exactly as a JS number', page.evaluate("Kodhane.leaderboard.state.rows[1].score === 1.234e30 && Kodhane.leaderboard.state.rows[0].score === 1.5e40"))
     check('huge scores: order kept, no errors', page.evaluate("Kodhane.leaderboard.state.view.top.map(r => r.rank).join()") == '1,2,3,4' and not perrs, '; '.join(perrs))
     page.wait_for_timeout(200)
     check('nicknames rendered as text only (no HTML injection)', page.locator('#lbList .lb-name').nth(3).inner_text() == '<img src=x onerror="window.__xss=1">'
           and page.locator('#lbList img').count() == 0 and page.evaluate('window.__xss') is None)
-    check('stage beyond the current 6 shown as "Aşama 8" (no fixed cap)', page.locator('#lbList .lb-stage').nth(3).inner_text() == 'Aşama 8')
+    check('stage beyond the current 9 shown as "Aşama 13" (no fixed cap)', page.locator('#lbList .lb-stage').nth(3).inner_text() == 'Aşama 13')
     ctx.close()
 
     # ------------------------------------------------------------ 13) Sıralama: girişli ama takma adı yok -> form, doğrulama, alınmış ad, katılım, sabitlenmiş satır
@@ -831,6 +839,59 @@ with sync_playwright() as p:
     check('lb in top list: own row highlighted in place, not pinned', ok and page.is_hidden('#lbMe') and me_rank.startswith('#'), me_rank)
     page.evaluate("document.getElementById('toast').innerHTML=''"); page.wait_for_timeout(300)
     page.screenshot(path=SS + 'v3-siralama-mobile-2.png')
+    ctx.close()
+
+    # ------------------------------------------------------------ 15) v4 haberleri: bayrak kayıtta, cihazlar arasında birleşir; sayaç anonim
+    def news_title(page):
+        return page.evaluate("document.getElementById('modal').classList.contains('hidden') ? null : document.getElementById('modalTitle').textContent")
+    UID_N = '55555555-5555-4555-8555-555555555555'
+    # a) başka cihazda görülmüş (bulut önde) -> bu cihazda çıkmaz
+    fake = FakeSupabase()
+    cs = local_save(7777, started - 86400000, clicks=77); cs['newsSeen'] = ['siralama']
+    fake.rows[UID_N] = {'data': cs, 'save_version': 3, 'updated_at': '2099-01-01T00:00:00Z'}
+    ctx = new_ctx(fake, quiet=False, init=seed_script(save=local_save(5000, started, clicks=42), session=session_obj(UID_N, 'news@example.com')))
+    page, errs, perrs = open_page(ctx)
+    ok = wait_until(page, 'Kodhane.cloud.state.reconciled', 8000)
+    page.wait_for_timeout(5500)
+    check('news: dismissed on another device (cloud ahead) -> not shown here', ok and news_title(page) is None and 'siralama' in page.evaluate('Kodhane.state.newsSeen') and not fake.events,
+          '%s %s' % (news_title(page), fake.events))
+    ctx.close()
+    # b) bu cihazda görülmüş, bulut önde ama bayraksız -> birleşir, buluta da yazılır
+    fake = FakeSupabase()
+    fake.rows[UID_N] = {'data': local_save(7777, started - 86400000, clicks=77), 'save_version': 2, 'updated_at': '2099-01-01T00:00:00Z'}
+    ls = local_save(5000, started, clicks=42); ls['newsSeen'] = ['siralama']
+    ctx = new_ctx(fake, quiet=False, init=seed_script(save=ls, session=session_obj(UID_N, 'news@example.com')))
+    page, errs, perrs = open_page(ctx)
+    ok = wait_until(page, 'Kodhane.cloud.state.reconciled && Kodhane.cloud.state.lastPushAt > 0', 8000)
+    page.wait_for_timeout(5500)
+    check('news: seen flag of this device survives loading the cloud save and is pushed back', ok and page.evaluate('Kodhane.state.clicks') == 77 and
+          'siralama' in page.evaluate('Kodhane.state.newsSeen') and 'siralama' in (fake.rows[UID_N]['data'].get('newsSeen') or []) and news_title(page) is None,
+          json.dumps(fake.rows[UID_N]['data'].get('newsSeen')))
+    ctx.close()
+    # c) yerel önde, bayrak yalnızca bulutta -> birleşir
+    fake = FakeSupabase()
+    cs = local_save(100, started - 9 * 86400000, clicks=3); cs['newsSeen'] = ['siralama']
+    fake.rows[UID_N] = {'data': cs, 'save_version': 3, 'updated_at': '2026-09-27T20:00:00Z'}
+    ctx = new_ctx(fake, quiet=False, init=seed_script(save=local_save(1e6, started, clicks=500), session=session_obj(UID_N, 'news@example.com')))
+    page, errs, perrs = open_page(ctx)
+    ok = wait_until(page, 'Kodhane.cloud.state.reconciled && Kodhane.cloud.state.lastPushAt > 0', 8000)
+    page.wait_for_timeout(5500)
+    check('news: local save ahead keeps the cloud flag (no news, pushed with flag)', ok and page.evaluate('Kodhane.state.clicks') == 500 and news_title(page) is None and
+          'siralama' in (fake.rows[UID_N]['data'].get('newsSeen') or []), json.dumps(fake.rows[UID_N]['data'].get('newsSeen')))
+    ctx.close()
+    # d) girişli oyuncu: haber bir kez, sayaç kullanıcı jetonu olmadan (anonim), bayrak buluta gider
+    fake = FakeSupabase()
+    ctx = new_ctx(fake, quiet=False, init=seed_script(save=local_save(5000, started, clicks=42), session=session_obj(UID_N, 'news@example.com')))
+    page, errs, perrs = open_page(ctx)
+    ok = wait_until(page, "!document.getElementById('modal').classList.contains('hidden') && document.getElementById('modalTitle').textContent === 'Yeni: Sıralama!'", 10000)
+    page.click('#modalActions button:has-text("Sıralamaya bak")')
+    page.wait_for_timeout(500)
+    check('news (signed in): shown, both events counted anonymously (anon key only)', ok and fake.events == [('news_leaderboard_shown', False), ('news_leaderboard_click', False)], fake.events)
+    page.evaluate("Object.defineProperty(document, 'hidden', {configurable: true, get: () => true}); document.dispatchEvent(new Event('visibilitychange'));")
+    page.wait_for_timeout(1000)
+    check('news (signed in): flag reaches the cloud save', ok and 'siralama' in (fake.rows.get(UID_N, {}).get('data', {}).get('newsSeen') or []),
+          json.dumps(fake.rows.get(UID_N, {}).get('data', {}).get('newsSeen')))
+    check('news (signed in): no page errors', not perrs, '; '.join(perrs))
     ctx.close()
 
     b.close()

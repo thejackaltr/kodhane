@@ -1,7 +1,8 @@
 /* Dürüst oyuncu simülasyonları (sıralama makullük kontrolü testleri için).
  * Oyunun gerçek çekirdeğini (game.js) kullanır; olabildiğince hızlı ilerleyen ama hile yapmayan oyuncular:
  * sürekli tıklama (10-20/sn), açgözlü alım, her müşteri teklifini ve olay kartını en yüksek ödemeyle yakalama,
- * itibar 100, günlük görevler, çevrimdışı kazanç (8 saat sınırı) ve Yatırım Turları.
+ * itibar 100, günlük görevler, çevrimdışı kazanç (8-24 saat sınırı), Yatırım Turları, v4: Halka Arz + Borsa Payı Ağacı.
+ * Ayrıca denge ölçümleri (aşamalara ve halka arzlara ulaşma süreleri) için kullanılır: tests/balance_v4.js
  * Kullanım: node tests/honest_sim.js [senaryo...]  -> JSON: [{name, now, save}]
  */
 const K = require('../game.js');
@@ -10,6 +11,7 @@ function greedy(cps) {
   for (let k = 0; k < 60; k++) {
     let best = null;
     for (const g of K.GENERATORS) {
+      if (!K.genUnlocked(g)) continue;
       const c = K.genCost(g, 1), d = K.genTps(g);
       const sc = c / d; if (!best || sc < best.sc) best = { sc, t: 'g', id: g.id, c };
     }
@@ -25,13 +27,26 @@ function greedy(cps) {
 
 function day(ms) { return new Date(ms).toISOString().slice(0, 10); }
 
-// plan: [[aktifSaniye, çevrimdışıSaniye], ...] tekrar eder; prestige: 'none' | 'asap' | 'smart'
-function run(name, { totalSec, plan, cps, prestige, epoch }) {
+// Borsa Payı Ağacı alım önceliği (dürüst ve mantıklı bir oyuncu)
+const NODE_PRIORITY = ['ekip_1', 'kod_1', 'musteri_1', 'yatirim_1', 'ekip_2', 'musteri_2', 'kod_2', 'yatirim_2', 'ekip_3', 'musteri_3', 'kod_3', 'yatirim_3'];
+function buyNodes() { for (const id of NODE_PRIORITY) if (K.nodeState(id) === 'ready') K.buyNode(id); }
+
+// plan: [[aktifSaniye, çevrimdışıSaniye], ...] tekrar eder; prestige: 'none' | 'asap' | 'smart'; ipo: 'none' | 'asap' | 'smart'
+function run(name, { totalSec, plan, cps, prestige, ipo = 'none', epoch, log = false }) {
   K.rng = Math.random;
   K.state = K.newState();
   const S0 = K.state; S0.startedAt = epoch; S0.lastSaved = epoch; S0.reputation = 100;
-  let t = 0, pi = 0, lastDay = null;
+  let t = 0, pi = 0, lastDay = null, offerAcc = 0;
   const clock = () => epoch + t * 1000;
+  const miles = { stage: {}, ipo: [], rounds: 0, p10: {} };
+  const mark = () => {
+    const e10 = Math.floor(Math.log10(Math.max(1, K.state.runEarned)));
+    for (let k = e10; k >= 0 && miles.p10[k] === undefined; k--) miles.p10[k] = t;
+    const si = K.stageIndex(K.state.runEarned);
+    if (si > K.state.stageBest) K.state.stageBest = si;
+    if (si > K.state.stage) K.state.stage = si;
+    if (miles.stage[si] === undefined) miles.stage[si] = t;
+  };
   while (t < totalSec) {
     const [act, off] = plan[pi % plan.length]; pi++;
     for (let a = 0; a < act && t < totalSec; a++, t++) {
@@ -39,16 +54,29 @@ function run(name, { totalSec, plan, cps, prestige, epoch }) {
       K.state.reputation = 100;
       for (let i = 0; i < cps; i++) K.doClick();
       K.tick(1);
-      if (t % 60 === 0) { // müşteri projesi: en yüksek nakit ödeme ya da 30 sn x2
-        if (t % 180 === 0) K.state.boostLeft = 30;
-        else K.earn(Math.max(K.clickValue() * 40, K.baseTps() * 120, 50) * K.repMult());
+      offerAcc += 1 / K.offerFreq();
+      if (offerAcc >= 60) { // müşteri projesi (her 60 sn, Sadık Müşteri ile daha sık): en yüksek nakit ödeme ya da 30 sn x2
+        offerAcc -= 60;
+        if (t % 180 < 60) K.state.boostLeft = 30;
+        else K.earn(Math.max(K.clickValue() * 40, K.baseTps() * 120, 50) * K.repMult() * K.offerPayMult());
         K.state.eventsClicked++; K.taskProgress('offer', 1);
       }
       if (t % 150 === 0) { K.earn(K.pay(120)); K.state.eventsResolved++; }
       if (t % 10 === 0) K.checkAchievements();
       greedy(cps);
+      mark();
       const g = K.sharesGain();
-      if ((prestige === 'asap' && g >= 1) || (prestige === 'smart' && g >= Math.max(1, K.state.shares))) { K.doPrestige(); }
+      if ((prestige === 'asap' && g >= 1) || (prestige === 'smart' && g >= Math.max(1, K.state.shares))) { K.doPrestige(); miles.rounds++; }
+      if (ipo !== 'none' && K.ipoUnlocked()) {
+        const ig = K.ipoGain();
+        // asap: ilk fırsatta; smart: bir öncekinin en az iki katı pay verecekse (ilk halka arz: açılır açılmaz)
+        const last = miles.ipo.length ? miles.ipo[miles.ipo.length - 1].gain : 0;
+        const want = ipo === 'asap' ? 1 : Math.max(1, 2 * last);
+        if (ig >= want) {
+          K.doIpo(); miles.ipo.push({ t, gain: ig, earned: K.state.ipoSharesEarned });
+          buyNodes();
+        }
+      }
     }
     if (off > 0 && t < totalSec) {
       K.state.lastSaved = clock();
@@ -59,7 +87,7 @@ function run(name, { totalSec, plan, cps, prestige, epoch }) {
   }
   K.state.lastSaved = clock();
   K.setToday(null);
-  return { name, now: clock(), save: JSON.parse(JSON.stringify(K.state)) };
+  return { name, now: clock(), save: JSON.parse(JSON.stringify(K.state)), miles };
 }
 
 const EPOCH = Date.parse('2026-10-01T06:00:00Z');
@@ -72,6 +100,10 @@ const SCEN = {
   'offline-3gun':     () => run('offline-3gun', { totalSec: 3 * D, plan: [[600, 8 * H]], cps: 10, prestige: 'smart', epoch: EPOCH }),
   'idle-7gun':        () => run('idle-7gun', { totalSec: 7 * D, plan: [[30 * 60, 8 * H], [0, 16 * H]], cps: 10, prestige: 'smart', epoch: EPOCH }),
   'donus-3gun-sonra': () => run('donus-3gun-sonra', { totalSec: 4 * D, plan: [[4 * H, 3 * D + 20 * H]], cps: 20, prestige: 'none', epoch: EPOCH }),
+  // v4: Halka Arz yolları
+  'ipo-aktif-3gun':   () => run('ipo-aktif-3gun', { totalSec: 3 * D, plan: [[16 * H, 8 * H]], cps: 20, prestige: 'smart', ipo: 'asap', epoch: EPOCH }),
+  'ipo-smart-7gun':   () => run('ipo-smart-7gun', { totalSec: 7 * D, plan: [[6 * H, 18 * H]], cps: 15, prestige: 'smart', ipo: 'smart', epoch: EPOCH }),
+  'ipo-idle-14gun':   () => run('ipo-idle-14gun', { totalSec: 14 * D, plan: [[45 * 60, 12 * H], [30 * 60, 10 * H]], cps: 10, prestige: 'smart', ipo: 'asap', epoch: EPOCH }),
   // canlı e2e için: şimdi bitecek şekilde 20 saatlik yoğun oyun
   'canli-20sa':       () => run('canli-20sa', { totalSec: 20 * H, plan: [[20 * H, 0]], cps: 20, prestige: 'smart', epoch: Date.now() - 20 * H * 1000 })
 };
