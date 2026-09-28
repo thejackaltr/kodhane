@@ -15,6 +15,7 @@ import threading
 import time
 import urllib.parse
 import urllib.request
+import uuid
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 from playwright.sync_api import sync_playwright
@@ -106,6 +107,8 @@ class FakeSupabase:
         self.rows = {}
         self.log = []
         self.otp = []
+        self.verify = []
+        self.valid_code = '123456'
         self.down = False
 
     def reply(self, route, status=200, body=None, headers=None):
@@ -131,6 +134,14 @@ class FakeSupabase:
             body = json.loads(req.post_data or '{}')
             self.otp.append({'email': body.get('email'), 'redirect_to': (q.get('redirect_to') or [None])[0], 'create_user': body.get('create_user')})
             return self.reply(route, 200, {})
+        if u.path == '/auth/v1/verify' and method == 'POST':
+            body = json.loads(req.post_data or '{}')
+            self.verify.append({k: body.get(k) for k in ('email', 'token', 'type')})
+            email = body.get('email')
+            if body.get('token') == self.valid_code and any(o['email'] == email for o in self.otp):
+                uid = str(uuid.uuid5(uuid.NAMESPACE_DNS, email))
+                return self.reply(route, 200, session_obj(uid, email))
+            return self.reply(route, 403, {'code': 403, 'error_code': 'otp_expired', 'msg': 'Token has expired or is invalid'})
         if u.path == '/auth/v1/user':
             if not claims:
                 return self.reply(route, 401, {'code': 401, 'msg': 'invalid JWT'})
@@ -343,6 +354,63 @@ with sync_playwright() as p:
     page.tap('#accountBtn')
     check('expired link: panel explains', 'süresi dolmuş' in page.inner_text('#accMsg'), page.inner_text('#accMsg'))
     check('expired link: no uncaught errors', not perrs, '; '.join(perrs))
+    ctx.close()
+
+    # ------------------------------------------------------------ 3c) e-postadaki 6 haneli kodla giriş (iPhone ana ekran uygulaması için)
+    fake = FakeSupabase()
+    EMAIL_C = 'kod@example.com'
+    UID_C = str(uuid.uuid5(uuid.NAMESPACE_DNS, EMAIL_C))
+    ctx = new_ctx(fake, mobile=True, init=seed_script(save=local_save(8000, started, clicks=64)))
+    page, errs, perrs = open_page(ctx)
+    page.tap('#accountBtn'); wait_until(page, '!!Kodhane.cloud.state.client')
+    page.fill('#accEmail', EMAIL_C); page.tap('#accSend')
+    ok = wait_until(page, "!document.getElementById('accCodeForm').classList.contains('hidden')")
+    check('otp: code step shown after sending', ok and page.is_visible('#accCode') and page.is_hidden('#accEmail') and len(fake.otp) == 1)
+    check('otp: Turkish label + buttons', page.inner_text('label[for=accCode]') == 'E-postadaki 6 haneli kodu gir' and page.inner_text('#accVerify') == 'Giriş yap'
+          and page.is_visible('#accChange') and page.inner_text('#accChange') == 'E-postayı değiştir', page.inner_text('label[for=accCode]'))
+    check('otp: numeric keyboard + one-time-code autofill', page.get_attribute('#accCode', 'inputmode') == 'numeric' and page.get_attribute('#accCode', 'autocomplete') == 'one-time-code'
+          and page.get_attribute('#accCode', 'maxlength') == '6')
+    check('otp: info mentions email', EMAIL_C in page.inner_text('#accCodeInfo'), page.inner_text('#accCodeInfo'))
+    check('otp: resend on 60s cooldown with countdown', page.is_disabled('#accResend') and re.search(r'Kodu tekrar gönder \((5\d|60) sn\)', page.inner_text('#accResend')), page.inner_text('#accResend'))
+    check('otp: magic-link redirect still sent', fake.otp[0]['redirect_to'] == BASE + '/', fake.otp[0]['redirect_to'])
+    page.screenshot(path=SS + 'v3-hesap-kod-mobile.png')
+    # uygulama kapanıp açılsa da kod adımı hatırlanır
+    check('otp: pending email remembered', EMAIL_C in (page.evaluate("localStorage.getItem('kodhane_auth_pending')") or ''))
+    page.reload(); page.wait_for_selector('#clickBtn'); page.tap('#accountBtn')
+    ok = wait_until(page, "!!Kodhane.cloud.state.client && !document.getElementById('accCodeForm').classList.contains('hidden')")
+    check('otp: code step restored after app reload', ok and EMAIL_C in page.inner_text('#accCodeInfo'))
+    page.fill('#accCode', '12a'); page.tap('#accVerify'); page.wait_for_timeout(200)
+    check('otp: non-6-digit code rejected locally', 'Kod 6 haneli olmalı' in page.inner_text('#accMsg') and len(fake.verify) == 0, page.inner_text('#accMsg'))
+    page.fill('#accCode', '000000')  # 6 hane dolunca otomatik denenir
+    ok = wait_until(page, "document.getElementById('accMsg').textContent.includes('Kod hatalı')")
+    check('otp: wrong/expired code -> Turkish error, still guest', ok and len(fake.verify) == 1 and not page.evaluate('!!Kodhane.cloud.state.user')
+          and 'süresi dolmuş' in page.inner_text('#accMsg'), page.inner_text('#accMsg'))
+    page.evaluate('Kodhane.cloud.state.cooldownUntil = 0')
+    ok = wait_until(page, "!document.getElementById('accResend').disabled", 3000)
+    page.tap('#accResend')
+    ok = ok and wait_until(page, "document.getElementById('accMsg').textContent.includes('Yeni bir kod')")
+    check('otp: resend sends again to same email, cooldown restarts', ok and len(fake.otp) == 2 and fake.otp[1]['email'] == EMAIL_C and page.is_disabled('#accResend'), json.dumps(fake.otp))
+    page.fill('#accCode', '123456')
+    ok = wait_until(page, 'Kodhane.cloud.state.user && Kodhane.cloud.state.lastPushAt > 0', 10000)
+    check('otp: correct code signs in', ok and page.evaluate('Kodhane.cloud.state.user.email') == EMAIL_C)
+    check('otp: verifyOtp called with type=email', fake.verify[-1] == {'email': EMAIL_C, 'token': '123456', 'type': 'email'}, json.dumps(fake.verify))
+    row = fake.rows.get(UID_C)
+    check('otp: same post-login flow (local save uploaded)', row is not None and row['data']['clicks'] == 64, json.dumps(row)[:120] if row else 'no row')
+    check('otp: session persisted, pending cleared, signed-in panel', page.evaluate("!!localStorage.getItem('%s') && !localStorage.getItem('kodhane_auth_pending')" % STORAGE_KEY)
+          and page.is_visible('#accSignOut') and page.is_hidden('#accCodeForm'))
+    check('otp: no page/console errors', not perrs and not [e for e in errs if '403' not in e], '; '.join(perrs + errs))
+    ctx.close()
+
+    # 3d) "E-postayı değiştir" e-posta adımına döner
+    fake = FakeSupabase()
+    ctx = new_ctx(fake, mobile=True)
+    page, errs, perrs = open_page(ctx)
+    page.tap('#accountBtn'); wait_until(page, '!!Kodhane.cloud.state.client')
+    page.fill('#accEmail', 'ilk@example.com'); page.tap('#accSend')
+    wait_until(page, "!document.getElementById('accCodeForm').classList.contains('hidden')")
+    page.tap('#accChange'); page.wait_for_timeout(150)
+    check('otp: change email -> back to email form, pending cleared', page.is_visible('#accEmail') and page.is_hidden('#accCodeForm')
+          and page.evaluate("localStorage.getItem('kodhane_auth_pending')") is None)
     ctx.close()
 
     # mobil girişli görünüm ekran görüntüsü

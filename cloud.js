@@ -30,6 +30,9 @@
     for (var ck in root.KODHANE_CLOUD_CONFIG) CFG[ck] = root.KODHANE_CLOUD_CONFIG[ck];
   }
   var BACKUP_KEY = 'kodhane_ajans_save_backup';
+  // Kod bekleme adımı (ör. iPhone ana ekran uygulaması e-postaya geçerken kapanırsa) kısa süre hatırlanır.
+  var PENDING_KEY = 'kodhane_auth_pending';
+  var PENDING_TTL_MS = 60 * 60 * 1000;
   // Supabase Cloud (*.supabase.co/in) ya da Teserix'in kendi Supabase'i (supabase.teserix.com)
   var configured = /^https:\/\/([a-z0-9-]+\.supabase\.(co|in)|supabase\.teserix\.com)$/.test(CFG.url) && CFG.key.indexOf('__') !== 0 ||
     !!(root.KODHANE_CLOUD_CONFIG && root.KODHANE_CLOUD_CONFIG.url);
@@ -37,7 +40,8 @@
   var C = {
     client: null, user: null, sdkPromise: null, clientPromise: null,
     reconciled: false, reconciling: false, pushTimer: null, pushing: null,
-    lastPushAt: 0, lastPushSig: '', status: 'guest', message: '', keepalive: false, cooldownUntil: 0
+    lastPushAt: 0, lastPushSig: '', status: 'guest', message: '', keepalive: false, cooldownUntil: 0,
+    pendingEmail: '', verifying: false, tick: null
   };
   var el = {};
   var startAuthError = authErrorFromUrl();
@@ -60,6 +64,21 @@
       /[?&](code|error|error_code|error_description)=/.test(location.search);
   }
   function hasStoredSession() { return !!lsGet(CFG.storageKey); }
+  function setPending(email) {
+    C.pendingEmail = email || '';
+    try {
+      if (email) localStorage.setItem(PENDING_KEY, JSON.stringify({ email: email, at: Date.now() }));
+      else localStorage.removeItem(PENDING_KEY);
+    } catch (e) {}
+  }
+  function loadPending() {
+    try {
+      var p = JSON.parse(lsGet(PENDING_KEY) || 'null');
+      if (p && typeof p.email === 'string' && Date.now() - num(p.at) < PENDING_TTL_MS) return p.email;
+      if (p) localStorage.removeItem(PENDING_KEY);
+    } catch (e) {}
+    return '';
+  }
   function redirectUrl() { return location.origin + location.pathname.replace(/index\.html$/, ''); }
   function cleanUrl() {
     // supabase-js hash'i boşaltır ama adres çubuğunda '#' kalır; ikisini de temizle.
@@ -139,6 +158,7 @@
     if (user) {
       var changed = !C.user || C.user.id !== user.id;
       C.user = user;
+      if (C.pendingEmail || lsGet(PENDING_KEY)) setPending('');
       if (changed) {
         C.reconciled = false; C.lastPushSig = '';
         reconcile();
@@ -276,17 +296,44 @@
       el.msg.textContent = C.message || '';
       el.msg.className = 'acc-msg' + (C.status === 'error' ? ' err' : '');
     }
-    var cooling = Date.now() < C.cooldownUntil;
-    el.send.disabled = C.status === 'sending' || cooling;
+    var left = Math.max(0, Math.ceil((C.cooldownUntil - Date.now()) / 1000));
+    var cooling = left > 0;
+    var busy = C.status === 'sending' || C.verifying;
+    el.send.disabled = busy || cooling;
     el.send.textContent = C.status === 'sending' ? 'Gönderiliyor…' : cooling ? 'Bağlantı gönderildi' : 'Giriş bağlantısı gönder';
+    // Kod adımı: bağlantı/kod gönderildikten sonra
+    var codeStep = !signed && !!C.pendingEmail;
+    if (el.form) el.form.classList.toggle('hidden', codeStep);
+    if (el.codeForm) {
+      el.codeForm.classList.toggle('hidden', !codeStep);
+      if (codeStep) {
+        el.codeInfo.textContent = '';
+        el.codeInfo.appendChild(document.createTextNode('Kodu '));
+        var b = document.createElement('b'); b.textContent = C.pendingEmail; el.codeInfo.appendChild(b);
+        el.codeInfo.appendChild(document.createTextNode(' adresine gönderdik. E-postadaki bağlantıya dokunabilir ya da kodu buraya yazabilirsin.'));
+      }
+      el.verify.disabled = busy;
+      el.verify.textContent = C.verifying ? 'Kontrol ediliyor…' : 'Giriş yap';
+      el.code.disabled = C.verifying;
+      el.resend.disabled = busy || cooling;
+      el.resend.textContent = C.status === 'sending' ? 'Gönderiliyor…' : cooling ? 'Kodu tekrar gönder (' + left + ' sn)' : 'Kodu tekrar gönder';
+      el.change.disabled = C.verifying;
+    }
+    if (cooling && !C.tick) {
+      C.tick = setInterval(function () {
+        if (Date.now() >= C.cooldownUntil) { clearInterval(C.tick); C.tick = null; }
+        render();
+      }, 1000);
+    }
   }
   function openPanel() {
     el.panel.classList.remove('hidden');
     render();
     if (!configured) { setStatus('error', 'Bulut kaydı bu sürümde yapılandırılmamış. Oyun bu cihazda kaydediliyor.'); return; }
     if (!C.user) {
+      if (!C.pendingEmail) { var pe = loadPending(); if (pe) { C.pendingEmail = pe; render(); } }
       getClient().catch(function (e) { if (!C.user) setStatus('error', friendlyError(e, 'Bulut hizmetine şu an ulaşılamıyor.')); });
-      setTimeout(function () { try { el.input.focus(); } catch (e) {} }, 50);
+      setTimeout(function () { try { (C.pendingEmail ? el.code : el.input).focus(); } catch (e) {} }, 50);
     }
   }
   function closePanel() { el.panel.classList.add('hidden'); }
@@ -295,6 +342,11 @@
     if (ev) ev.preventDefault();
     var email = (el.input.value || '').trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setStatus('error', 'Geçerli bir e-posta adresi yaz.'); el.input.focus(); return; }
+    requestOtp(email, false);
+  }
+  // Giriş e-postası (bağlantı + 6 haneli kod) iste; resend=true iken "tekrar gönder".
+  function requestOtp(email, resend) {
+    if (Date.now() < C.cooldownUntil || C.status === 'sending') return;
     if (!online()) { setStatus('error', 'İnternet bağlantısı yok. Çevrimiçi olunca tekrar dene.'); return; }
     setStatus('sending', '');
     getClient().then(function (client) {
@@ -302,11 +354,52 @@
     }).then(function (r) {
       if (r && r.error) throw r.error;
       C.cooldownUntil = Date.now() + 60000;
-      setTimeout(render, 60500);
-      setStatus('guest', '📧 Giriş bağlantısı ' + email + ' adresine gönderildi. E-postandaki bağlantıya bu cihazda dokun. (Gelmezse gereksiz klasörüne bak.)');
+      setPending(email);
+      setStatus('guest', resend
+        ? '📧 Yeni bir kod ve giriş bağlantısı gönderildi. En son gelen e-postadaki kodu kullan.'
+        : '📧 Giriş e-postası gönderildi. (Gelmezse gereksiz klasörüne bak.)');
+      setTimeout(function () { try { el.code.value = ''; el.code.focus(); } catch (e) {} }, 50);
     }).catch(function (e) {
-      setStatus('error', friendlyError(e, 'Bağlantı gönderilemedi. Adresi kontrol edip tekrar dene.'));
+      setStatus('error', friendlyError(e, resend ? 'Kod tekrar gönderilemedi. Biraz sonra yeniden dene.' : 'Bağlantı gönderilemedi. Adresi kontrol edip tekrar dene.'));
     });
+  }
+  function verifyCode(ev) {
+    if (ev) ev.preventDefault();
+    if (C.verifying) return;
+    var token = (el.code.value || '').replace(/\s+/g, '');
+    var email = C.pendingEmail;
+    if (!email) return;
+    if (!/^\d{6}$/.test(token)) { setStatus('error', 'Kod 6 haneli olmalı; yalnızca rakam yaz.'); el.code.focus(); return; }
+    if (!online()) { setStatus('error', 'İnternet bağlantısı yok. Çevrimiçi olunca tekrar dene.'); return; }
+    C.verifying = true;
+    setStatus('guest', '');
+    getClient().then(function (client) {
+      return client.auth.verifyOtp({ email: email, token: token, type: 'email' });
+    }).then(function (r) {
+      if (r && r.error) throw r.error;
+      C.verifying = false;
+      setPending('');
+      el.code.value = '';
+      // Oturum SIGNED_IN olayıyla gelir; bağlantıyla girişteki akışın aynısı (onAuth -> reconcile) çalışır.
+      if (r && r.data && r.data.session && r.data.session.user && !C.user) onAuth('SIGNED_IN', r.data.session);
+      toast('✅ Giriş yapıldı.', 3000);
+    }).catch(function (e) {
+      C.verifying = false;
+      var msg = (e && (e.message || e.msg)) || '';
+      var code = e && (e.code || e.error_code);
+      var status = e && e.status;
+      var bad = code === 'otp_expired' || code === 'otp_invalid' || status === 403 || /expired|invalid|token/i.test(msg);
+      setStatus('error', bad && status !== 429
+        ? 'Kod hatalı ya da süresi dolmuş. En son gelen e-postadaki kodu kontrol et veya yeni kod iste.'
+        : friendlyError(e, 'Giriş yapılamadı. Biraz sonra tekrar dene.'));
+      setTimeout(function () { try { el.code.select(); } catch (x) {} }, 30);
+    });
+  }
+  function changeEmail() {
+    setPending('');
+    if (el.code) el.code.value = '';
+    setStatus('guest', '');
+    setTimeout(function () { try { el.input.focus(); el.input.select(); } catch (e) {} }, 30);
   }
   function signOut() {
     if (!C.client) { C.user = null; render(); return Promise.resolve(); }
@@ -336,16 +429,30 @@
   };
 
   function start() {
-    ['accountBtn', 'accountPanel', 'accClose', 'accGuest', 'accUser', 'accForm', 'accEmail', 'accSend', 'accEmailShown', 'accSync', 'accSyncNow', 'accSignOut', 'accMsg']
+    ['accountBtn', 'accountPanel', 'accClose', 'accGuest', 'accUser', 'accForm', 'accEmail', 'accSend', 'accEmailShown', 'accSync', 'accSyncNow', 'accSignOut', 'accMsg',
+      'accCodeForm', 'accCodeInfo', 'accCode', 'accVerify', 'accResend', 'accChange']
       .forEach(function (id) { el[id] = document.getElementById(id); });
     el.btn = el.accountBtn; el.panel = el.accountPanel; el.guest = el.accGuest; el.user = el.accUser;
     el.input = el.accEmail; el.send = el.accSend; el.email = el.accEmailShown; el.sync = el.accSync; el.msg = el.accMsg;
+    el.form = el.accForm; el.codeForm = el.accCodeForm; el.codeInfo = el.accCodeInfo; el.code = el.accCode;
+    el.verify = el.accVerify; el.resend = el.accResend; el.change = el.accChange;
     if (!el.btn || !el.panel) return;
     el.btn.addEventListener('click', openPanel);
     el.accClose.addEventListener('click', closePanel);
     el.panel.addEventListener('click', function (e) { if (e.target === el.panel) closePanel(); });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !el.panel.classList.contains('hidden')) closePanel(); });
     el.accForm.addEventListener('submit', sendLink);
+    if (el.codeForm) {
+      el.codeForm.addEventListener('submit', verifyCode);
+      el.code.addEventListener('input', function () {
+        var v = el.code.value.replace(/\D+/g, '').slice(0, 6);
+        if (v !== el.code.value) el.code.value = v;
+        if (v.length === 6 && !C.verifying) verifyCode();  // otomatik doldurma / yapıştırma
+      });
+      el.resend.addEventListener('click', function () { if (C.pendingEmail) requestOtp(C.pendingEmail, true); });
+      el.change.addEventListener('click', changeEmail);
+    }
+    C.pendingEmail = loadPending();
     el.accSyncNow.addEventListener('click', function () {
       K.save();
       if (!C.reconciled) reconcile(); else push(true);

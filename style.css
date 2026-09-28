@@ -284,6 +284,13 @@ button { font: inherit; color: inherit; cursor: pointer; }
 }
 .acc-form input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px #7c5cff44; }
 .acc-form .btn.primary { margin-top: 0; }
+.acc-code-info { margin: 0; font-size: .88rem; color: var(--muted); text-align: center; word-break: break-word; }
+.acc-code-info b { color: var(--text); }
+.acc-code-label { font-weight: 700; font-size: .92rem; text-align: center; }
+.acc-form #accCode { text-align: center; font-size: 1.6rem; letter-spacing: .45em; padding-left: .45em; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 700; }
+.acc-code-links { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.acc-link { background: transparent; border: 0; color: var(--accent); font-weight: 700; font-size: .85rem; min-height: 44px; padding: 6px 4px; text-decoration: underline; text-underline-offset: 3px; }
+.acc-link:disabled { color: var(--muted); text-decoration: none; cursor: default; }
 .account-card .acc-who { margin-bottom: 10px; text-align: center; word-break: break-all; }
 .acc-sync { background: var(--card2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-weight: 700; font-size: .9rem; margin-bottom: 12px; text-align: center; }
 .acc-sync.ok { border-color: #22d3a666; color: var(--accent2); }

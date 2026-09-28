@@ -179,11 +179,21 @@
       <div class="modal-emoji">☁️</div>
       <h3 id="accTitle">Hesap</h3>
       <div id="accGuest">
-        <p>Giriş yap, ilerlemen buluta kaydedilsin; telefonda ve bilgisayarda aynı ajansla devam et. Şifre yok: e-postana tek kullanımlık bir <b>giriş bağlantısı</b> göndeririz.</p>
+        <p>Giriş yap, ilerlemen buluta kaydedilsin; telefonda ve bilgisayarda aynı ajansla devam et. Şifre yok: e-postana tek kullanımlık bir <b>giriş bağlantısı</b> ve <b>6 haneli kod</b> göndeririz.</p>
         <form id="accForm" class="acc-form" novalidate>
           <label for="accEmail" class="sr-only">E-posta adresi</label>
           <input id="accEmail" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" placeholder="ornek@eposta.com" required>
           <button id="accSend" type="submit" class="btn primary">Giriş bağlantısı gönder</button>
+        </form>
+        <form id="accCodeForm" class="acc-form acc-code hidden" novalidate>
+          <p id="accCodeInfo" class="acc-code-info"></p>
+          <label for="accCode" class="acc-code-label">E-postadaki 6 haneli kodu gir</label>
+          <input id="accCode" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" maxlength="6" placeholder="••••••" aria-describedby="accCodeInfo">
+          <button id="accVerify" type="submit" class="btn primary">Giriş yap</button>
+          <div class="acc-code-links">
+            <button id="accResend" type="button" class="acc-link">Kodu tekrar gönder</button>
+            <button id="accChange" type="button" class="acc-link">E-postayı değiştir</button>
+          </div>
         </form>
       </div>
       <div id="accUser" class="hidden">
