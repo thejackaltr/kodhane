@@ -127,27 +127,29 @@
     return t.replace(/\{(s|d)\}/g, function (m, k) { return String(v[k]); });
   }
 
-  // v4.3: İsimsiz sayaç (Umami + anonim Supabase sayacı) izin metinleri. [TASLAK] ile başlayanlar yer tutucudur; gerçek
-  // metin Growth/metin yazarından gelecek. Düğme adları ("Tamam", "Kapat", "Ayrıntılar") ve "Gizlilik" başlığı kesindir.
+  // v4.3: İsimsiz sayaç (Umami + anonim Supabase sayacı) izin metinleri. Onaylı kesin metin; olduğu gibi kullanılır
+  // (tests/fixtures/kodhane-telemetry-copy.json ile birebir karşılaştırılır).
   var TEL_TEXT = {
     "telemetry.title": "İsimsiz sayaç",
-    "telemetry.body": "[TASLAK] Oyunu geliştirmek için isimsiz sayım yapıyoruz. Seni tanıtan bilgi gönderilmez.",
+    "telemetry.body": "Oyunu geliştirmek için ziyaretleri ve bazı oyun olaylarını isimsiz olarak sayıyoruz. Hesabın ya da kaydının içeriği gönderilmez. İstemezsen kapatabilirsin.",
     "telemetry.ok": "Tamam",
     "telemetry.off": "Kapat",
     "telemetry.detailsLink": "Ayrıntılar",
-    "telemetry.detailsTitle": "[TASLAK] İsimsiz sayaç hakkında",
+    "telemetry.detailsTitle": "İsimsiz sayaç hakkında",
     "telemetry.details": [
-      "[TASLAK] Hangi özelliklerin kullanıldığını isimsiz olarak sayıyoruz.",
-      "[TASLAK] Adın, e-postan ya da oyun kaydın gönderilmez.",
-      "[TASLAK] İstediğin zaman İstatistik sekmesindeki Gizlilik bölümünden kapatabilirsin."
+      "Oyunu geliştirmek için sayfa ziyaretlerini ve bazı oyun olaylarını Teserix'in kendi analiz sunucusunda sayıyoruz. Sayılan olaylar şunlar: oyuna başlama, giriş, bulut kaydı, sıfırlama, paylaşım ve Açık Ofis haberine tıklama. Her olayda yalnızca olayın adı gider, hesabın ya da kaydının içeriği gönderilmez. Konum yalnızca ülke düzeyinde tutulur, IP adresi istatistik kayıtlarına yazılmaz. Ziyaret kayıtları 13 ay sonra silinir.",
+      "Ayrıca oyundaki haberlerin kaç kez gösterildiğini ve tıklandığını Teserix'in kendi sunucusunda sayıyoruz. Bu sayımda yalnızca olayın adı gider. Sunucu olayları tek tek kaydetmez, yalnızca o günün toplamını bir artırır. Hesap bilgisi, IP adresi ya da cihaz bilgisi bu sayıma yazılmaz.",
+      "Site Cloudflare üzerinden sunulduğu için Cloudflare de sayfa açılışlarını kendi aracıyla ayrıca sayar. Cloudflare'in açıklamasına göre bu araç çerez kullanmaz ve ziyaretçileri tanımaya çalışmaz.",
+      "Bu iki sayaç da yalnızca bu bildirime “Tamam” dedikten sonra çalışır. “Tamam” demeden hiçbiri bir şey göndermez. İstediğin zaman İstatistik sekmesindeki Gizlilik bölümünden kapatabilirsin. Kapattığın anda ikisi de durur. Cloudflare'in sayımı bunun dışındadır ve sayfa açıldığında çalışır.",
+      "Bu bilgilerin veri sorumlusu Teserix Bilişim ve Dijital Çözümler. KVKK'nın 11. maddesindeki haklarını kullanmak için info@teserix.com adresine yazabilirsin."
     ],
     "telemetry.detailsClose": "Kapat",
-    "telemetry.offToast": "[TASLAK] İsimsiz sayaç kapatıldı.",
-    "telemetry.onToast": "[TASLAK] İsimsiz sayaç açıldı.",
+    "telemetry.offToast": "Sayaç kapatıldı. Bizim sayaçlarımız artık hiçbir şey göndermeyecek.",
+    "telemetry.onToast": "Sayaç açıldı. Teşekkürler!",
     "settings.privacy": "Gizlilik",
     "settings.telemetryOn": "📊 İsimsiz sayaç: Açık",
     "settings.telemetryOff": "📊 İsimsiz sayaç: Kapalı",
-    "settings.telemetryHint": "[TASLAK] Seni tanıtan hiçbir bilgi gönderilmez."
+    "settings.telemetryHint": "Ziyaretler ve bazı oyun olayları isimsiz olarak sayılır. Hesabın ya da kaydının içeriği gönderilmez. Cloudflare'in sayımı bu ayardan bağımsızdır."
   };
   function telText(key) { var t = TEL_TEXT[key]; return Array.isArray(t) ? t.slice() : (typeof t === 'string' ? t : ''); }
   // "Başka cihazda sıfırlandı" metni: yedek/geri yükleme cümlesi yalnızca girişli oyuncuya gösterilir.

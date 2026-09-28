@@ -27,6 +27,7 @@ WEBSITE_ID = '6a036eb3-5974-482f-bcce-dbdf0a383f36'
 COUNT_PATH = '/rest/v1/rpc/kodhane_count_event'
 BASES = [('root', 'https://kodhane.teserix.com/'), ('subpath', 'https://thejackaltr.github.io/kodhane/')]
 results = []
+COPY = json.load(open(os.path.join(ROOT, 'tests', 'fixtures', 'kodhane-telemetry-copy.json'), encoding='utf-8'))
 
 
 def check(name, cond, info=''):
@@ -475,12 +476,20 @@ with sync_playwright() as p:
         pg.click('[data-test=tel-details]'); pg.wait_for_selector('.tel-details'); pg.wait_for_timeout(400)
         pg.screenshot(path=os.path.join(SHOTS, 'kodhane-details-%s.png' % vname))
         dtext = pg.inner_text('#modal')
+        check('[copy][%s] band shows the approved title/body/buttons' % vname, pg.inner_text('.nb-text b').strip() == COPY['telemetry.title']
+              and COPY['telemetry.body'] in pg.inner_text('[data-test=tel-banner]'), pg.inner_text('[data-test=tel-banner]'))
+        check('[copy][%s] details modal: approved title + all 5 paragraphs + Kapat' % vname, COPY['telemetry.detailsTitle'] in dtext
+              and all(x in dtext for x in COPY['telemetry.details']) and pg.inner_text('[data-test=tel-details-close]').strip() == COPY['telemetry.detailsClose'], dtext)
+        dbox = pg.evaluate("(() => { const c = document.getElementById('modalCard').getBoundingClientRect(); const b = document.querySelector('[data-test=tel-details-close]').getBoundingClientRect(); return [c.top, c.bottom, b.top, b.bottom, innerHeight]; })()")
+        pg.locator('[data-test=tel-details-close]').scroll_into_view_if_needed()
+        check('[layout][%s] details modal fits (close button reachable)' % vname, pg.locator('[data-test=tel-details-close]').is_visible() and dbox[0] >= 0, dbox)
         pg.click('[data-test=tel-details-close]')
         check('[guest][%s] signed out (guest)' % vname, pg.evaluate("!(Kodhane.cloud && Kodhane.cloud.state && Kodhane.cloud.state.user)"))
         stats_tab(pg, mobile)
         pg.evaluate("document.getElementById('privacyBox').scrollIntoView({ block: 'center' })")
         pg.wait_for_timeout(300)
         box = pg.inner_text('#privacyBox')
+        check('[copy][%s] Gizlilik: approved heading + hint' % vname, pg.inner_text('#telTitle').strip() == COPY['settings.privacy'] and pg.inner_text('#telHint').strip() == COPY['settings.telemetryHint'], box)
         check('[guest][%s] Gizlilik section visible without login' % vname, pg.is_visible('#privacyBox') and pg.is_visible('#telBtn') and 'Gizlilik' in box, box)
         pg.screenshot(path=os.path.join(SHOTS, 'kodhane-privacy-guest-%s.png' % vname))
         pg.click('#telDetailsBtn'); pg.wait_for_selector('.tel-details')

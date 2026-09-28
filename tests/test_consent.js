@@ -50,6 +50,10 @@ const on = (st) => { st.setItem('kodhane_tel_notice', '1'); st.setItem('kodhane_
     !/İstatistik/.test(K.telText('settings.telemetryOn') + K.telText('settings.telemetryOff') + K.telText('telemetry.title') + K.telText('telemetry.body')));
   check('telText: details is a list of non-empty paragraphs (copy), unknown key -> ""', Array.isArray(K.telText('telemetry.details')) && K.telText('telemetry.details').length >= 1 &&
     K.telText('telemetry.details').every((p) => typeof p === 'string' && p.trim()) && K.telText('nope') === '');
+  const approved = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'kodhane-telemetry-copy.json'), 'utf8'));
+  check('TEL_TEXT: exactly the approved final copy (fixture, character for character)', JSON.stringify(K.TEL_TEXT) === JSON.stringify(approved));
+  check('TEL_TEXT: no [TASLAK] placeholders left', !/TASLAK/.test(JSON.stringify(K.TEL_TEXT)) && !/TASLAK/.test(fs.readFileSync(path.join(__dirname, '..', 'game.js'), 'utf8')));
+  check('TEL_TEXT: curly quotes “Tamam” and emoji kept', K.telText('telemetry.details')[3].indexOf('“Tamam” dedikten') !== -1 && K.telText('settings.telemetryOn').indexOf('📊') === 0);
   check('reset copy: "Kalacaklar" names the privacy settings', K.RESET_TEXT['reset.keepList'].indexOf('Ses, titreşim ve gizlilik ayarların') !== -1 &&
     K.RESET_TEXT['reset.keepList'].indexOf('Ses ve titreşim ayarların') === -1);
   check('index.html: no Umami script tag (loaded at runtime only)', !/<script[^>]*analiz\.teserix\.com/.test(fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8')));
