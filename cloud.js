@@ -275,6 +275,8 @@
   // ---------------------------------------------------------------- arayüz
   function setStatus(status, message) { C.status = status; C.message = message || ''; render(); }
   function render() {
+    // Sıralama sekmesi (leaderboard.js) oturum değişimlerini buradan izler.
+    if (typeof K.onCloudRender === 'function') { try { K.onCloudRender(); } catch (e) {} }
     if (!el.btn) return;
     var signed = !!C.user;
     el.btn.classList.toggle('signed', signed);
@@ -425,6 +427,7 @@
   };
   K.cloud = {
     state: C, config: CFG, push: push, flush: flush, reconcile: reconcile, signOut: signOut, open: openPanel, close: closePanel,
+    getClient: getClient, online: online,
     BACKUP_KEY: BACKUP_KEY, isConfigured: function () { return configured; }
   };
 

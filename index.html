@@ -64,6 +64,7 @@
         <span class="click-text">Kod yaz</span>
         <span class="click-value" id="clickValue">+1 TL</span>
       </button>
+      <div class="key-hint" id="keyHint" aria-hidden="true">veya <kbd>Space</kbd>'e bas</div>
       <div class="click-hint">Her tık bir satır kod, her satır biraz para. Arada bir <b>kritik tık</b> gelir!</div>
       <div id="floaters" class="floaters"></div>
     </section>
@@ -87,6 +88,7 @@
         <button data-tab="achievements">Başarımlar</button>
         <button data-tab="stats">İstatistik</button>
         <button data-tab="prestige">Yatırım</button>
+        <button data-tab="siralama">Sıralama</button>
       </nav>
       <div class="tab" id="tab-upgrades">
         <div id="upgList" class="upg-list"></div>
@@ -125,6 +127,19 @@
           <p class="save-note">İlk hisse için bu turda en az 100 Mn TL kazanmalısın.</p>
         </div>
       </div>
+      <div class="tab hidden" id="tab-siralama">
+        <div class="lb-head">
+          <div>
+            <h3 class="lb-title">🏆 Sıralama</h3>
+            <p class="lb-info" id="lbInfo">Puan, oyuna başladığından beri kazandığın toplam para. Yatırım turunda sıfırlanmaz.</p>
+          </div>
+          <button id="lbRefresh" type="button" class="btn ghost lb-refresh" aria-label="Sıralamayı yenile">↻ Yenile</button>
+        </div>
+        <div id="lbJoin" class="lb-join hidden"></div>
+        <p id="lbStatus" class="lb-status" aria-live="polite"></p>
+        <ol id="lbList" class="lb-list" aria-label="En iyi 50 ajans"></ol>
+        <div id="lbMe" class="lb-me hidden"></div>
+      </div>
     </section>
   </main>
 
@@ -134,6 +149,7 @@
     <button data-view="upgrades"><span class="nav-ico">⬆️</span>Geliştir<span id="navUpgBadge" class="badge nav-badge hidden">0</span></button>
     <button data-view="daily"><span class="nav-ico">📅</span>Görevler</button>
     <button data-view="prestige"><span class="nav-ico">💼</span>Yatırım</button>
+    <button data-view="siralama"><span class="nav-ico">🏆</span>Sıralama</button>
   </nav>
 
   <button id="clientOffer" class="client-offer hidden">
@@ -211,5 +227,6 @@
 
   <script src="game.js"></script>
   <script src="cloud.js"></script>
+  <script src="leaderboard.js"></script>
 </body>
 </html>

@@ -12,11 +12,14 @@ Kodhane: Ajans Tycoon, evde tek bir laptopla başlayıp kıtalar arası bir tekn
 - **30 başarım:** Her biri kalıcı +%1 üretim sağlar ve Yatırım Turu'nda sıfırlanmaz ("Localhost'ta Çalışıyordu", "Son Revize 7. Kez", "Logo Artık Ekrana Sığmıyor"...).
 - **Yeni geliştirmeler:** Çay Ocağı Sözleşmesi, Push ve Dua, Cuma Deploy Yasağı, Müşteri Tercümanı, Kahve Falı Yol Haritası (sıradaki olayı önceden gösterir), Oturarak Stand-up, Sprint Planlaması ve 100 çalışan kilometre taşı (x2).
 - **Günlük görevler ve seri:** Her gün tarihe göre belirlenen 3 görev, ilerlemeye göre ölçeklenen hedefler ve ödüller. Üçünü de bitirince seri artar ve ödül büyür; bir gün kaçarsa seri sıfırlanır.
-- **Mobil uyum:** Dar ekranlarda alt sekme çubuğu (Kod, Ekip, Geliştir, Görevler, Yatırım), büyük dokunma alanları ve alınabilir öğelerde hafif parlama.
+- **Mobil uyum:** Dar ekranlarda alt sekme çubuğu (Kod, Ekip, Geliştir, Görevler, Yatırım, Sıralama), büyük dokunma alanları ve alınabilir öğelerde hafif parlama.
 - **Ses ve titreşim:** Web Audio ile üretilen sesler (varsayılan olarak kapalı) ve mobilde titreşim. İkisi de İstatistik sekmesinden açılıp kapatılır.
 - **Uygulama olarak yükle (PWA):** Ana ekrana eklenebilir, çevrimdışı çalışır. Yeni sürüm yayınlandığında "Yeni sürüm hazır" bildirimi çıkar.
 - **Kayıt uyumluluğu:** Eski kayıtlar yeni biçime otomatik ve kayıpsız taşınır.
 - **Bulut kaydı (isteğe bağlı):** Sağ üstteki **Hesap** düğmesinden e-posta adresine gelen tek kullanımlık giriş bağlantısıyla (şifresiz) giriş yap; ilerlemen Supabase üzerinde saklanır ve başka cihazlarda kaldığın yerden devam edersin. Girişliyken oyun hem cihaza hem de (değişiklik varsa yaklaşık 45 saniyede bir ve sekme kapanırken) buluta kaydedilir. İlk girişte cihazdaki kayıt buluta yüklenir; iki kayıt çakışırsa ömür boyu kazancı büyük olan (eşitse daha yeni olan) kazanır, diğeri `kodhane_ajans_save_backup` anahtarına yedeklenir. Giriş yapmadan misafir olarak ve çevrimdışıyken oynamaya her zaman devam edebilirsin; bulut kitaplığı yalnızca gerektiğinde yüklenir.
+
+- **Sıralama:** En çok kazanan 50 ajans. Puan, oyuna başladığından beri kazandığın toplam paradır ve Yatırım Turu'nda sıfırlanmaz. Liste herkese açıktır; katılmak için giriş yapıp bir takma ad seçersin (3–16 karakter; harf, rakam, `_` ve `.`). E-posta adresin kimseye gösterilmez. Kendi sıran listede vurgulanır, ilk 50'nin dışındaysan en altta ayrıca görünür. Puan bulut kaydından okunur (`kodhane_leaderboard` fonksiyonu).
+- **Klavye:** Masaüstünde Space tuşu da kod yazar (her basış bir tık; basılı tutmak sayılmaz).
 
 ## Yerelde çalıştırma
 

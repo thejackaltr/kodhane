@@ -74,6 +74,9 @@ with sync_playwright() as p:
     b = p.chromium.launch()
     ctx = b.new_context(viewport={'width': 1280, 'height': 800}, locale='tr-TR')
     ctx.add_init_script(INIT)
+    # Bu testler gerçek Supabase'e asla istek atmaz (Sıralama sekmesi misafirken herkese açık RPC'yi çağırır).
+    sb_hits = []
+    ctx.route('https://supabase.teserix.com/**', lambda r: (sb_hits.append(r.request.url), r.abort('connectionrefused')))
     page = ctx.new_page()
     errors = []
     watch(page, errors)
@@ -159,6 +162,71 @@ with sync_playwright() as p:
     check('offer popup has no wobble/rotate animation', 'wobble' not in ev("getComputedStyle(document.getElementById('clientOffer')).animationName"))
     ev("Kodhane.spawnOffer('boost')"); page.click('#clientOffer', force=True); page.wait_for_timeout(200)
     check('client offer boost x2', ev('Kodhane.state.boostLeft') > 29 and not page.is_hidden('#boostBar'))
+
+    # ---------------------------------------------------------------- klavye: Space / Enter
+    ev('Kodhane.rng = () => 0.99'); ev('Kodhane.state.daily.tasks = []')
+    c0 = ev('Kodhane.state.clicks')
+    page.click('#clickBtn')
+    check('key: mouse click blurs the Kod yaz button', ev("document.activeElement !== document.getElementById('clickBtn')"))
+    page.keyboard.press('Space')
+    check('key: one Space press after a mouse click counts exactly once', ev('Kodhane.state.clicks') == c0 + 2, str(ev('Kodhane.state.clicks') - c0))
+    c1 = ev('Kodhane.state.clicks')
+    page.keyboard.down('Space'); page.keyboard.down('Space'); page.keyboard.down('Space'); page.keyboard.up('Space')
+    check('key: held Space (auto-repeat) counts once', ev('Kodhane.state.clicks') == c1 + 1, str(ev('Kodhane.state.clicks') - c1))
+    page.focus('#clickBtn'); c2 = ev('Kodhane.state.clicks')
+    page.keyboard.press('Space')
+    check('key: Space with the button focused counts once (no native double)', ev('Kodhane.state.clicks') == c2 + 1, str(ev('Kodhane.state.clicks') - c2))
+    c3 = ev('Kodhane.state.clicks')
+    page.keyboard.press('Enter')
+    check('key: Enter on focused button counts once', ev('Kodhane.state.clicks') == c3 + 1, str(ev('Kodhane.state.clicks') - c3))
+    c3 = ev('Kodhane.state.clicks')
+    page.keyboard.down('Enter'); page.keyboard.down('Enter'); page.keyboard.down('Enter'); page.keyboard.up('Enter')
+    check('key: held Enter on button counts once (e.repeat blocked)', ev('Kodhane.state.clicks') == c3 + 1, str(ev('Kodhane.state.clicks') - c3))
+    prevented = ev("""(() => { document.activeElement && document.activeElement.blur();
+      const d = new KeyboardEvent('keydown', {code: 'Space', key: ' ', bubbles: true, cancelable: true});
+      const u = new KeyboardEvent('keyup', {code: 'Space', key: ' ', bubbles: true, cancelable: true});
+      document.body.dispatchEvent(d); document.body.dispatchEvent(u); return [d.defaultPrevented, u.defaultPrevented]; })()""")
+    check('key: Space keydown AND keyup are preventDefault-ed (no scroll / native activation)', prevented == [True, True], str(prevented))
+    ev("document.body.appendChild(Object.assign(document.createElement('input'), {id: 'tmpInput'}))")
+    page.focus('#tmpInput'); c4 = ev('Kodhane.state.clicks')
+    page.keyboard.press('Space'); page.keyboard.type('a b')
+    check('key: Space inside an input types normally, no click', ev("document.getElementById('tmpInput').value") == ' a b' and ev('Kodhane.state.clicks') == c4)
+    ev("document.getElementById('tmpInput').remove()")
+    check('key: Space matched by e.code (other keys ignored)', (lambda c: (page.keyboard.press('KeyK'), ev('Kodhane.state.clicks') == c)[1])(ev('Kodhane.state.clicks')))
+    check('key: desktop hint "veya Space\'e bas" visible (pointer: fine)', page.is_visible('#keyHint') and page.inner_text('#keyHint').strip() == "veya Space'e bas", page.inner_text('#keyHint'))
+
+    # ---------------------------------------------------------------- sıralama: saf mantık (takma ad, görünüm, paylaşım)
+    LB = 'Kodhane.leaderboard'
+    vcases = ev("""['Çağrı_01', 'ab', 'abcdefghijklmnopq', 'ali veli', 'a-b', '...', '_x.', 'Kodhane', 'x_0r0spu', 'Nazım', 'İlker.K', '  KodUstası  ', 'NAZI', 'grape']
+      .map(n => { const v = Kodhane.leaderboard.validateNickname(n); return [n, v.ok, v.error, v.value]; })""")
+    exp = {'Çağrı_01': (True, None), 'ab': (False, 'too_short'), 'abcdefghijklmnopq': (False, 'too_long'), 'ali veli': (False, 'invalid_chars'),
+           'a-b': (False, 'invalid_chars'), '...': (False, 'invalid_chars'), '_x.': (True, None), 'Kodhane': (False, 'blocked'), 'x_0r0spu': (False, 'blocked'),
+           'Nazım': (True, None), 'İlker.K': (True, None), '  KodUstası  ': (True, None), 'NAZI': (False, 'blocked'), 'grape': (True, None)}
+    bad = [c for c in vcases if (c[1], c[2]) != exp[c[0]]]
+    check('lb: nickname validation (length, chars, Turkish letters, blocklist)', not bad, json.dumps(bad, ensure_ascii=False))
+    check('lb: nickname trimmed', [c[3] for c in vcases if c[0] == '  KodUstası  '] == ['KodUstası'])
+    check('lb: case-insensitive key is Turkish-aware (IŞIK = ışık = Işık)', ev(LB + ".nickKey('IŞIK') === " + LB + ".nickKey('ışık') && " + LB + ".nickKey('Işık') === " + LB + ".nickKey('işik') && " + LB + ".nickKey('ÇAĞRI') === 'çağri'"))
+    msgs = ev(LB + '.messages')
+    check('lb: Turkish validation messages', 'en az 3' in msgs['too_short'] and 'en fazla 16' in msgs['too_long'] and 'harf, rakam' in msgs['invalid_chars'] and 'başka bir oyuncuda' in msgs['taken'], json.dumps(msgs, ensure_ascii=False)[:200])
+    check('lb: server errors mapped (23505 taken, 23514 reasons)', ev("""[{code:'23505', message:'duplicate key'}, {code:'23514', message:'nickname_too_short'}, {code:'23514', message:'nickname_invalid_chars'},
+      {code:'23514', message:'nickname_blocked'}, {message:'TypeError: Failed to fetch'}, {code:'500'}].map(e => Kodhane.leaderboard.serverNickError(e)).join(',')""") == 'taken,too_short,invalid_chars,blocked,offline,failed')
+    view = ev("""(() => { const rows = [];
+      for (let i = 1; i <= 50; i++) rows.push({rank: i, nickname: 'p' + i, score: 1e9 - i, stage: 4, is_me: false});
+      rows.push({rank: 73, nickname: 'ben', score: 5, stage: 1, is_me: true});
+      rows.splice(3, 0, {rank: 'x', nickname: 'bozuk', score: -1, stage: 0, is_me: false});
+      const v = Kodhane.leaderboard.buildView(rows, 50);
+      return {top: v.top.length, pinned: v.pinned && v.pinned.rank, me: v.me && v.me.nickname, bozuk: v.top.some(r => r.nickname === 'bozuk')}; })()""")
+    check('lb: view = top 50 + own row pinned when outside; invalid rows dropped', view == {'top': 50, 'pinned': 73, 'me': 'ben', 'bozuk': False}, json.dumps(view))
+    view2 = ev("Kodhane.leaderboard.buildView([{rank:1,nickname:'a',score:10,stage:5,is_me:false},{rank:2,nickname:'ben',score:3,stage:0,is_me:true}], 50)")
+    check('lb: own row inside top list is not pinned twice', view2['pinned'] is None and view2['me']['nickname'] == 'ben' and len(view2['top']) == 2)
+    check('lb: empty view', ev("Kodhane.leaderboard.buildView([], 50).empty") is True)
+    check('lb: share text', ev(LB + ".shareText(7, 'https://thejackaltr.github.io/kodhane/')") == 'Kodhane sıralamasında #7. sıradayım! Sen de ajansını kur: https://thejackaltr.github.io/kodhane/')
+    check('lb: stage label + medal badges', ev(LB + '.stageLabel(5)') == '🌐 Global Holding' and ev(LB + '.stageLabel(null)') == '' and ev("[1,2,3,4].map(Kodhane.leaderboard.rankBadge).join(' ')") == '🥇 🥈 🥉 #4')
+    check('lb: same number format as the game', ev("Kodhane.tl(9.25e9)") == '9,25 Mr TL')
+    big = ev("[1e30, 1.234e30, 9.99e32, 1e36, 1.2e36, 1.25e21, 9007199254740993, 1.7976931348623157e308, NaN].map(Kodhane.tl)")
+    check('huge numbers: suffixes up to Des, then scientific 1,2e36 (no int overflow)',
+          big == ['1 Non TL', '1,23 Non TL', '999 Non TL', '1e36 TL', '1,2e36 TL', '1,25 Sek TL', '9,01 Kat TL', '1,8e308 TL', '0 TL'], str(big))
+    check('huge numbers: leaderboard row with score 1e30 is valid', ev("Kodhane.leaderboard.buildView([{rank:1,nickname:'x',score:1e30,stage:5,is_me:false}], 50).top.length") == 1)
 
     # ---------------------------------------------------------------- olay kartları
     ev('Kodhane.state.daily.tasks = []; Kodhane.state.buffs = []')
@@ -297,7 +365,10 @@ with sync_playwright() as p:
 
     # ---------------------------------------------------------------- yatırım turu (başarımlar korunur)
     n_before = len(ev('Kodhane.state.achievements'))
-    pr = ev("(() => { const K=Kodhane; K.earn(4e8); const g=K.sharesGain(); const got=K.doPrestige(); return {g, got, shares:K.state.shares, money:K.state.money, gens:K.totalOwned(), ach:K.state.achievements.length, best:K.state.daily.best, rep:K.state.reputation}; })()")
+    pr = ev("(() => { const K=Kodhane; K.earn(4e8); const g=K.sharesGain(); const tot0=K.state.totalEarned; const got=K.doPrestige(); return {g, got, shares:K.state.shares, money:K.state.money, gens:K.totalOwned(), ach:K.state.achievements.length, best:K.state.daily.best, rep:K.state.reputation, tot0, tot1:K.state.totalEarned, run:K.state.runEarned}; })()")
+    check('leaderboard score (totalEarned) does NOT drop on Yatırım Turu', pr['tot1'] == pr['tot0'] and pr['tot0'] >= 4e8 and pr['run'] == 0, json.dumps({k: pr[k] for k in ('tot0', 'tot1', 'run')}))
+    t_after = ev("(() => { const K=Kodhane, a=K.state.totalEarned; K.doClick(false); return K.state.totalEarned > a; })()")
+    check('leaderboard score keeps growing after prestige', t_after)
     check('prestige Yatırım Turu', pr['g'] == 2 and pr['shares'] == 2 and pr['gens'] == 0 and pr['money'] == 0, json.dumps(pr))
     check('achievements/rep/streak persist through prestige', pr['ach'] == n_before and pr['best'] == 2 and pr['rep'] > 0)
     page.wait_for_timeout(300)
@@ -324,16 +395,34 @@ with sync_playwright() as p:
     check('offline play works (cached)', ev('Kodhane.state.clicks') == c0 + 1)
     ctx.set_offline(False)
 
+    # ---------------------------------------------------------------- sıralama sekmesi (masaüstü, Supabase erişilemez)
+    page.click('[data-tab="siralama"]')
+    ok = True
+    try: page.wait_for_function("document.getElementById('lbStatus').textContent.includes('yüklenemedi')", timeout=8000)
+    except Exception: ok = False
+    check('lb tab: desktop tab shows title + score note', page.is_visible('#tab-siralama') and '🏆 Sıralama' in page.inner_text('#tab-siralama')
+          and page.inner_text('#lbInfo') == 'Puan, oyuna başladığından beri kazandığın toplam para. Yatırım turunda sıfırlanmaz.')
+    check('lb tab: friendly error when service unreachable', ok, page.inner_text('#lbStatus'))
+    check('lb tab: guest CTA to sign in and join', page.is_visible('#lbSignIn') and page.inner_text('#lbSignIn') == 'Giriş yap ve katıl')
+    check('lb tab: guest request is the public RPC only', sb_hits and all('/rest/v1/rpc/kodhane_leaderboard' in u for u in sb_hits), str(sb_hits))
+    ctx.set_offline(True)
+    page.click('#lbRefresh'); page.wait_for_timeout(200)
+    check('lb tab: offline message', page.inner_text('#lbStatus').strip() == '📡 Sıralama için internet bağlantısı gerekli', page.inner_text('#lbStatus'))
+    ctx.set_offline(False)
+    page.click('[data-tab="upgrades"]')
+
     # ---------------------------------------------------------------- sıfırlama
     page.click('[data-tab="stats"]'); page.click('#resetBtn'); page.wait_for_timeout(200)
     check('reset confirm dialog', 'Kaydı sıfırla?' in page.inner_text('#modal'))
     page.click('#modalActions .btn.danger'); page.wait_for_load_state('load'); page.wait_for_selector('#clickBtn'); page.wait_for_timeout(300)
     st = ev('Kodhane.state')
     check('reset clears save', st['clicks'] == 0 and st['money'] == 0 and st['shares'] == 0 and st['achievements'] == [])
+    errors = [e for e in errors if 'ERR_CONNECTION_REFUSED' not in e]  # bilerek kesilen Supabase isteği (Sıralama hata durumu testi)
     check('no console errors (desktop)', not errors, '; '.join(errors))
 
     # ---------------------------------------------------------------- mobil (390x844)
     mctx = b.new_context(viewport={'width': 390, 'height': 844}, device_scale_factor=2, is_mobile=True, has_touch=True, locale='tr-TR')
+    mctx.route('https://supabase.teserix.com/**', lambda r: r.abort('connectionrefused'))
     mp = mctx.new_page(); merr = []
     watch(mp, merr)
     mev = mp.evaluate
@@ -370,7 +459,13 @@ with sync_playwright() as p:
     mp.tap('#bottomNav [data-view="prestige"]'); mp.wait_for_timeout(150)
     check('mobile: Yatırım view', visible('#tab-prestige') and sw_ok())
     mp.tap('#bottomNav [data-view="kod"]'); mp.wait_for_timeout(150)
+    mp.tap('#bottomNav [data-view="siralama"]'); mp.wait_for_timeout(300)
+    check('mobile: Sıralama view from bottom bar', visible('#tab-siralama') and not visible('#tab-prestige') and sw_ok())
+    check('mobile: 6 tab-bar buttons fit and stay >= 44px', mev("document.querySelectorAll('#bottomNav button').length") == 6
+          and all(bb['height'] >= 44 and bb['x'] >= 0 and bb['x'] + bb['width'] <= 390.5 for bb in [mp.locator('#bottomNav button').nth(i).bounding_box() for i in range(6)]))
+    mp.tap('#bottomNav [data-view="kod"]'); mp.wait_for_timeout(150)
     check('mobile: back to Kod view', visible('#panelKod') and visible('#stageCard') and sw_ok())
+    check('mobile: Space hint hidden on touch (pointer: coarse)', not visible('#keyHint'))
     mev('Kodhane.rng = () => 0'); mp.tap('#clickBtn'); mev('Kodhane.rng = () => 0.99')
     mev("document.getElementById('toast').innerHTML=''"); mp.wait_for_timeout(250)
     mp.screenshot(path=SS + 'v2-mobile-kod.png')
@@ -381,6 +476,7 @@ with sync_playwright() as p:
     mp.screenshot(path=SS + 'v2-event-card.png')
     mp.tap('#evChoices .ev-choice[data-choice="1"]')
     check('mobile: event choice via tap', mev('Kodhane.state.eventsResolved') >= 1 and not visible('#eventCard'))
+    merr = [e for e in merr if 'ERR_CONNECTION_REFUSED' not in e]
     check('no console errors (mobile)', not merr, '; '.join(merr))
 
     # iOS ana ekran güvenli alanları (çentik/durum çubuğu + ana ekran çubuğu)

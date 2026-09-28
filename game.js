@@ -9,7 +9,7 @@
   // ------------------------------------------------------------------
   // Tanımlar (denge değerleri)
   // ------------------------------------------------------------------
-  var VERSION = '3.0.0';
+  var VERSION = '3.1.0';
   var SAVE_KEY = 'kodhane_ajans_save_v2';
   var LEGACY_KEYS = ['kodhane_ajans_save_v1'];
   var SETTINGS_KEY = 'kodhane_ayarlar_v1';
@@ -113,14 +113,21 @@
     if (parts[1] && /[1-9]/.test(parts[1])) out += ',' + parts[1].replace(/0+$/, '');
     return out;
   }
+  // En büyük sonekin (Des = 1e33) ötesi bilimsel gösterim: 1,2e36 (Türkçe ondalık virgülü, '+' yok)
+  function sciTR(n) {
+    var p = n.toExponential(2).split('e');
+    var m = p[0].replace(/\.?0+$/, '').replace('.', ',');
+    return m + 'e' + p[1].replace('+', '');
+  }
   function fmt(n) {
+    if (typeof n !== 'number' || n !== n) return '0';
     if (!isFinite(n)) return '∞';
     if (n < 0) return '-' + fmt(-n);
     if (n < 1000) return fixedTR(n, n < 10 ? 1 : 0);
     var k = Math.floor(Math.log10(n) / 3);
-    if (k >= SUFFIXES.length) return n.toExponential(2).replace('.', ',');
+    if (k >= SUFFIXES.length) return sciTR(n);
     var v = n / Math.pow(1000, k);
-    if (v >= 999.995) { k++; v = v / 1000; if (k >= SUFFIXES.length) return n.toExponential(2).replace('.', ','); }
+    if (v >= 999.995) { k++; v = v / 1000; if (k >= SUFFIXES.length) return sciTR(n); }
     return fixedTR(v, 2) + ' ' + SUFFIXES[k];
   }
   function tl(n) { return fmt(n) + ' TL'; }
@@ -1190,13 +1197,22 @@
   }
 
   // Sekmeler ve mobil alt çubuk
-  var TAB_GROUP = { upgrades: 'upgrades', daily: 'daily', achievements: 'daily', stats: 'prestige', prestige: 'prestige' };
+  var TAB_GROUP = { upgrades: 'upgrades', daily: 'daily', achievements: 'daily', stats: 'prestige', prestige: 'prestige', siralama: 'siralama' };
   function selectTab(name, fromNav) {
     activeTab = name;
-    document.querySelectorAll('.tabs button').forEach(function (x) { x.classList.toggle('active', x.dataset.tab === name); });
+    document.querySelectorAll('.tabs button').forEach(function (x) {
+      x.classList.toggle('active', x.dataset.tab === name);
+      // Dar ekranda sekme şeridi kayar: etkin sekme görünür kalsın (sayfa kaydırılmadan).
+      if (x.dataset.tab === name && x.parentNode && x.parentNode.scrollWidth > x.parentNode.clientWidth) {
+        var bar = x.parentNode, l = x.offsetLeft - bar.offsetLeft, r = l + x.offsetWidth;
+        if (l < bar.scrollLeft) bar.scrollLeft = l - 8;
+        else if (r > bar.scrollLeft + bar.clientWidth) bar.scrollLeft = r - bar.clientWidth + 8;
+      }
+    });
     document.querySelectorAll('.tab').forEach(function (t) { t.classList.toggle('hidden', t.id !== 'tab-' + name); });
     if (!fromNav && view !== 'kod' && view !== 'ekip') { view = TAB_GROUP[name] || view; navActive(); }
     renderAll();
+    if (name === 'siralama' && typeof Core.onLeaderboardShown === 'function') { try { Core.onLeaderboardShown(); } catch (e) {} }
   }
   function navActive() {
     document.querySelectorAll('#bottomNav button').forEach(function (b) { b.classList.toggle('active', b.dataset.view === view); });
@@ -1262,17 +1278,44 @@
     setCounter('money', S.money, true);
     setCounter('rate', tps(), true);
 
-    el.clickBtn.addEventListener('click', function (e) {
+    function codeClick(cx, cy) {
       var v = doClick();
       var crit = Core.lastCrit;
       var rect = el.floaters.getBoundingClientRect();
-      var x = (e.clientX || rect.left + rect.width / 2) - rect.left;
-      var y = (e.clientY || rect.top + rect.height / 2) - rect.top;
+      var x = (cx || rect.left + rect.width / 2) - rect.left;
+      var y = (cy || rect.top + rect.height / 2) - rect.top;
       floater((crit ? 'KRİTİK! +' : '+') + tl(v), x + (Math.random() * 30 - 15), y - 20, crit ? 'crit' : '');
       burst(x, y, crit);
       sfx(crit ? 'crit' : 'click');
       vibrate(crit ? 25 : 10);
       renderTop(); renderStage();
+    }
+    el.clickBtn.addEventListener('click', function (e) {
+      codeClick(e.clientX, e.clientY);
+      // Fare/dokunma ile tıklandıysa odağı bırak: sonraki Space/Enter düğmeyi yerel olarak ikinci kez tetiklemesin.
+      if (e.detail > 0) { try { el.clickBtn.blur(); } catch (x) {} }
+    });
+    // Klavye: Space her basışta bir kez kod yazar (basılı tutma sayılmaz); Enter basılı tutulunca tekrarlanmaz.
+    el.clickBtn.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && e.repeat) e.preventDefault();
+    });
+    function spaceTarget(e) {
+      if (e.code !== 'Space' || e.ctrlKey || e.metaKey || e.altKey) return false;
+      var t = e.target;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return false;
+      if (!el.modal.classList.contains('hidden')) return false;
+      var acc = $('accountPanel');
+      if (acc && !acc.classList.contains('hidden')) return false;
+      return true;
+    }
+    document.addEventListener('keydown', function (e) {
+      if (!spaceTarget(e)) return;
+      e.preventDefault();
+      if (e.repeat) return;
+      codeClick();
+    });
+    document.addEventListener('keyup', function (e) {
+      if (spaceTarget(e)) e.preventDefault();
     });
     document.querySelectorAll('.qty button').forEach(function (b) {
       b.addEventListener('click', function () {
@@ -1374,6 +1417,7 @@
   Core.eventState = evs; Core.getSettings = function () { return settings; };
   Core.SAVE_KEY = SAVE_KEY; Core.LEGACY_KEYS = LEGACY_KEYS; Core.SETTINGS_KEY = SETTINGS_KEY;
   Core.applySave = applySave; Core.toast = toast; Core.isResetting = function () { return resetting; };
+  Core.activeTab = function () { return activeTab; };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();

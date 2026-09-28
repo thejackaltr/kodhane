@@ -30,6 +30,8 @@ FAKE = 'https://kodhane-test.supabase.co'
 PROD_URL = 'https://supabase.teserix.com'
 PAGES = 'https://thejackaltr.github.io/kodhane/'
 SAVES_PATH = '/rest/v1/kodhane_saves'
+PROFILES_PATH = '/rest/v1/kodhane_profiles'
+RPC_PATH = '/rest/v1/rpc/kodhane_leaderboard'
 STORAGE_KEY = 'kodhane_auth_v1'
 BACKUP_KEY = 'kodhane_ajans_save_backup'
 SAVE_KEY = 'kodhane_ajans_save_v2'
@@ -110,6 +112,28 @@ class FakeSupabase:
         self.verify = []
         self.valid_code = '123456'
         self.down = False
+        self.profiles = {}   # uid -> nickname
+        self.others = []     # takma adlı diğer oyuncular: (nickname, score, stage)
+        self.rpc_calls = []  # (authorization kullanıcı mı, p_limit)
+
+    @staticmethod
+    def nick_key(n):
+        return n.translate(str.maketrans('ÇĞİIÖŞÜı', 'çğiiöşüi')).lower()
+
+    def board(self, me_uid, limit):
+        rows = [(n, sc, st, None) for n, sc, st in self.others]
+        for uid, nick in self.profiles.items():
+            d = (self.rows.get(uid) or {}).get('data') or {}
+            if isinstance(d.get('totalEarned'), (int, float)) and d['totalEarned'] >= 0:
+                rows.append((nick, float(d['totalEarned']), d.get('stage'), uid))
+        rows.sort(key=lambda r: -r[1])
+        out, rank = [], 0
+        for i, r in enumerate(rows):
+            if i == 0 or r[1] != rows[i - 1][1]:
+                rank = i + 1
+            if i < limit or (me_uid and r[3] == me_uid):
+                out.append({'rank': rank, 'nickname': r[0], 'score': r[1], 'stage': r[2], 'is_me': bool(me_uid) and r[3] == me_uid})
+        return out
 
     def reply(self, route, status=200, body=None, headers=None):
         h = dict(CORS)
@@ -150,6 +174,30 @@ class FakeSupabase:
             return route.fulfill(status=204, headers=CORS, body='')
         if u.path == '/auth/v1/token':
             return self.reply(route, 400, {'error': 'invalid_grant'})
+        if u.path == RPC_PATH and method == 'POST':
+            body = json.loads(req.post_data or '{}')
+            self.rpc_calls.append((bool(claims), body.get('p_limit')))
+            self.last_board = self.board(claims['sub'] if claims else None, int(body.get('p_limit') or 50))
+            return self.reply(route, 200, self.last_board)
+        if u.path == PROFILES_PATH:
+            if not claims:
+                return self.reply(route, 401, {'code': '42501', 'message': 'permission denied for table kodhane_profiles'})
+            uid = claims['sub']
+            if method == 'GET':
+                rows = [{'nickname': self.profiles[uid]}] if uid in self.profiles else []
+                return self.reply(route, 200, rows)
+            if method == 'POST':
+                body = json.loads(req.post_data or '{}')
+                if body.get('user_id') != uid:
+                    return self.reply(route, 403, {'code': '42501', 'message': 'new row violates row-level security policy'})
+                nick = (body.get('nickname') or '').strip()
+                if len(nick) < 3:
+                    return self.reply(route, 400, {'code': '23514', 'message': 'nickname_too_short'})
+                if any(self.nick_key(n) == self.nick_key(nick) for o, n in self.profiles.items() if o != uid) or \
+                        any(self.nick_key(n) == self.nick_key(nick) for n, _, _ in self.others):
+                    return self.reply(route, 409, {'code': '23505', 'message': 'duplicate key value violates unique constraint "kodhane_profiles_nick_key_uniq"'})
+                self.profiles[uid] = nick
+                return route.fulfill(status=201, headers=CORS, body='')
         if u.path == SAVES_PATH:
             if not claims:
                 return self.reply(route, 401, {'message': 'JWT required'})
@@ -608,6 +656,130 @@ with sync_playwright() as p:
     check('prod: magic link request goes to supabase.teserix.com/auth/v1/otp', ok and len(fake.otp) == 1, json.dumps(fake.otp))
     check('prod: magic-link redirect is exactly ' + PAGES, fake.otp and fake.otp[0]['redirect_to'] == PAGES, fake.otp and fake.otp[0]['redirect_to'])
     check('prod: no page/console errors', not perrs and not errs, '; '.join(perrs + errs))
+    ctx.close()
+
+    # ------------------------------------------------------------ 12) Sıralama: misafir (mobil), boş liste, çevrimdışı, hata
+    NAMES = ['KodUstası', 'Zeynep.dev', 'mert_42', 'AyşeYazılım', 'deployCuma', 'Çaycı_Hüseyin', 'Selin.K', 'burakbey', 'Pikselci', 'GeceMesaisi',
+             'Elif_UX', 'Tolga.io', 'Kübra', 'Emre_Ops', 'Duygu.pm', 'CanBackend']
+    def others(n, top=4.2e12, f=1.2):
+        return [((NAMES[i] if i < len(NAMES) else 'oyuncu%02d' % i), round(top / (f ** i), 2), max(0, 5 - i // 12)) for i in range(n)]
+    fake = FakeSupabase()
+    fake.others = others(60)
+    ctx = new_ctx(fake, mobile=True)
+    page, errs, perrs = open_page(ctx)
+    page.tap('#bottomNav [data-view="siralama"]')
+    ok = wait_until(page, "document.querySelectorAll('#lbList .lb-row').length === 50")
+    check('lb guest: top 50 listed from RPC', ok, str(page.evaluate("document.querySelectorAll('#lbList .lb-row').length")))
+    check('lb guest: no SDK download, anonymous RPC call only', len(ctx.cdn_hits) == 0 and fake.rpc_calls and fake.rpc_calls[-1] == (False, 50)
+          and all(p in (RPC_PATH,) for _, p, _ in fake.log), str(fake.log[:3]))
+    first = page.locator('#lbList .lb-row').first
+    check('lb guest: row shows medal, nickname, stage and game-formatted score', first.locator('.lb-rank').inner_text() == '🥇'
+          and first.locator('.lb-name').inner_text() == 'KodUstası' and first.locator('.lb-stage').inner_text() == '🌐 Global Holding'
+          and first.locator('.lb-score').inner_text() == page.evaluate('Kodhane.tl(4.2e12)'), first.inner_text().replace('\n', ' | '))
+    check('lb guest: info note + CTA', page.inner_text('#lbInfo') == 'Puan, oyuna başladığından beri kazandığın toplam para. Yatırım turunda sıfırlanmaz.'
+          and page.is_visible('#lbSignIn') and 'takma ad' in page.inner_text('#lbJoin'))
+    check('lb guest: no highlighted own row, nothing pinned', page.locator('.lb-row.me').count() == 0 and page.is_hidden('#lbMe'))
+    check('lb guest: fits 390px', page.evaluate('document.documentElement.scrollWidth') <= 390)
+    page.tap('#lbSignIn')
+    check('lb guest: CTA opens sign-in panel', page.is_visible('#accountPanel') and page.is_visible('#accEmail'))
+    page.tap('#accClose')
+    n0 = len(fake.rpc_calls)
+    page.tap('#lbRefresh')
+    ok = wait_until(page, "!document.getElementById('lbRefresh').disabled")
+    check('lb guest: refresh button re-fetches', ok and len(fake.rpc_calls) == n0 + 1, str(len(fake.rpc_calls) - n0))
+    ctx.set_offline(True)
+    page.tap('#lbRefresh'); page.wait_for_timeout(200)
+    check('lb guest: offline message', page.inner_text('#lbStatus').strip() == '📡 Sıralama için internet bağlantısı gerekli', page.inner_text('#lbStatus'))
+    ctx.set_offline(False)
+    ok = wait_until(page, "document.getElementById('lbStatus').textContent === ''")
+    check('lb guest: back online -> auto refresh, message cleared', ok, page.inner_text('#lbStatus'))
+    fake.down = True
+    page.tap('#lbRefresh')
+    ok = wait_until(page, "document.getElementById('lbStatus').textContent.includes('yüklenemedi')")
+    check('lb guest: service down -> friendly error', ok, page.inner_text('#lbStatus'))
+    fake.down = False
+    fake.others = []
+    page.tap('#lbRefresh')
+    ok = wait_until(page, "document.getElementById('lbStatus').textContent.includes('İlk sen ol')")
+    check('lb guest: empty state', ok and page.locator('#lbList .lb-row').count() == 0, page.inner_text('#lbStatus'))
+    check('lb guest: no page errors', not perrs and not [e for e in errs if 'Failed to load resource' not in e and 'ERR_' not in e], '; '.join(perrs + errs))
+    ctx.close()
+
+    # ------------------------------------------------------------ 12b) Çok büyük puanlar (2^53 üstü, ~1e30, en büyük sonekin ötesi)
+    # Sunucu puanı numeric döndürür: JSON'da uzun tam sayı olarak gelir (ör. 1234000000000000000000000000000).
+    fake = FakeSupabase()
+    fake.others = [('Holding.X', 15 * 10 ** 39, 5), ('Trilyoner', 1234 * 10 ** 27, 5), ('IkiUzeri53', 2 ** 53 + 2, 4), ('Normal', 5.5e6, 3)]
+    ctx = new_ctx(fake)
+    page, errs, perrs = open_page(ctx)
+    page.click('[data-tab="siralama"]')
+    ok = wait_until(page, "document.querySelectorAll('#lbList .lb-row').length === 4")
+    scores = page.evaluate("[...document.querySelectorAll('#lbList .lb-score')].map(e => e.textContent)")
+    check('huge scores: parsed and formatted (1,5e40 / 1,23 Non / 9 Kat / 5,5 Mn)', ok and scores == ['1,5e40 TL', '1,23 Non TL', '9,01 Kat TL', '5,5 Mn TL'], str(scores))
+    check('huge scores: ~1e30 parsed exactly as a JS number', page.evaluate("Kodhane.leaderboard.state.rows[1].score === 1.234e30 && Kodhane.leaderboard.state.rows[0].score === 1.5e40"))
+    check('huge scores: order kept, no errors', page.evaluate("Kodhane.leaderboard.state.view.top.map(r => r.rank).join()") == '1,2,3,4' and not perrs, '; '.join(perrs))
+    ctx.close()
+
+    # ------------------------------------------------------------ 13) Sıralama: girişli ama takma adı yok -> form, doğrulama, alınmış ad, katılım, sabitlenmiş satır
+    fake = FakeSupabase()
+    fake.others = others(60)
+    UID_L, EMAIL_L = '33333333-3333-4333-8333-333333333333', 'lb@example.com'
+    ctx = new_ctx(fake, mobile=True, init=seed_script(save=local_save(123456, started, clicks=99), session=session_obj(UID_L, EMAIL_L))
+                  + "navigator.share = (d) => { window.__shared = d; return Promise.resolve(); };")
+    page, errs, perrs = open_page(ctx)
+    wait_until(page, 'Kodhane.cloud.state.reconciled && Kodhane.cloud.state.lastPushAt > 0', 10000)
+    page.evaluate("document.getElementById('toast').innerHTML=''")
+    page.tap('#bottomNav [data-view="siralama"]')
+    ok = wait_until(page, "!!document.getElementById('lbNick')")
+    check('lb signed-in: nickname form shown (no nickname yet)', ok and 'takma adını seç' in page.inner_text('#lbJoin') and page.inner_text('#lbNickSave') == 'Katıl'
+          and 'E-posta adresin kimseye gösterilmez' in page.inner_text('#lbJoin'))
+    check('lb signed-in: not on the board before joining', page.locator('.lb-row.me').count() == 0 and fake.rpc_calls and fake.rpc_calls[-1][0] is True)
+    posts0 = fake.count('POST', PROFILES_PATH)
+    for val, frag in (('ab', 'en az 3'), ('ali veli', 'harf, rakam'), ('Kodhane', 'uygun değil')):
+        page.fill('#lbNick', val); page.tap('#lbNickSave'); page.wait_for_timeout(150)
+        check('lb form: %r -> Turkish message' % val, frag in page.inner_text('#lbNickMsg') and fake.count('POST', PROFILES_PATH) == posts0, page.inner_text('#lbNickMsg'))
+    page.fill('#lbNick', 'kodustası'); page.tap('#lbNickSave')
+    ok = wait_until(page, "document.getElementById('lbNickMsg') && document.getElementById('lbNickMsg').textContent.includes('başka bir oyuncuda')")
+    check('lb form: taken nickname (case-insensitive, server 409) -> "başka bir oyuncuda"', ok and fake.count('POST', PROFILES_PATH) == posts0 + 1,
+          page.inner_text('#lbJoin').replace('\n', ' | '))
+    check('lb form: typed value kept after error', page.input_value('#lbNick') == 'kodustası')
+    page.fill('#lbNick', 'Çağrı_01'); page.tap('#lbNickSave')
+    ok = wait_until(page, "document.querySelectorAll('#lbMe .lb-row.me').length === 1", 10000)
+    check('lb join: profile saved for own user', fake.profiles.get(UID_L) == 'Çağrı_01', json.dumps(fake.profiles, ensure_ascii=False))
+    check('lb join: own row pinned below top 50 with rank + "sen"', ok and page.locator('#lbList .lb-row').count() == 50
+          and page.locator('#lbMe .lb-rank').inner_text() == '#61' and 'Çağrı_01' in page.locator('#lbMe .lb-name').inner_text()
+          and 'sen' in page.locator('#lbMe .lb-you').inner_text(), page.inner_text('#lbMe').replace('\n', ' | '))
+    me_row = [r for r in fake.last_board if r['is_me']]
+    check('lb join: own score = cloud save totalEarned (>= local 123.456), game formatting', me_row and me_row[0]['score'] >= 123456
+          and page.locator('#lbMe .lb-score').inner_text() == page.evaluate('Kodhane.tl(%r)' % me_row[0]['score']), json.dumps(me_row))
+    check('lb join: joined text + toast', 'Çağrı_01' in page.inner_text('.lb-joined') and 'olarak görünüyorsun' in page.inner_text('.lb-joined') and 'Sıralamaya katıldın' in page.inner_text('#toast'))
+    page.tap('#lbShare'); page.wait_for_timeout(150)
+    shared = page.evaluate('window.__shared')
+    check('lb share: text "Kodhane sıralamasında #61. sıradayım! Sen de ajansını kur: <link>"', shared and shared.get('text') == 'Kodhane sıralamasında #61. sıradayım! Sen de ajansını kur: ' + BASE + '/', json.dumps(shared, ensure_ascii=False))
+    page.tap('#lbEdit')
+    ok = wait_until(page, "!!document.getElementById('lbNick')")
+    check('lb rename: form prefilled with current nickname, "Kaydet"', ok and page.input_value('#lbNick') == 'Çağrı_01' and page.inner_text('#lbNickSave') == 'Kaydet')
+    page.fill('#lbNick', 'Çağrı.Yeni'); page.tap('#lbNickSave')
+    ok = wait_until(page, "document.querySelector('#lbMe .lb-name') && document.querySelector('#lbMe .lb-name').textContent.includes('Çağrı.Yeni')", 10000)
+    check('lb rename: saved and board refreshed', ok and fake.profiles[UID_L] == 'Çağrı.Yeni')
+    check('lb signed-in: fits 390px, no page errors', page.evaluate('document.documentElement.scrollWidth') <= 390 and not perrs, '; '.join(perrs))
+    ctx.close()
+
+    # ------------------------------------------------------------ 14) Ekran görüntüsü: girişli, takma adlı, ilk 50 içinde (yerel sahte veri; üretime dokunmaz)
+    fake = FakeSupabase()
+    fake.others = others(14, top=1.5e10, f=1.7)
+    UID_S = '44444444-4444-4444-8444-444444444444'
+    sshot = local_save(2.35e9, started, clicks=4200)
+    sshot['stage'] = 4
+    fake.profiles[UID_S] = 'Aryen'
+    ctx = new_ctx(fake, mobile=True, init=seed_script(save=sshot, session=session_obj(UID_S, 'aryen@example.com')))
+    page, errs, perrs = open_page(ctx)
+    wait_until(page, 'Kodhane.cloud.state.reconciled && Kodhane.cloud.state.lastPushAt > 0', 10000)
+    page.tap('#bottomNav [data-view="siralama"]')
+    ok = wait_until(page, "document.querySelectorAll('#lbList .lb-row.me').length === 1", 10000)
+    me_rank = page.evaluate("document.querySelector('#lbList .lb-row.me .lb-rank').textContent")
+    check('lb in top list: own row highlighted in place, not pinned', ok and page.is_hidden('#lbMe') and me_rank.startswith('#'), me_rank)
+    page.evaluate("document.getElementById('toast').innerHTML=''"); page.wait_for_timeout(300)
+    page.screenshot(path=SS + 'v3-siralama-mobile.png')
     ctx.close()
 
     b.close()
