@@ -5,7 +5,10 @@
  *   kodhane_leaderboard fonksiyonunu çağırır. Fonksiyon kullanıcı kimliği veya e-posta döndürmez.
  * - Listeye yalnızca takma ad seçen (katılan) girişli oyuncular girer. Takma ad kuralları
  *   veritabanında da aynen uygulanır; buradaki kontrol yalnızca hızlı ve anlaşılır geri bildirim içindir.
- * - Oyun tarayıcıda çalıştığı için puanlar oyuncunun cihazından gelir (istemciye güvenilir).
+ * - Oyun tarayıcıda çalıştığı için puanlar oyuncunun cihazından gelir (istemciye güvenilir). Sunucu makul
+ *   görünmeyen puanları listeden çıkarır (oyuncuya yalnızca kendi satırında "kontrol ediliyor" gösterilir) ve
+ *   yöneticinin gizlediği takma adları göstermez. Takma adlar yalnızca textContent ile yazılır (HTML asla).
+ * - Sonuçlar ~60 sn önbellekte tutulur; "Yenile" her zaman yeniden çeker.
  */
 (function (root) {
   'use strict';
@@ -13,12 +16,13 @@
   if (!K) return;
 
   var LIMIT = 50;
-  var STALE_MS = 30000;
+  var STALE_MS = 60000;
+  var GAME = 'kodhane'; // Açık Ofis gibi başka oyunların listeleri karışmasın
   var TABLE = 'kodhane_profiles';
   var RPC = 'kodhane_leaderboard';
 
   // ---------------------------------------------------------------- saf mantık (testlerde de kullanılır)
-  var NICK_RE = /^[A-Za-z0-9_.çğıöşüÇĞİÖŞÜ]+$/;
+  var NICK_RE = /^[A-Za-z0-9çğıöşüÇĞİÖŞÜ _-]+$/;
   var HAS_ALNUM = /[A-Za-z0-9çğıöşüÇĞİÖŞÜ]/;
   var RESERVED = ['admin', 'administrator', 'moderator', 'mod', 'kodhane', 'teserix', 'sistem', 'system', 'support', 'destek', 'root', 'null', 'undefined'];
   var BLOCK_EXACT = ['amk', 'aq', 'mk', 'oc', 'pic', 'got', 'sik', 'am', 'amq', 'sg', 'siq', 'ass', 'fag', 'cum', 'tits', 'nazi'];
@@ -32,23 +36,25 @@
   }
   // Büyük/küçük harf duyarsız anahtar (veritabanındaki kodhane_nick_key ile aynı): I/İ/ı/i hepsi 'i'.
   function nickKey(n) { return tr(String(n), 'ÇĞİIÖŞÜı', 'çğiiöşüi').toLowerCase(); }
+  // Baştaki/sondaki boşluklar atılır, art arda boşluklar teke indirilir (veritabanıyla aynı).
+  function normalizeNickname(raw) { return String(raw == null ? '' : raw).trim().replace(/ {2,}/g, ' '); }
   function validateNickname(raw) {
-    var v = String(raw == null ? '' : raw).trim();
+    var v = normalizeNickname(raw);
     var len = Array.from ? Array.from(v).length : v.length;
     if (len < 3) return { ok: false, value: v, error: 'too_short' };
     if (len > 16) return { ok: false, value: v, error: 'too_long' };
     if (!NICK_RE.test(v) || !HAS_ALNUM.test(v)) return { ok: false, value: v, error: 'invalid_chars' };
-    var flat = tr(nickKey(v).replace(/[._]/g, ''), 'çğöşü013457', 'cgosuoieast');
+    var flat = tr(nickKey(v).replace(/[ _-]/g, ''), 'çğöşü013457', 'cgosuoieast');
     if (RESERVED.indexOf(flat) !== -1 || BLOCK_EXACT.indexOf(flat) !== -1) return { ok: false, value: v, error: 'blocked' };
     for (var i = 0; i < BLOCK_SUB.length; i++) if (flat.indexOf(BLOCK_SUB[i]) !== -1) return { ok: false, value: v, error: 'blocked' };
     return { ok: true, value: v, error: null };
   }
   var MESSAGES = {
-    too_short: 'Takma ad en az 3 karakter olmalı.',
-    too_long: 'Takma ad en fazla 16 karakter olabilir.',
-    invalid_chars: 'Yalnızca harf, rakam, alt çizgi (_) ve nokta (.) kullanabilirsin. Boşluk olmasın.',
-    blocked: 'Bu takma ad uygun değil. Başka bir tane dener misin?',
-    taken: 'Bu takma ad başka bir oyuncuda. Başka bir tane dener misin?',
+    too_short: 'Takma ad 3-16 karakter olmalı.',
+    too_long: 'Takma ad 3-16 karakter olmalı.',
+    invalid_chars: 'Harf, rakam, boşluk, - ve _ kullanabilirsin.',
+    blocked: 'Bu ad listeye uygun değil. Başka bir ad dene.',
+    taken: 'Bu ad kapılmış. Başka bir tane dene.',
     offline: 'İnternet bağlantısı yok. Çevrimiçi olunca tekrar dene.',
     failed: 'Takma ad kaydedilemedi. Biraz sonra tekrar dene.'
   };
@@ -64,23 +70,34 @@
     if (/Failed to fetch|NetworkError|offline/i.test(msg)) return 'offline';
     return 'failed';
   }
+  var STATUS_TEXT = {
+    pending: 'Puanın kontrol ediliyor. Kısa süre içinde listede görünürsün.',
+    hidden: 'Takma adın listeden kaldırıldı. Yeni bir ad seçebilirsin.'
+  };
   function validRow(r) {
-    return r && typeof r.nickname === 'string' && typeof r.score === 'number' && isFinite(r.score) && r.score >= 0 && typeof r.rank === 'number';
+    return r && typeof r.nickname === 'string' && (r.status == null || r.status === 'ok') &&
+      typeof r.score === 'number' && isFinite(r.score) && r.score >= 0 && typeof r.rank === 'number';
   }
-  // Sunucu en iyi N'i sırayla, çağıranın satırı listede değilse sona ekleyerek döndürür.
+  // Sunucu en iyi N'i sırayla, çağıranın satırı listede değilse sona ekleyerek döndürür. Kendi puanı kontrol
+  // ediliyorsa ya da takma adı gizlendiyse yalnızca çağırana status 'pending' / 'hidden' satırı gelir (sırasız).
   function buildView(rows, limit) {
     limit = limit || LIMIT;
-    rows = (Array.isArray(rows) ? rows : []).filter(validRow);
+    var all = Array.isArray(rows) ? rows : [];
+    var meStatus = null;
+    all.forEach(function (r) { if (r && r.is_me && (r.status === 'pending' || r.status === 'hidden')) meStatus = r.status; });
+    rows = all.filter(validRow);
     var top = rows.slice(0, limit);
     var me = null, pinned = null;
     rows.forEach(function (r) { if (r.is_me) me = r; });
     if (me && top.indexOf(me) === -1) pinned = me;
-    return { top: top, me: me, pinned: pinned, empty: top.length === 0 };
+    return { top: top, me: me, pinned: pinned, empty: top.length === 0, meStatus: me ? null : meStatus };
   }
   function stageLabel(i) {
-    var st = typeof i === 'number' && K.STAGES ? K.STAGES[i] : null;
-    return st ? st.icon + ' ' + st.name : '';
+    if (typeof i !== 'number' || !isFinite(i) || i < 0) return '';
+    var st = K.STAGES ? K.STAGES[i] : null;
+    return st ? st.icon + ' ' + st.name : 'Aşama ' + (Math.floor(i) + 1); // yeni aşamalar eski sürümde de görünsün
   }
+  function ownRankText(rank) { return 'Sen: #' + rank; }
   function rankBadge(rank) { return rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '#' + rank; }
   function gameLink() {
     try { return location.origin + location.pathname.replace(/index\.html$/, ''); } catch (e) { return 'https://thejackaltr.github.io/kodhane/'; }
@@ -90,7 +107,7 @@
   // ---------------------------------------------------------------- durum
   var L = {
     rows: null, view: null, loading: false, error: '', fetchedAt: 0, seq: 0,
-    uid: null, profileUid: null, nickname: null, profileLoading: false, profileError: false,
+    uid: null, profileUid: null, nickname: null, hidden: false, profileLoading: false, profileError: false,
     editing: false, saving: false, nickMsg: '', nickDraft: ''
   };
   var el = {};
@@ -106,13 +123,13 @@
   function fetchRows() {
     var c = cloud(), s = cstate(), cfg = c.config;
     if (s && s.client && s.user) {
-      return s.client.rpc(RPC, { p_limit: LIMIT }).then(function (r) { if (r.error) throw r.error; return r.data; });
+      return s.client.rpc(RPC, { p_limit: LIMIT, p_game: GAME }).then(function (r) { if (r.error) throw r.error; return r.data; });
     }
     // Misafir: SDK indirmeden, herkese açık anahtarla doğrudan çağrı
     return fetch(cfg.url + '/rest/v1/rpc/' + RPC, {
       method: 'POST',
       headers: { apikey: cfg.key, Authorization: 'Bearer ' + cfg.key, 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ p_limit: LIMIT })
+      body: JSON.stringify({ p_limit: LIMIT, p_game: GAME })
     }).then(function (res) {
       if (!res.ok) throw new Error('HTTP ' + res.status);
       return res.json();
@@ -134,6 +151,8 @@
     return pre.then(fetchRows).then(function (rows) {
       if (my !== L.seq) return;
       L.rows = rows; L.view = buildView(rows, LIMIT); L.fetchedAt = Date.now(); L.error = '';
+      if (L.view.meStatus === 'hidden') L.hidden = true;
+      else if (L.view.me || L.view.meStatus === 'pending') L.hidden = false;
     }).catch(function () {
       if (my !== L.seq) return;
       L.error = isOnline() ? 'failed' : 'offline';
@@ -142,21 +161,22 @@
       L.loading = false; render();
     });
   }
-  function loadProfile() {
+  function loadProfile(force) {
     var u = signedUser(), s = cstate();
     if (!u || !s.client || L.profileLoading) return Promise.resolve();
-    if (L.profileUid === u.id && !L.profileError) return Promise.resolve();
+    if (!force && L.profileUid === u.id && !L.profileError) return Promise.resolve();
     L.profileLoading = true; L.profileError = false;
     renderJoin();
-    return s.client.from(TABLE).select('nickname').eq('user_id', u.id).maybeSingle().then(function (r) {
+    return s.client.from(TABLE).select('nickname,hidden').eq('user_id', u.id).maybeSingle().then(function (r) {
       if (r.error) throw r.error;
       L.profileUid = u.id; L.nickname = r.data && r.data.nickname ? r.data.nickname : null;
+      L.hidden = !!(r.data && r.data.hidden);
     }).catch(function () { L.profileError = true; }).then(function () { L.profileLoading = false; renderJoin(); });
   }
   function onCloudRender() {
     var u = signedUser(), uid = u ? u.id : null;
     if (uid !== L.uid) {
-      L.uid = uid; L.nickname = null; L.profileUid = null; L.profileError = false; L.editing = false; L.nickMsg = '';
+      L.uid = uid; L.nickname = null; L.hidden = false; L.profileUid = null; L.profileError = false; L.editing = false; L.nickMsg = '';
       if (el.list && visible()) { loadProfile(); refresh(); }
       else L.fetchedAt = 0;
     }
@@ -186,9 +206,12 @@
     }).then(function (r) {
       if (r && r.error) throw r.error;
       var first = !L.nickname;
+      // Aynı adı (büyük/küçük harf farkıyla) yeniden seçmek gizlemeyi kaldırmaz; yeni ad kaldırır (sunucuyla aynı kural).
+      L.hidden = L.hidden && !!L.nickname && nickKey(L.nickname) === nickKey(v.value);
       L.nickname = v.value; L.profileUid = u.id; L.editing = false; L.saving = false; L.nickDraft = '';
       toast(first ? '🏆 Sıralamaya katıldın! Takma adın: ' + v.value : '✏️ Takma adın güncellendi: ' + v.value, 3500);
       renderJoin();
+      loadProfile(true);
       return refresh();
     }).catch(function (e) {
       L.saving = false;
@@ -199,6 +222,7 @@
   function share() {
     var me = L.view && L.view.me;
     if (!me) return;
+    if (!me || typeof me.rank !== 'number') return;
     var text = shareText(me.rank);
     if (navigator.share) {
       navigator.share({ text: text }).catch(function () {});
@@ -249,13 +273,19 @@
     var t = '', cls = 'lb-status';
     if (!configured()) t = 'Sıralama bu sürümde kullanılamıyor.';
     else if (L.error === 'offline') { t = '📡 Sıralama için internet bağlantısı gerekli'; cls += ' warn'; }
-    else if (L.error) { t = 'Sıralama şu an yüklenemedi. Biraz sonra tekrar dene.'; cls += ' warn'; }
-    else if (L.loading && !L.view) t = 'Sıralama yükleniyor…';
-    else if (L.view && L.view.empty) t = 'Henüz sıralamada kimse yok. İlk sen ol! 🚀';
+    else if (L.error) { t = 'Sıralama yüklenemedi. Bağlantını kontrol edip yenile.'; cls += ' warn'; }
+    else if (L.loading && !L.view) t = 'Sıralama derleniyor…';
+    else if (L.view && L.view.empty) t = 'Liste henüz boş. Birinciliği kapmak için tek proje yeter.';
     el.status.textContent = t;
     el.status.className = cls + (t ? '' : ' hidden');
+    if (L.error === 'failed' && configured()) {
+      var rb = node('button', 'btn ghost lb-retry', 'Yenile'); rb.type = 'button'; rb.id = 'lbRetry';
+      rb.disabled = L.loading;
+      rb.addEventListener('click', manualRefresh);
+      el.status.appendChild(node('br')); el.status.appendChild(rb);
+    }
     el.refresh.disabled = L.loading || !configured();
-    el.refresh.textContent = L.loading ? '↻ Yükleniyor…' : '↻ Yenile';
+    el.refresh.textContent = '↻ Yenile';
   }
   function renderJoin(focus) {
     if (!el.join) return;
@@ -266,8 +296,8 @@
     box.classList.remove('hidden');
     box.className = 'lb-join';
     if (!u) {
-      box.appendChild(node('p', null, 'Sen de listede yer almak ister misin? Giriş yap ve bir takma ad seç; ilerlemen buluta kaydedilir, ajansın burada görünür.'));
-      var b = node('button', 'btn primary', 'Giriş yap ve katıl');
+      box.appendChild(node('p', null, 'Listeye girmek için giriş yap. İlerlemen de buluta kaydolur.'));
+      var b = node('button', 'btn primary', 'Giriş yap');
       b.type = 'button'; b.id = 'lbSignIn';
       b.addEventListener('click', function () { var c = cloud(); if (c) c.open(); });
       box.appendChild(b);
@@ -281,27 +311,28 @@
       box.appendChild(rb);
       return;
     }
-    if (!L.nickname || L.editing) {
+    if (!L.nickname || L.editing || L.hidden) {
       box.classList.add('form');
+      if (L.hidden) box.appendChild(node('p', 'lb-flag', STATUS_TEXT.hidden));
       var f = node('form', 'lb-form'); f.id = 'lbNickForm'; f.noValidate = true;
-      var lab = node('label', 'lb-label', L.editing ? 'Yeni takma adın' : 'Sıralamada görünecek takma adını seç');
+      var lab = node('label', 'lb-label', 'Listede hangi adla görünmek istersin?');
       lab.htmlFor = 'lbNick';
       var row = node('div', 'lb-form-row');
       var inp = node('input'); inp.id = 'lbNick'; inp.type = 'text'; inp.maxLength = 16; inp.autocomplete = 'off';
-      inp.setAttribute('autocapitalize', 'off'); inp.spellcheck = false; inp.placeholder = 'ör. KodUstası';
-      inp.value = L.nickDraft || (L.editing ? L.nickname : '') || '';
+      inp.setAttribute('autocapitalize', 'off'); inp.spellcheck = false; inp.placeholder = 'Takma ad';
+      inp.value = L.nickDraft || (L.editing && !L.hidden ? L.nickname : '') || '';
       inp.setAttribute('aria-describedby', 'lbNickHint lbNickMsg');
-      var sb = node('button', 'btn primary', L.saving ? 'Kaydediliyor…' : (L.editing ? 'Kaydet' : 'Katıl'));
+      var sb = node('button', 'btn primary', L.saving ? 'Kaydediliyor…' : 'Listeye gir');
       sb.type = 'submit'; sb.id = 'lbNickSave'; sb.disabled = L.saving;
       row.appendChild(inp); row.appendChild(sb);
       f.appendChild(lab); f.appendChild(row);
-      var hint = node('p', 'lb-hint', '3–16 karakter: harf, rakam, _ veya . kullanabilirsin. E-posta adresin kimseye gösterilmez.');
+      var hint = node('p', 'lb-hint', '3-16 karakter. E-postan hiçbir yerde görünmez.');
       hint.id = 'lbNickHint';
       f.appendChild(hint);
       var msg = node('p', 'lb-msg', L.nickMsg); msg.id = 'lbNickMsg'; msg.setAttribute('aria-live', 'polite');
       if (!L.nickMsg) msg.classList.add('hidden');
       f.appendChild(msg);
-      if (L.editing) {
+      if (L.editing && !L.hidden) {
         var cb = node('button', 'acc-link', 'Vazgeç'); cb.type = 'button';
         cb.addEventListener('click', function () { L.editing = false; L.nickMsg = ''; L.nickDraft = ''; renderJoin(); });
         f.appendChild(cb);
@@ -312,13 +343,15 @@
       if (focus) setTimeout(function () { try { inp.focus(); } catch (e) {} }, 0);
       return;
     }
-    var p = node('p', 'lb-joined');
-    p.appendChild(document.createTextNode('Sıralamada '));
-    p.appendChild(node('b', null, L.nickname));
-    p.appendChild(document.createTextNode(' olarak görünüyorsun.'));
-    box.appendChild(p);
     var me = L.view && L.view.me;
-    if (L.view && !me) box.appendChild(node('p', 'lb-hint', 'Kaydın buluta yüklenince burada görüneceksin.'));
+    if (me) {
+      box.appendChild(node('p', 'lb-joined', ownRankText(me.rank)));
+      if (me.rank === 1) box.appendChild(node('p', 'lb-top', 'Zirvedesin. Logoyu büyütmenin tam zamanı.'));
+    } else if (L.view && L.view.meStatus === 'pending') {
+      box.appendChild(node('p', 'lb-flag', STATUS_TEXT.pending));
+    } else if (L.view) {
+      box.appendChild(node('p', 'lb-hint', 'Kaydın buluta yüklenince burada görüneceksin.'));
+    }
     var acts = node('div', 'lb-actions');
     if (me) {
       var sh = node('button', 'btn ghost', '📣 Sıramı paylaş'); sh.type = 'button'; sh.id = 'lbShare';
@@ -335,11 +368,12 @@
     renderStatus(); renderList(); renderJoin();
   }
 
+  function manualRefresh() { if (signedUser()) { L.profileError = false; loadProfile(true); } refresh(); }
   function start() {
     ['lbList', 'lbMe', 'lbStatus', 'lbJoin', 'lbRefresh'].forEach(function (id) { el[id] = document.getElementById(id); });
     el.list = el.lbList; el.me = el.lbMe; el.status = el.lbStatus; el.join = el.lbJoin; el.refresh = el.lbRefresh;
     if (!el.list) return;
-    el.refresh.addEventListener('click', function () { if (signedUser()) { L.profileError = false; loadProfile(); } refresh(); });
+    el.refresh.addEventListener('click', manualRefresh);
     root.addEventListener('online', function () { if (visible()) refresh(); });
     root.addEventListener('offline', function () { if (visible()) { L.error = 'offline'; render(); } });
     var s = cstate();
@@ -351,8 +385,9 @@
   K.onLeaderboardShown = onShown;
   K.onCloudRender = onCloudRender;
   K.leaderboard = {
-    state: L, refresh: refresh, validateNickname: validateNickname, nickKey: nickKey, buildView: buildView,
-    serverNickError: serverNickError, messages: MESSAGES, shareText: shareText, stageLabel: stageLabel, rankBadge: rankBadge, LIMIT: LIMIT
+    state: L, refresh: refresh, validateNickname: validateNickname, normalizeNickname: normalizeNickname, nickKey: nickKey, buildView: buildView,
+    serverNickError: serverNickError, messages: MESSAGES, statusText: STATUS_TEXT, ownRankText: ownRankText, shareText: shareText,
+    stageLabel: stageLabel, rankBadge: rankBadge, LIMIT: LIMIT, STALE_MS: STALE_MS, GAME: GAME
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);

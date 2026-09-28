@@ -324,6 +324,10 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .lb-form-row .btn.primary { width: auto; flex: none; margin-top: 0; padding: 9px 18px; }
 .lb-hint { color: var(--muted); font-size: .78rem; margin: 0; }
 .lb-join .lb-msg { color: var(--gold); font-weight: 700; font-size: .85rem; margin: 0; }
+.lb-join .lb-flag { color: var(--gold); font-weight: 700; }
+.lb-join .lb-joined { font-weight: 800; font-size: 1rem; }
+.lb-join .lb-top { color: var(--gold); font-weight: 700; }
+.lb-status .lb-retry { margin-top: 10px; min-height: 40px; padding: 7px 18px; width: auto; }
 .lb-actions { display: flex; align-items: center; justify-content: space-between; gap: 4px 8px; flex-wrap: wrap; }
 .lb-actions .btn { flex: none; min-height: 40px; padding: 7px 12px; font-size: .88rem; }
 .lb-actions .acc-link { font-size: .85rem; }

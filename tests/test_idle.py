@@ -197,17 +197,32 @@ with sync_playwright() as p:
 
     # ---------------------------------------------------------------- sıralama: saf mantık (takma ad, görünüm, paylaşım)
     LB = 'Kodhane.leaderboard'
-    vcases = ev("""['Çağrı_01', 'ab', 'abcdefghijklmnopq', 'ali veli', 'a-b', '...', '_x.', 'Kodhane', 'x_0r0spu', 'Nazım', 'İlker.K', '  KodUstası  ', 'NAZI', 'grape']
+    vcases = ev("""['Çağrı_01', 'ab', 'abcdefghijklmnopq', 'ali veli', 'a-b', '...', '_x.', 'Kodhane', 'x_0r0spu', 'Nazım', 'İlker.K', '  KodUstası  ', 'NAZI', 'grape',
+       'Ali  Veli', 'kod-ustası_1', '- _ -', '  a  ', 'a    b', 'K o d-h_a n e', 'oro spu', 'a\tb', 'emoji😀x', 'Şule Öz-Ün_16kr', 'Şule Öz-Ün_17kars']
       .map(n => { const v = Kodhane.leaderboard.validateNickname(n); return [n, v.ok, v.error, v.value]; })""")
-    exp = {'Çağrı_01': (True, None), 'ab': (False, 'too_short'), 'abcdefghijklmnopq': (False, 'too_long'), 'ali veli': (False, 'invalid_chars'),
-           'a-b': (False, 'invalid_chars'), '...': (False, 'invalid_chars'), '_x.': (True, None), 'Kodhane': (False, 'blocked'), 'x_0r0spu': (False, 'blocked'),
-           'Nazım': (True, None), 'İlker.K': (True, None), '  KodUstası  ': (True, None), 'NAZI': (False, 'blocked'), 'grape': (True, None)}
+    exp = {'Çağrı_01': (True, None), 'ab': (False, 'too_short'), 'abcdefghijklmnopq': (False, 'too_long'), 'ali veli': (True, None),
+           'a-b': (True, None), '...': (False, 'invalid_chars'), '_x.': (False, 'invalid_chars'), 'Kodhane': (False, 'blocked'), 'x_0r0spu': (False, 'blocked'),
+           'Nazım': (True, None), 'İlker.K': (False, 'invalid_chars'), '  KodUstası  ': (True, None), 'NAZI': (False, 'blocked'), 'grape': (True, None),
+           'Ali  Veli': (True, None), 'kod-ustası_1': (True, None), '- _ -': (False, 'invalid_chars'), '  a  ': (False, 'too_short'), 'a    b': (True, None),
+           'K o d-h_a n e': (False, 'blocked'), 'oro spu': (False, 'blocked'), 'a\tb': (False, 'invalid_chars'), 'emoji😀x': (False, 'invalid_chars'),
+           'Şule Öz-Ün_16kr': (True, None), 'Şule Öz-Ün_17kars': (False, 'too_long')}
     bad = [c for c in vcases if (c[1], c[2]) != exp[c[0]]]
     check('lb: nickname validation (length, chars, Turkish letters, blocklist)', not bad, json.dumps(bad, ensure_ascii=False))
     check('lb: nickname trimmed', [c[3] for c in vcases if c[0] == '  KodUstası  '] == ['KodUstası'])
+    check('lb: repeated spaces collapsed', [c[3] for c in vcases if c[0] in ('Ali  Veli', 'a    b')] == ['Ali Veli', 'a b'])
     check('lb: case-insensitive key is Turkish-aware (IŞIK = ışık = Işık)', ev(LB + ".nickKey('IŞIK') === " + LB + ".nickKey('ışık') && " + LB + ".nickKey('Işık') === " + LB + ".nickKey('işik') && " + LB + ".nickKey('ÇAĞRI') === 'çağri'"))
     msgs = ev(LB + '.messages')
-    check('lb: Turkish validation messages', 'en az 3' in msgs['too_short'] and 'en fazla 16' in msgs['too_long'] and 'harf, rakam' in msgs['invalid_chars'] and 'başka bir oyuncuda' in msgs['taken'], json.dumps(msgs, ensure_ascii=False)[:200])
+    check('lb: Turkish validation messages (exact copy)', msgs['too_short'] == 'Takma ad 3-16 karakter olmalı.' and msgs['too_long'] == 'Takma ad 3-16 karakter olmalı.'
+          and msgs['invalid_chars'] == 'Harf, rakam, boşluk, - ve _ kullanabilirsin.' and msgs['taken'] == 'Bu ad kapılmış. Başka bir tane dene.'
+          and msgs['blocked'] == 'Bu ad listeye uygun değil. Başka bir ad dene.', json.dumps(msgs, ensure_ascii=False)[:300])
+    st = ev(LB + '.statusText')
+    check('lb: pending/hidden copy', st == {'pending': 'Puanın kontrol ediliyor. Kısa süre içinde listede görünürsün.', 'hidden': 'Takma adın listeden kaldırıldı. Yeni bir ad seçebilirsin.'}, json.dumps(st, ensure_ascii=False))
+    check('lb: own rank text, ~60 s cache, game id', ev(LB + '.ownRankText(4)') == 'Sen: #4' and ev(LB + '.STALE_MS') == 60000 and ev(LB + '.GAME') == 'kodhane')
+    v3 = ev("""(() => { const a = Kodhane.leaderboard.buildView([{rank:1,nickname:'a',score:10,stage:5,is_me:false,status:'ok'},
+        {rank:null,nickname:'ben',score:null,stage:null,is_me:true,status:'pending'}], 50);
+      const b = Kodhane.leaderboard.buildView([{rank:null,nickname:'ben',score:null,stage:null,is_me:true,status:'hidden'}], 50);
+      return [a.top.length, a.me, a.pinned, a.meStatus, b.empty, b.meStatus]; })()""")
+    check('lb: pending/hidden own rows never listed, flagged via meStatus', v3 == [1, None, None, 'pending', True, 'hidden'], json.dumps(v3))
     check('lb: server errors mapped (23505 taken, 23514 reasons)', ev("""[{code:'23505', message:'duplicate key'}, {code:'23514', message:'nickname_too_short'}, {code:'23514', message:'nickname_invalid_chars'},
       {code:'23514', message:'nickname_blocked'}, {message:'TypeError: Failed to fetch'}, {code:'500'}].map(e => Kodhane.leaderboard.serverNickError(e)).join(',')""") == 'taken,too_short,invalid_chars,blocked,offline,failed')
     view = ev("""(() => { const rows = [];
@@ -221,7 +236,7 @@ with sync_playwright() as p:
     check('lb: own row inside top list is not pinned twice', view2['pinned'] is None and view2['me']['nickname'] == 'ben' and len(view2['top']) == 2)
     check('lb: empty view', ev("Kodhane.leaderboard.buildView([], 50).empty") is True)
     check('lb: share text', ev(LB + ".shareText(7, 'https://thejackaltr.github.io/kodhane/')") == 'Kodhane sıralamasında #7. sıradayım! Sen de ajansını kur: https://thejackaltr.github.io/kodhane/')
-    check('lb: stage label + medal badges', ev(LB + '.stageLabel(5)') == '🌐 Global Holding' and ev(LB + '.stageLabel(null)') == '' and ev("[1,2,3,4].map(Kodhane.leaderboard.rankBadge).join(' ')") == '🥇 🥈 🥉 #4')
+    check('lb: stage label + medal badges', ev(LB + '.stageLabel(5)') == '🌐 Global Holding' and ev(LB + '.stageLabel(null)') == '' and ev(LB + '.stageLabel(7)') == 'Aşama 8' and ev("[1,2,3,4].map(Kodhane.leaderboard.rankBadge).join(' ')") == '🥇 🥈 🥉 #4')
     check('lb: same number format as the game', ev("Kodhane.tl(9.25e9)") == '9,25 Mr TL')
     big = ev("[1e30, 1.234e30, 9.99e32, 1e36, 1.2e36, 1.25e21, 9007199254740993, 1.7976931348623157e308, NaN].map(Kodhane.tl)")
     check('huge numbers: suffixes up to Des, then scientific 1,2e36 (no int overflow)',
@@ -398,12 +413,13 @@ with sync_playwright() as p:
     # ---------------------------------------------------------------- sıralama sekmesi (masaüstü, Supabase erişilemez)
     page.click('[data-tab="siralama"]')
     ok = True
-    try: page.wait_for_function("document.getElementById('lbStatus').textContent.includes('yüklenemedi')", timeout=8000)
+    try: page.wait_for_function("document.getElementById('lbStatus').textContent.includes('Sıralama yüklenemedi. Bağlantını kontrol edip yenile.')", timeout=8000)
     except Exception: ok = False
     check('lb tab: desktop tab shows title + score note', page.is_visible('#tab-siralama') and '🏆 Sıralama' in page.inner_text('#tab-siralama')
           and page.inner_text('#lbInfo') == 'Puan, oyuna başladığından beri kazandığın toplam para. Yatırım turunda sıfırlanmaz.')
-    check('lb tab: friendly error when service unreachable', ok, page.inner_text('#lbStatus'))
-    check('lb tab: guest CTA to sign in and join', page.is_visible('#lbSignIn') and page.inner_text('#lbSignIn') == 'Giriş yap ve katıl')
+    check('lb tab: friendly error when service unreachable (+ Yenile button)', ok and page.is_visible('#lbRetry') and page.inner_text('#lbRetry') == 'Yenile', page.inner_text('#lbStatus'))
+    check('lb tab: guest CTA to sign in and join', page.is_visible('#lbSignIn') and page.inner_text('#lbSignIn') == 'Giriş yap'
+          and 'Listeye girmek için giriş yap. İlerlemen de buluta kaydolur.' in page.inner_text('#lbJoin'))
     check('lb tab: guest request is the public RPC only', sb_hits and all('/rest/v1/rpc/kodhane_leaderboard' in u for u in sb_hits), str(sb_hits))
     ctx.set_offline(True)
     page.click('#lbRefresh'); page.wait_for_timeout(200)

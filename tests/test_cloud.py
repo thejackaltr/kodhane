@@ -114,16 +114,26 @@ class FakeSupabase:
         self.down = False
         self.profiles = {}   # uid -> nickname
         self.others = []     # takma adlı diğer oyuncular: (nickname, score, stage)
-        self.rpc_calls = []  # (authorization kullanıcı mı, p_limit)
+        self.rpc_calls = []  # (authorization kullanıcı mı, p_limit, p_game)
+        self.hidden = set()  # yöneticinin gizlediği uid'ler
+        self.pending = set() # puanı makul bulunmayan (kontrol edilen) uid'ler
 
     @staticmethod
     def nick_key(n):
         return n.translate(str.maketrans('ÇĞİIÖŞÜı', 'çğiiöşüi')).lower()
 
-    def board(self, me_uid, limit):
+    def board(self, me_uid, limit, game='kodhane'):
+        if (game or 'kodhane').strip().lower() != 'kodhane':
+            return []
         rows = [(n, sc, st, None) for n, sc, st in self.others]
+        flagged = []
         for uid, nick in self.profiles.items():
             d = (self.rows.get(uid) or {}).get('data') or {}
+            if uid in self.hidden or uid in self.pending:
+                if uid == me_uid:
+                    flagged.append({'rank': None, 'nickname': nick, 'score': None, 'stage': None, 'is_me': True,
+                                    'status': 'hidden' if uid in self.hidden else 'pending'})
+                continue
             if isinstance(d.get('totalEarned'), (int, float)) and d['totalEarned'] >= 0:
                 rows.append((nick, float(d['totalEarned']), d.get('stage'), uid))
         rows.sort(key=lambda r: -r[1])
@@ -132,8 +142,8 @@ class FakeSupabase:
             if i == 0 or r[1] != rows[i - 1][1]:
                 rank = i + 1
             if i < limit or (me_uid and r[3] == me_uid):
-                out.append({'rank': rank, 'nickname': r[0], 'score': r[1], 'stage': r[2], 'is_me': bool(me_uid) and r[3] == me_uid})
-        return out
+                out.append({'rank': rank, 'nickname': r[0], 'score': r[1], 'stage': r[2], 'is_me': bool(me_uid) and r[3] == me_uid, 'status': 'ok'})
+        return out + flagged
 
     def reply(self, route, status=200, body=None, headers=None):
         h = dict(CORS)
@@ -176,26 +186,28 @@ class FakeSupabase:
             return self.reply(route, 400, {'error': 'invalid_grant'})
         if u.path == RPC_PATH and method == 'POST':
             body = json.loads(req.post_data or '{}')
-            self.rpc_calls.append((bool(claims), body.get('p_limit')))
-            self.last_board = self.board(claims['sub'] if claims else None, int(body.get('p_limit') or 50))
+            self.rpc_calls.append((bool(claims), body.get('p_limit'), body.get('p_game')))
+            self.last_board = self.board(claims['sub'] if claims else None, int(body.get('p_limit') or 50), body.get('p_game', 'kodhane'))
             return self.reply(route, 200, self.last_board)
         if u.path == PROFILES_PATH:
             if not claims:
                 return self.reply(route, 401, {'code': '42501', 'message': 'permission denied for table kodhane_profiles'})
             uid = claims['sub']
             if method == 'GET':
-                rows = [{'nickname': self.profiles[uid]}] if uid in self.profiles else []
+                rows = [{'nickname': self.profiles[uid], 'hidden': uid in self.hidden}] if uid in self.profiles else []
                 return self.reply(route, 200, rows)
             if method == 'POST':
                 body = json.loads(req.post_data or '{}')
                 if body.get('user_id') != uid:
                     return self.reply(route, 403, {'code': '42501', 'message': 'new row violates row-level security policy'})
-                nick = (body.get('nickname') or '').strip()
+                nick = re.sub(' {2,}', ' ', (body.get('nickname') or '').strip())
                 if len(nick) < 3:
                     return self.reply(route, 400, {'code': '23514', 'message': 'nickname_too_short'})
                 if any(self.nick_key(n) == self.nick_key(nick) for o, n in self.profiles.items() if o != uid) or \
                         any(self.nick_key(n) == self.nick_key(nick) for n, _, _ in self.others):
                     return self.reply(route, 409, {'code': '23505', 'message': 'duplicate key value violates unique constraint "kodhane_profiles_nick_key_uniq"'})
+                if uid in self.profiles and self.nick_key(self.profiles[uid]) != self.nick_key(nick):
+                    self.hidden.discard(uid)  # yeni ad gizlemeyi kaldırır (sunucudaki tetikleyiciyle aynı)
                 self.profiles[uid] = nick
                 return route.fulfill(status=201, headers=CORS, body='')
         if u.path == SAVES_PATH:
@@ -659,8 +671,8 @@ with sync_playwright() as p:
     ctx.close()
 
     # ------------------------------------------------------------ 12) Sıralama: misafir (mobil), boş liste, çevrimdışı, hata
-    NAMES = ['KodUstası', 'Zeynep.dev', 'mert_42', 'AyşeYazılım', 'deployCuma', 'Çaycı_Hüseyin', 'Selin.K', 'burakbey', 'Pikselci', 'GeceMesaisi',
-             'Elif_UX', 'Tolga.io', 'Kübra', 'Emre_Ops', 'Duygu.pm', 'CanBackend']
+    NAMES = ['KodUstası', 'Zeynep Dev', 'mert_42', 'AyşeYazılım', 'deploy-cuma', 'Çaycı_Hüseyin', 'Selin K', 'burakbey', 'Pikselci', 'GeceMesaisi',
+             'Elif_UX', 'Tolga-io', 'Kübra', 'Emre_Ops', 'Duygu PM', 'CanBackend']
     def others(n, top=4.2e12, f=1.2):
         return [((NAMES[i] if i < len(NAMES) else 'oyuncu%02d' % i), round(top / (f ** i), 2), max(0, 5 - i // 12)) for i in range(n)]
     fake = FakeSupabase()
@@ -670,14 +682,15 @@ with sync_playwright() as p:
     page.tap('#bottomNav [data-view="siralama"]')
     ok = wait_until(page, "document.querySelectorAll('#lbList .lb-row').length === 50")
     check('lb guest: top 50 listed from RPC', ok, str(page.evaluate("document.querySelectorAll('#lbList .lb-row').length")))
-    check('lb guest: no SDK download, anonymous RPC call only', len(ctx.cdn_hits) == 0 and fake.rpc_calls and fake.rpc_calls[-1] == (False, 50)
+    check('lb guest: no SDK download, anonymous RPC call only', len(ctx.cdn_hits) == 0 and fake.rpc_calls and fake.rpc_calls[-1] == (False, 50, 'kodhane')
           and all(p in (RPC_PATH,) for _, p, _ in fake.log), str(fake.log[:3]))
     first = page.locator('#lbList .lb-row').first
     check('lb guest: row shows medal, nickname, stage and game-formatted score', first.locator('.lb-rank').inner_text() == '🥇'
           and first.locator('.lb-name').inner_text() == 'KodUstası' and first.locator('.lb-stage').inner_text() == '🌐 Global Holding'
           and first.locator('.lb-score').inner_text() == page.evaluate('Kodhane.tl(4.2e12)'), first.inner_text().replace('\n', ' | '))
     check('lb guest: info note + CTA', page.inner_text('#lbInfo') == 'Puan, oyuna başladığından beri kazandığın toplam para. Yatırım turunda sıfırlanmaz.'
-          and page.is_visible('#lbSignIn') and 'takma ad' in page.inner_text('#lbJoin'))
+          and page.is_visible('#lbSignIn') and page.inner_text('#lbSignIn') == 'Giriş yap'
+          and page.inner_text('#lbJoin').startswith('Listeye girmek için giriş yap. İlerlemen de buluta kaydolur.'))
     check('lb guest: no highlighted own row, nothing pinned', page.locator('.lb-row.me').count() == 0 and page.is_hidden('#lbMe'))
     check('lb guest: fits 390px', page.evaluate('document.documentElement.scrollWidth') <= 390)
     page.tap('#lbSignIn')
@@ -695,20 +708,27 @@ with sync_playwright() as p:
     check('lb guest: back online -> auto refresh, message cleared', ok, page.inner_text('#lbStatus'))
     fake.down = True
     page.tap('#lbRefresh')
-    ok = wait_until(page, "document.getElementById('lbStatus').textContent.includes('yüklenemedi')")
-    check('lb guest: service down -> friendly error', ok, page.inner_text('#lbStatus'))
+    ok = wait_until(page, "document.getElementById('lbStatus').textContent.startsWith('Sıralama yüklenemedi. Bağlantını kontrol edip yenile.')")
+    check('lb guest: service down -> exact error copy + "Yenile" button', ok and page.is_visible('#lbRetry') and page.inner_text('#lbRetry') == 'Yenile', page.inner_text('#lbStatus'))
     fake.down = False
     fake.others = []
-    page.tap('#lbRefresh')
-    ok = wait_until(page, "document.getElementById('lbStatus').textContent.includes('İlk sen ol')")
-    check('lb guest: empty state', ok and page.locator('#lbList .lb-row').count() == 0, page.inner_text('#lbStatus'))
+    n0 = len(fake.rpc_calls)
+    page.tap('#lbRetry')
+    ok = wait_until(page, "document.getElementById('lbStatus').textContent === 'Liste henüz boş. Birinciliği kapmak için tek proje yeter.'")
+    check('lb guest: "Yenile" in error state re-fetches; empty state copy', ok and len(fake.rpc_calls) == n0 + 1 and page.locator('#lbList .lb-row').count() == 0, page.inner_text('#lbStatus'))
+    loading = page.evaluate("(() => { const L = Kodhane.leaderboard.state; L.view = null; Kodhane.leaderboard.refresh(); return document.getElementById('lbStatus').textContent; })()")
+    check('lb guest: loading copy "Sıralama derleniyor…"', loading == 'Sıralama derleniyor…', loading)
+    wait_until(page, "!Kodhane.leaderboard.state.loading")
+    n0 = len(fake.rpc_calls)
+    page.tap('#bottomNav [data-view="kod"]'); page.tap('#bottomNav [data-view="siralama"]'); page.wait_for_timeout(300)
+    check('lb guest: results cached ~60 s (re-opening the tab does not re-fetch)', len(fake.rpc_calls) == n0, str(len(fake.rpc_calls) - n0))
     check('lb guest: no page errors', not perrs and not [e for e in errs if 'Failed to load resource' not in e and 'ERR_' not in e], '; '.join(perrs + errs))
     ctx.close()
 
     # ------------------------------------------------------------ 12b) Çok büyük puanlar (2^53 üstü, ~1e30, en büyük sonekin ötesi)
     # Sunucu puanı numeric döndürür: JSON'da uzun tam sayı olarak gelir (ör. 1234000000000000000000000000000).
     fake = FakeSupabase()
-    fake.others = [('Holding.X', 15 * 10 ** 39, 5), ('Trilyoner', 1234 * 10 ** 27, 5), ('IkiUzeri53', 2 ** 53 + 2, 4), ('Normal', 5.5e6, 3)]
+    fake.others = [('Holding X', 15 * 10 ** 39, 5), ('Trilyoner', 1234 * 10 ** 27, 5), ('IkiUzeri53', 2 ** 53 + 2, 4), ('<img src=x onerror="window.__xss=1">', 5.5e6, 7)]
     ctx = new_ctx(fake)
     page, errs, perrs = open_page(ctx)
     page.click('[data-tab="siralama"]')
@@ -717,6 +737,10 @@ with sync_playwright() as p:
     check('huge scores: parsed and formatted (1,5e40 / 1,23 Non / 9 Kat / 5,5 Mn)', ok and scores == ['1,5e40 TL', '1,23 Non TL', '9,01 Kat TL', '5,5 Mn TL'], str(scores))
     check('huge scores: ~1e30 parsed exactly as a JS number', page.evaluate("Kodhane.leaderboard.state.rows[1].score === 1.234e30 && Kodhane.leaderboard.state.rows[0].score === 1.5e40"))
     check('huge scores: order kept, no errors', page.evaluate("Kodhane.leaderboard.state.view.top.map(r => r.rank).join()") == '1,2,3,4' and not perrs, '; '.join(perrs))
+    page.wait_for_timeout(200)
+    check('nicknames rendered as text only (no HTML injection)', page.locator('#lbList .lb-name').nth(3).inner_text() == '<img src=x onerror="window.__xss=1">'
+          and page.locator('#lbList img').count() == 0 and page.evaluate('window.__xss') is None)
+    check('stage beyond the current 6 shown as "Aşama 8" (no fixed cap)', page.locator('#lbList .lb-stage').nth(3).inner_text() == 'Aşama 8')
     ctx.close()
 
     # ------------------------------------------------------------ 13) Sıralama: girişli ama takma adı yok -> form, doğrulama, alınmış ad, katılım, sabitlenmiş satır
@@ -730,16 +754,18 @@ with sync_playwright() as p:
     page.evaluate("document.getElementById('toast').innerHTML=''")
     page.tap('#bottomNav [data-view="siralama"]')
     ok = wait_until(page, "!!document.getElementById('lbNick')")
-    check('lb signed-in: nickname form shown (no nickname yet)', ok and 'takma adını seç' in page.inner_text('#lbJoin') and page.inner_text('#lbNickSave') == 'Katıl'
-          and 'E-posta adresin kimseye gösterilmez' in page.inner_text('#lbJoin'))
+    check('lb signed-in: nickname form copy (question, placeholder, button, note)', ok and page.inner_text('.lb-label') == 'Listede hangi adla görünmek istersin?'
+          and page.get_attribute('#lbNick', 'placeholder') == 'Takma ad' and page.inner_text('#lbNickSave') == 'Listeye gir'
+          and page.inner_text('#lbNickHint') == '3-16 karakter. E-postan hiçbir yerde görünmez.', page.inner_text('#lbJoin').replace('\n', ' | '))
     check('lb signed-in: not on the board before joining', page.locator('.lb-row.me').count() == 0 and fake.rpc_calls and fake.rpc_calls[-1][0] is True)
     posts0 = fake.count('POST', PROFILES_PATH)
-    for val, frag in (('ab', 'en az 3'), ('ali veli', 'harf, rakam'), ('Kodhane', 'uygun değil')):
+    for val, frag in (('ab', 'Takma ad 3-16 karakter olmalı.'), ('  a  ', 'Takma ad 3-16 karakter olmalı.'), ('ali.veli', 'Harf, rakam, boşluk, - ve _ kullanabilirsin.'),
+                      ('Kodhane', 'Bu ad listeye uygun değil. Başka bir ad dene.')):
         page.fill('#lbNick', val); page.tap('#lbNickSave'); page.wait_for_timeout(150)
-        check('lb form: %r -> Turkish message' % val, frag in page.inner_text('#lbNickMsg') and fake.count('POST', PROFILES_PATH) == posts0, page.inner_text('#lbNickMsg'))
+        check('lb form: %r -> exact message' % val, frag == page.inner_text('#lbNickMsg') and fake.count('POST', PROFILES_PATH) == posts0, page.inner_text('#lbNickMsg'))
     page.fill('#lbNick', 'kodustası'); page.tap('#lbNickSave')
-    ok = wait_until(page, "document.getElementById('lbNickMsg') && document.getElementById('lbNickMsg').textContent.includes('başka bir oyuncuda')")
-    check('lb form: taken nickname (case-insensitive, server 409) -> "başka bir oyuncuda"', ok and fake.count('POST', PROFILES_PATH) == posts0 + 1,
+    ok = wait_until(page, "document.getElementById('lbNickMsg') && document.getElementById('lbNickMsg').textContent === 'Bu ad kapılmış. Başka bir tane dene.'")
+    check('lb form: taken nickname (case-insensitive, server 409) -> "Bu ad kapılmış. Başka bir tane dene."', ok and fake.count('POST', PROFILES_PATH) == posts0 + 1,
           page.inner_text('#lbJoin').replace('\n', ' | '))
     check('lb form: typed value kept after error', page.input_value('#lbNick') == 'kodustası')
     page.fill('#lbNick', 'Çağrı_01'); page.tap('#lbNickSave')
@@ -751,16 +777,41 @@ with sync_playwright() as p:
     me_row = [r for r in fake.last_board if r['is_me']]
     check('lb join: own score = cloud save totalEarned (>= local 123.456), game formatting', me_row and me_row[0]['score'] >= 123456
           and page.locator('#lbMe .lb-score').inner_text() == page.evaluate('Kodhane.tl(%r)' % me_row[0]['score']), json.dumps(me_row))
-    check('lb join: joined text + toast', 'Çağrı_01' in page.inner_text('.lb-joined') and 'olarak görünüyorsun' in page.inner_text('.lb-joined') and 'Sıralamaya katıldın' in page.inner_text('#toast'))
+    check('lb join: "Sen: #61" + toast', page.inner_text('.lb-joined') == 'Sen: #61' and page.locator('.lb-top').count() == 0 and 'Sıralamaya katıldın' in page.inner_text('#toast'), page.inner_text('#lbJoin'))
     page.tap('#lbShare'); page.wait_for_timeout(150)
     shared = page.evaluate('window.__shared')
     check('lb share: text "Kodhane sıralamasında #61. sıradayım! Sen de ajansını kur: <link>"', shared and shared.get('text') == 'Kodhane sıralamasında #61. sıradayım! Sen de ajansını kur: ' + BASE + '/', json.dumps(shared, ensure_ascii=False))
     page.tap('#lbEdit')
     ok = wait_until(page, "!!document.getElementById('lbNick')")
-    check('lb rename: form prefilled with current nickname, "Kaydet"', ok and page.input_value('#lbNick') == 'Çağrı_01' and page.inner_text('#lbNickSave') == 'Kaydet')
-    page.fill('#lbNick', 'Çağrı.Yeni'); page.tap('#lbNickSave')
-    ok = wait_until(page, "document.querySelector('#lbMe .lb-name') && document.querySelector('#lbMe .lb-name').textContent.includes('Çağrı.Yeni')", 10000)
-    check('lb rename: saved and board refreshed', ok and fake.profiles[UID_L] == 'Çağrı.Yeni')
+    check('lb rename: form prefilled with current nickname, "Listeye gir"', ok and page.input_value('#lbNick') == 'Çağrı_01' and page.inner_text('#lbNickSave') == 'Listeye gir')
+    page.fill('#lbNick', '  Çağrı   Yeni '); page.tap('#lbNickSave')
+    ok = wait_until(page, "document.querySelector('#lbMe .lb-name') && document.querySelector('#lbMe .lb-name').textContent.includes('Çağrı Yeni')", 10000)
+    check('lb rename: space allowed, repeated spaces collapsed, board refreshed', ok and fake.profiles[UID_L] == 'Çağrı Yeni', json.dumps(fake.profiles, ensure_ascii=False))
+    # sunucu puanı makul bulmazsa: listede yok, kendi kutusunda "kontrol ediliyor" (neden söylenmez)
+    fake.pending.add(UID_L)
+    page.tap('#lbRefresh')
+    ok = wait_until(page, "document.getElementById('lbJoin').textContent.includes('Puanın kontrol ediliyor. Kısa süre içinde listede görünürsün.')", 10000)
+    check('lb pending: exact copy, no own row, no rank, no share', ok and page.locator('.lb-row.me').count() == 0 and page.locator('#lbShare').count() == 0
+          and page.is_hidden('#lbMe') and 'Sen:' not in page.inner_text('#lbJoin'), page.inner_text('#lbJoin').replace('\n', ' | '))
+    fake.pending.discard(UID_L)
+    # yönetici takma adı gizlerse: listede yok, mesaj + form; aynı ad gizli kalır, yeni ad gizlemeyi kaldırır
+    fake.hidden.add(UID_L)
+    page.tap('#lbRefresh')
+    ok = wait_until(page, "document.getElementById('lbJoin').textContent.includes('Takma adın listeden kaldırıldı. Yeni bir ad seçebilirsin.') && !!document.getElementById('lbNick')", 10000)
+    check('lb hidden: exact copy + nickname form (empty), not listed', ok and page.input_value('#lbNick') == '' and page.locator('.lb-row.me').count() == 0
+          and page.inner_text('#lbNickSave') == 'Listeye gir', page.inner_text('#lbJoin').replace('\n', ' | '))
+    page.fill('#lbNick', 'ÇAĞRI YENİ'); page.tap('#lbNickSave')
+    page.wait_for_timeout(600)
+    check('lb hidden: same name (other case) keeps hidden', UID_L in fake.hidden and 'listeden kaldırıldı' in page.inner_text('#lbJoin'), page.inner_text('#lbJoin').replace('\n', ' | '))
+    page.fill('#lbNick', 'Yeni-Ad_2'); page.tap('#lbNickSave')
+    ok = wait_until(page, "document.querySelector('#lbMe .lb-name') && document.querySelector('#lbMe .lb-name').textContent.includes('Yeni-Ad_2')", 10000)
+    check('lb hidden: new nickname clears hidden -> listed again', ok and UID_L not in fake.hidden and 'listeden kaldırıldı' not in page.inner_text('#lbJoin')
+          and page.inner_text('.lb-joined') == 'Sen: #61', page.inner_text('#lbJoin').replace('\n', ' | '))
+    # birinci olunca
+    fake.others = others(3, top=1000, f=2)
+    page.tap('#lbRefresh')
+    ok = wait_until(page, "document.querySelector('.lb-joined') && document.querySelector('.lb-joined').textContent === 'Sen: #1'", 10000)
+    check('lb #1: "Sen: #1" + "Zirvedesin. Logoyu büyütmenin tam zamanı."', ok and page.inner_text('.lb-top') == 'Zirvedesin. Logoyu büyütmenin tam zamanı.', page.inner_text('#lbJoin').replace('\n', ' | '))
     check('lb signed-in: fits 390px, no page errors', page.evaluate('document.documentElement.scrollWidth') <= 390 and not perrs, '; '.join(perrs))
     ctx.close()
 
@@ -779,7 +830,7 @@ with sync_playwright() as p:
     me_rank = page.evaluate("document.querySelector('#lbList .lb-row.me .lb-rank').textContent")
     check('lb in top list: own row highlighted in place, not pinned', ok and page.is_hidden('#lbMe') and me_rank.startswith('#'), me_rank)
     page.evaluate("document.getElementById('toast').innerHTML=''"); page.wait_for_timeout(300)
-    page.screenshot(path=SS + 'v3-siralama-mobile.png')
+    page.screenshot(path=SS + 'v3-siralama-mobile-2.png')
     ctx.close()
 
     b.close()
