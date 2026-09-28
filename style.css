@@ -11,6 +11,12 @@
   --gold: #ffc857;
   --danger: #ff5c7a;
   --radius: 14px;
+  /* iOS ana ekran (standalone, viewport-fit=cover + black-translucent) güvenli alanları.
+     Normal tarayıcıda hepsi 0'dır; testler bu değişkenleri geçersiz kılarak çentiği taklit eder. */
+  --sat: env(safe-area-inset-top, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
@@ -20,7 +26,7 @@ body {
               radial-gradient(900px 500px at 110% 0%, #0d3b3a 0%, transparent 55%), var(--bg);
   color: var(--text);
   min-height: 100vh;
-  padding: 12px clamp(10px, 2vw, 24px) 40px;
+  padding: calc(12px + var(--sat)) calc(clamp(10px, 2vw, 24px) + var(--sar)) calc(40px + var(--sab)) calc(clamp(10px, 2vw, 24px) + var(--sal));
   -webkit-tap-highlight-color: transparent;
   overflow-x: hidden;
 }
@@ -220,7 +226,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
 /* Event card */
 .event-card {
-  position: fixed; right: 16px; bottom: 16px; z-index: 35; width: min(380px, calc(100vw - 32px));
+  position: fixed; right: calc(16px + var(--sar)); bottom: calc(16px + var(--sab)); z-index: 35; width: min(380px, calc(100vw - 32px));
   background: linear-gradient(160deg, #1f2650, var(--card)); border: 1px solid #7c5cff88; border-radius: 16px;
   padding: 14px; box-shadow: 0 18px 50px #000a; animation: pop .3s ease-out;
 }
@@ -240,7 +246,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
 /* Toasts */
 .toasts {
-  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 40;
+  position: fixed; left: 50%; bottom: calc(20px + var(--sab)); transform: translateX(-50%); z-index: 40;
   display: flex; flex-direction: column; align-items: center; gap: 6px; width: min(480px, 92vw); pointer-events: none;
 }
 .toast-item {
@@ -251,14 +257,14 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
 /* Update bar */
 .update-bar {
-  position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 60;
+  position: fixed; top: calc(12px + var(--sat)); left: 50%; transform: translateX(-50%); z-index: 60;
   display: flex; align-items: center; gap: 12px; background: var(--card); border: 1px solid var(--accent);
   border-radius: 12px; padding: 8px 10px 8px 14px; box-shadow: 0 10px 30px #0009; font-weight: 700;
 }
 .update-bar .btn { flex: none; background: var(--accent); border-color: transparent; color: #fff; min-height: 40px; }
 
 /* Modal */
-.modal { position: fixed; inset: 0; z-index: 50; background: #0009; display: grid; place-items: center; padding: 16px; backdrop-filter: blur(3px); }
+.modal { position: fixed; inset: 0; z-index: 50; background: #0009; display: grid; place-items: center; padding: calc(16px + var(--sat)) calc(16px + var(--sar)) calc(16px + var(--sab)) calc(16px + var(--sal)); backdrop-filter: blur(3px); }
 .modal-card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 22px; max-width: 400px; width: 100%; text-align: center; animation: pop .25s ease; }
 .modal-emoji { font-size: 2.6rem; }
 .modal-card h3 { margin: 6px 0 8px; font-size: 1.3rem; }
@@ -297,13 +303,20 @@ button { font: inherit; color: inherit; cursor: pointer; }
   .click-panel { grid-column: 1 / -1; min-height: 260px; }
 }
 @media (max-width: 767px) {
-  body { padding: 8px 8px calc(84px + env(safe-area-inset-bottom)); }
+  body { padding: calc(8px + var(--sat)) calc(8px + var(--sar)) calc(84px + var(--sab)) calc(8px + var(--sal)); }
   .layout { grid-template-columns: 1fr; }
   .mhide { display: none !important; }
   .acc-label { display: none; }
   .account-btn { padding: 6px; justify-content: center; }
   .top-right { gap: 8px; }
-  .topbar { position: sticky; top: 0; z-index: 20; margin: -8px -8px 10px; padding: 8px; background: #0b0e1ae6; backdrop-filter: blur(6px); border-bottom: 1px solid var(--line); }
+  /* Üst çubuk durum çubuğunun altına kadar uzanır (opak arka plan): içerik saat/pil alanının arkasından görünmez,
+     çubuğun içeriği ise güvenli alanın hemen altından başlar. */
+  .topbar {
+    position: sticky; top: 0; z-index: 20;
+    margin: calc(-8px - var(--sat)) calc(-8px - var(--sar)) 10px calc(-8px - var(--sal));
+    padding: calc(8px + var(--sat)) calc(8px + var(--sar)) 8px calc(8px + var(--sal));
+    background: var(--bg); border-bottom: 1px solid var(--line);
+  }
   .click-panel { min-height: 0; padding: 22px 10px; grid-column: auto; }
   .click-btn { width: min(210px, 60vw); }
   .click-emoji { font-size: 2.6rem; }
@@ -315,14 +328,14 @@ button { font: inherit; color: inherit; cursor: pointer; }
   .upg-list, .ach-grid { max-height: none; }
   .tabs button { font-size: .78rem; padding: 7px 6px; }
   .client-offer { max-width: calc(100vw - 24px); }
-  .event-card { left: 8px; right: 8px; width: auto; bottom: calc(76px + env(safe-area-inset-bottom)); }
-  .toasts { bottom: auto; top: 72px; }
+  .event-card { left: calc(8px + var(--sal)); right: calc(8px + var(--sar)); width: auto; bottom: calc(76px + var(--sab)); }
+  .toasts { bottom: auto; top: calc(72px + var(--sat)); }
   .toast-item { font-size: .88rem; padding: 8px 12px; }
   .ach-grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
   .bottom-nav {
     display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 25;
     background: #0b0e1af2; border-top: 1px solid var(--line); backdrop-filter: blur(8px);
-    padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+    padding: 6px calc(4px + var(--sar)) calc(6px + var(--sab)) calc(4px + var(--sal));
   }
   .bottom-nav button {
     flex: 1; min-width: 0; min-height: 54px; border: 0; background: transparent; color: var(--muted); border-radius: 12px;

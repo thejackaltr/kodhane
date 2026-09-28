@@ -383,6 +383,44 @@ with sync_playwright() as p:
     check('mobile: event choice via tap', mev('Kodhane.state.eventsResolved') >= 1 and not visible('#eventCard'))
     check('no console errors (mobile)', not merr, '; '.join(merr))
 
+    # iOS ana ekran güvenli alanları (çentik/durum çubuğu + ana ekran çubuğu)
+    css = open(os.path.join(ROOT, 'style.css'), encoding='utf-8').read()
+    html = open(os.path.join(ROOT, 'index.html'), encoding='utf-8').read()
+    check('safe-area: CSS defines inset variables from env()',
+          all(('--%s: env(safe-area-inset-%s, 0px)' % (v, side)) in css for v, side in (('sat', 'top'), ('sar', 'right'), ('sab', 'bottom'), ('sal', 'left'))))
+    check('safe-area: header padding-top includes top inset', 'padding: calc(8px + var(--sat))' in css and 'margin: calc(-8px - var(--sat))' in css)
+    check('safe-area: bottom nav padding-bottom includes bottom inset', 'calc(6px + var(--sab))' in css)
+    check('safe-area: viewport-fit=cover + black-translucent + theme-color', 'viewport-fit=cover' in html and 'content="black-translucent"' in html and 'name="theme-color" content="#0b0e1a"' in html)
+    # Normal tarayıcıda (inset 0) üst çubuk eskisi gibi en üstte, 8px iç boşlukla
+    sctx = b.new_context(viewport={'width': 390, 'height': 844}, device_scale_factor=3, is_mobile=True, has_touch=True, locale='tr-TR')
+    sp = sctx.new_page(); serr = []
+    sp.on('pageerror', lambda e: serr.append(str(e)))
+    sp.goto(URL); sp.wait_for_selector('#clickBtn')
+    tb = sp.locator('.topbar').bounding_box(); br = sp.locator('.topbar .brand').bounding_box(); nv = sp.locator('#bottomNav').bounding_box()
+    check('safe-area: no inset -> header unchanged (top 0, content at 8px, nav at bottom)', abs(tb['y']) < 1 and 7 <= br['y'] <= 12 and abs(nv['y'] + nv['height'] - 844) < 1,
+          f"topbar y={tb['y']:.0f} brand y={br['y']:.0f} nav bottom={nv['y']+nv['height']:.0f}")
+    # iPhone ana ekranı taklidi: üst 47px, alt 34px güvenli alan
+    sp.add_style_tag(content=':root { --sat: 47px; --sab: 34px; }'); sp.wait_for_timeout(200)
+    tb = sp.locator('.topbar').bounding_box(); br = sp.locator('.topbar .brand').bounding_box(); mb = sp.locator('.top-right').bounding_box()
+    nv = sp.locator('#bottomNav').bounding_box(); btn = sp.locator('#bottomNav button').first.bounding_box()
+    bg = sp.evaluate("getComputedStyle(document.querySelector('.topbar')).backgroundColor")
+    check('safe-area: header background extends under status bar (starts at y=0, opaque)', abs(tb['y']) < 1 and bg == 'rgb(11, 14, 26)', f"topbar y={tb['y']:.0f} bg={bg}")
+    check('safe-area: header content below 47px top inset', br['y'] >= 47 and mb['y'] >= 47, f"brand y={br['y']:.0f} money/account y={mb['y']:.0f}")
+    check('safe-area: tab bar buttons above 34px bottom inset', btn['y'] + btn['height'] <= 844 - 34 + 0.5 and abs(nv['y'] + nv['height'] - 844) < 1,
+          f"button bottom={btn['y']+btn['height']:.0f} limit={844-34}")
+    sp.screenshot(path=SS + 'v3-safe-area.png')
+    # yeni oyunda sayfa kısa: kaydırılabilir olması için geçici dolgu ekle
+    sp.evaluate("document.body.appendChild(Object.assign(document.createElement('div'), {id: 'saFiller', style: 'height:1600px'}))")
+    sp.evaluate('window.scrollTo(0, 400)'); sp.wait_for_timeout(150)
+    tb2 = sp.locator('.topbar').bounding_box(); br2 = sp.locator('.topbar .brand').bounding_box()
+    check('safe-area: header stays pinned below status bar when scrolled', sp.evaluate('scrollY') > 100 and abs(tb2['y']) < 1 and br2['y'] >= 47, f"scrollY={sp.evaluate('scrollY')} topbar y={tb2['y']:.0f} brand y={br2['y']:.0f}")
+    sp.evaluate("document.getElementById('saFiller').remove(); window.scrollTo(0, 0)"); sp.wait_for_timeout(150)
+    sp.evaluate("Kodhane.spawnEvent('cuma')"); sp.wait_for_timeout(500)
+    card = sp.locator('#eventCard').bounding_box()
+    check('safe-area: event card above tab bar with inset', card['y'] + card['height'] <= nv['y'] + 1, f"card bottom={card['y']+card['height']:.0f} nav top={nv['y']:.0f}")
+    check('safe-area: no page errors', not serr, '; '.join(serr))
+    sctx.close()
+
     # file:// da çalışır (servis çalışanı olmadan)
     fctx = b.new_context(); fp = fctx.new_page(); ferr = []
     fp.on('pageerror', lambda e: ferr.append(str(e)))
