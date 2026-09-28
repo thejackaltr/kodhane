@@ -33,7 +33,7 @@ SAVE_KEY = 'kodhane_ajans_save_v2'
 AUTH_KEY = 'kodhane_auth_v1'
 SS = os.path.join(ROOT, 'screenshots') + os.sep
 COPY = json.load(open(os.path.join(ROOT, 'tests', 'fixtures', 'kodhane-reset-copy.json'), encoding='utf-8'))
-TEXT_SYNC = 'Oyuna başka bir cihazda ya da sekmede devam ettin. Güncel kayıt yüklendi.'  # geçici (copy dosyasında yok)
+TEXT_SYNC = COPY['reset.otherDeviceSync']
 CLOUD_JS = open(os.path.join(ROOT, 'cloud.js'), encoding='utf-8').read()
 SDK_URL = re.search(r"sdk: '([^']+)'", CLOUD_JS).group(1)
 CACHE = os.path.join(ROOT, 'tests', '.cache')
@@ -102,6 +102,7 @@ class FakeSB:
         self.log = []
         self.stale = []   # 409 yanıtları: (uid, message)
         self.last_post = None  # (Prefer, select) of the last save POST
+        self.fail_rpcs = set()  # bu RPC'ler 503 döner (hata metni testleri)
 
     def reply(self, route, status, body=None):
         route.fulfill(status=status, headers=dict(CORS, **{'content-type': 'application/json'}), body='' if body is None else json.dumps(body))
@@ -124,6 +125,8 @@ class FakeSB:
                 return self.reply(route, 200, [])
             if name == 'kodhane_count_event':
                 return self.reply(route, 200, True)
+            if name in self.fail_rpcs:
+                return self.reply(route, 503, {'message': 'service unavailable'})
             st, body = self.saves.rpc(uid, name, json.loads(req.post_data or '{}'))
             return self.reply(route, st, body)
         if u.path == '/rest/v1/kodhane_profiles':
@@ -410,6 +413,15 @@ with sync_playwright() as p:
     ctx = new_ctx(fake, save=seed_save(clicks=25, total=2500.0), signed=True, undo=2)
     pg = open_page(ctx)
     wait_js(pg, 'Kodhane.cloud.state.reconciled && Kodhane.cloud.state.lastPushAt > 0')
+    # sıfırlama RPC'si başarısız -> sıfırlama yok, yalnız onaylı reset.cloudFailed metni
+    fake.fail_rpcs = {RPC['reset']}
+    pg.evaluate("() => { window.__toasts = []; new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => window.__toasts.push(n.textContent)))).observe(document.getElementById('toast'), { childList: true }); }")
+    open_dialog(pg); mouse_hold(pg, 2300)
+    wait_js(pg, 'Kodhane.lastResetError', 12000)
+    pg.wait_for_timeout(300)
+    check('reset RPC fails -> not reset, toast exactly reset.cloudFailed', ev(pg, 'Kodhane.state.clicks') == 25 and COPY['reset.cloudFailed'] in [t.strip() for t in toasts(pg)]
+          and not any('Hiçbir şey silinmedi' in t for t in toasts(pg)), toasts(pg))
+    fake.fail_rpcs = set()
     open_dialog(pg); hold_reset(pg)
     pg.wait_for_timeout(2600)
     check('signed-in undo gone after {s}', pg.is_hidden('#undoBar'))
@@ -421,6 +433,13 @@ with sync_playwright() as p:
           and COPY['reset.backup'].replace('{d}', '30') in box and COPY['reset.restoreBtn'] in box, box)
     pg.click('#restoreBtn'); pg.wait_for_timeout(200)
     check('restore confirm dialog', pg.inner_text('#modalTitle') == COPY['reset.restoreTitle'] and COPY['reset.restoreBody'] in pg.inner_text('#modal'))
+    # geri yükleme RPC'si başarısız -> yalnız onaylı reset.restoreFailed metni, kayıt değişmez
+    fake.fail_rpcs = {RPC['restore']}
+    pg.click('#modalActions .btn.primary')
+    wait_js(pg, "(window.__toasts || []).some(t => t.indexOf('Yedek şu an') >= 0)", 12000)
+    check('restore RPC fails -> toast exactly reset.restoreFailed, save unchanged', COPY['reset.restoreFailed'] in [t.strip() for t in toasts(pg)] and ev(pg, 'Kodhane.state.clicks') == 0, toasts(pg))
+    fake.fail_rpcs = set()
+    pg.click('#restoreBtn'); pg.wait_for_timeout(200)
     pg.click('#modalActions .btn.primary')
     wait_js(pg, 'Kodhane.state.clicks === 25', 8000)
     pg.wait_for_timeout(300)
@@ -444,7 +463,7 @@ with sync_playwright() as p:
     check('device B stale write rejected by server (409 PT409 stale_revision)', len(fake.stale) > n409 and fake.stale[-1][1] == 'stale_revision', fake.stale)
     check('device B loads current (reset) save', ev(B, 'Kodhane.state.clicks') == 0 and ev(B, 'Kodhane.state.achievements') == [])
     B.wait_for_timeout(300)
-    check('device B shows otherDevice with restore sentence (signed in)', any(COPY['reset.otherDevice'] in t for t in toasts(B)), toasts(B))
+    check('device B shows otherDevice with restore sentence (signed in), not the sync text', any(COPY['reset.otherDevice'] in t for t in toasts(B)) and not any(TEXT_SYNC in t for t in toasts(B)), toasts(B))
     check('reset-caused 409 -> kind reset (startedAt newer)', ev(B, 'Kodhane.lastAdoptKind') == 'reset', ev(B, 'Kodhane.lastAdoptKind'))
     check('server row not overwritten by B', fake.rows[UID]['data']['clicks'] == 0)
     # 409 -> kayıt bir kez yüklendi, gerçek girdiye kadar push yok
@@ -466,7 +485,7 @@ with sync_playwright() as p:
     A.wait_for_timeout(300)
     check('reverse: device A stale -> current save + otherDevice', ev(A, 'Kodhane.state.clicks') == 0 and any(COPY['reset.otherDevice'] in t for t in toasts(A))
           and fake.rows[UID]['data']['clicks'] == 0, toasts(A))
-    # eşzamanlı oyun (sıfırlama yok): A ilerleme yazar, B bayat -> genel senkron metni (geçici otherDeviceSync)
+    # eşzamanlı oyun (sıfırlama yok): A ilerleme yazar, B bayat -> yalnız reset.otherDeviceSync
     A.mouse.click(3, 3)
     ev(A, 'Kodhane.state.clicks = 11'); ok = ev(A, 'Kodhane.cloud.push(true)')
     check('A (current after reload of the row) writes progress', ok is True and fake.rows[UID]['data']['clicks'] == 11)
@@ -475,7 +494,7 @@ with sync_playwright() as p:
     wait_js(B, "Kodhane.lastAdoptKind === 'sync'", 8000)
     B.wait_for_timeout(300)
     check('concurrent-play 409 -> generic sync text (not the reset text)', ev(B, 'Kodhane.lastAdoptKind') == 'sync' and ev(B, 'Kodhane.state.clicks') == 11
-          and any(TEXT_SYNC in t for t in toasts(B)) and not any(COPY['reset.otherDevice'] in t for t in toasts(B)), [ev(B, 'Kodhane.lastAdoptKind'), toasts(B)])
+          and any(t.strip() == TEXT_SYNC for t in toasts(B)) and not any(COPY['reset.otherDevice'] in t for t in toasts(B)), [ev(B, 'Kodhane.lastAdoptKind'), toasts(B)])
     check('server kept A progress (no overwrite by stale B)', fake.rows[UID]['data']['clicks'] == 11)
     check('best_score never decreased on the server across resets / stale loads', fake.rows[UID]['best_score'] >= 5000, fake.rows[UID].get('best_score'))
     check('two devices: no page errors', not A.errs and not B.errs, A.errs + B.errs)

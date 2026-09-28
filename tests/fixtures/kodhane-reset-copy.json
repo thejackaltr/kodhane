@@ -18,5 +18,8 @@
   "reset.restoreBody": "Yedekteki kayıt, şu anki ilerlemenin yerine geçer.",
   "reset.restoreBtn": "Geri yükle",
   "reset.restoreDone": "Kaydın geri yüklendi.",
-  "reset.otherDevice": "Kaydın başka bir cihazda sıfırlandı. Bu cihazda da oyun baştan başlıyor. Yanlışlıkla olduysa yedeği geri yükleyebilirsin."
+  "reset.otherDevice": "Kaydın başka bir cihazda sıfırlandı. Bu cihazda da oyun baştan başlıyor. Yanlışlıkla olduysa yedeği geri yükleyebilirsin.",
+  "reset.otherDeviceSync": "Oyuna başka bir cihazda ya da sekmede devam ettin. Güncel kaydın yüklendi.",
+  "reset.cloudFailed": "Kaydın şu an sıfırlanamadı. Bağlantını kontrol edip tekrar dene.",
+  "reset.restoreFailed": "Yedek şu an geri yüklenemedi. Bağlantını kontrol edip tekrar dene."
 }

@@ -23,8 +23,12 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
   check('every copy key present with verbatim wording', Object.keys(copy).every((k) => JSON.stringify(T[k]) === JSON.stringify(copy[k])),
     Object.keys(copy).filter((k) => JSON.stringify(T[k]) !== JSON.stringify(copy[k])));
   const extra = Object.keys(T).filter((k) => !(k in copy));
-  check('only the two flagged non-copy keys added', extra.join(',') === 'reset.cloudFailed,reset.restoreFailed,reset.otherDeviceSync', extra);
+  check('no non-copy keys (Yazı approved otherDeviceSync / cloudFailed / restoreFailed are in the copy)', extra.length === 0, extra);
+  check('approved texts exact', T['reset.otherDeviceSync'] === 'Oyuna başka bir cihazda ya da sekmede devam ettin. Güncel kaydın yüklendi.' &&
+    T['reset.cloudFailed'] === 'Kaydın şu an sıfırlanamadı. Bağlantını kontrol edip tekrar dene.' &&
+    T['reset.restoreFailed'] === 'Yedek şu an geri yüklenemedi. Bağlantını kontrol edip tekrar dene.');
   const src = fs.readFileSync(path.join(ROOT, 'game.js'), 'utf8');
+  check('cloudFailed shown text has nothing appended', K.resetText('reset.cloudFailed') === copy['reset.cloudFailed'] && !/Hiçbir şey silinmedi/.test(src));
   check('old hardcoded reset texts removed', !/kalıcı olarak silinecek|buluttaki kaydın da silinecek|Kaydı sıfırla\?|Evet, sıfırla/.test(src));
   check('copy strings appear only once in game.js (single RESET_TEXT object)', Object.keys(copy).every((k) => typeof copy[k] !== 'string' || copy[k].length < 20 || src.split(copy[k]).length === 2));
   check('default config: undo 10 s, backup 30 days', K.CFG.reset.undoSeconds === 10 && K.CFG.reset.backupDays === 30);
@@ -227,6 +231,14 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
 
   // ---------------------------------------------------------------- staleKind
   check('staleKind empty -> reset', staleKind({ startedAt: 1000 }, {}) === 'reset');
+  {
+    const copyT = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'kodhane-reset-copy.json'), 'utf8'));
+    const shown = (mine, data) => K.otherDeviceText(true, staleKind(mine, data));
+    check('loaded save = reset (empty) -> reset.otherDevice exact', shown({ startedAt: 1000 }, {}) === copyT['reset.otherDevice']);
+    check('loaded save = reset (newer start) -> reset.otherDevice exact', shown({ startedAt: 1000 }, { startedAt: 90000, totalEarned: 0 }) === copyT['reset.otherDevice']);
+    check('normal continuation -> only reset.otherDeviceSync exact', shown({ startedAt: 5000 }, { startedAt: 5000, totalEarned: 99 }) === copyT['reset.otherDeviceSync'] &&
+      K.otherDeviceText(false, 'sync') === copyT['reset.otherDeviceSync']);
+  }
   check('staleKind newer startedAt -> reset', staleKind({ startedAt: 1000 }, { startedAt: 5000, totalEarned: 0 }) === 'reset');
   check('staleKind same/older startedAt -> sync', staleKind({ startedAt: 5000 }, { startedAt: 5000, totalEarned: 9 }) === 'sync' && staleKind({ startedAt: 5000 }, { startedAt: 4000, totalEarned: 9 }) === 'sync');
 

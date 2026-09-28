@@ -110,12 +110,11 @@
     "reset.restoreBtn": "Geri yükle",
     "reset.restoreDone": "Kaydın geri yüklendi.",
     "reset.otherDevice": "Kaydın başka bir cihazda sıfırlandı. Bu cihazda da oyun baştan başlıyor. Yanlışlıkla olduysa yedeği geri yükleyebilirsin.",
-    // Aşağıdaki iki metin copy dosyasında YOK (metin yazarının onayı bekleniyor):
-    // girişli oyuncuda kodhane_reset_save RPC'si başarısız olursa (sıfırlama yapılmaz) / yedekten geri yükleme başarısız olursa
-    "reset.cloudFailed": "Bulut kaydın şu an sıfırlanamıyor. İnternet bağlantını kontrol edip tekrar dene.",
-    "reset.restoreFailed": "Yedek geri yüklenemedi. Bağlantını kontrol edip tekrar dene.",
-    // copy dosyasında YOK — eşzamanlı oyun 409'u (sıfırlama değil); Açık Ofis reset.otherDeviceSync ile aynı anlam
-    "reset.otherDeviceSync": "Oyuna başka bir cihazda ya da sekmede devam ettin. Güncel kayıt yüklendi."
+    // girişli oyuncuda kodhane_reset_save RPC'si başarısız (sıfırlama yapılmaz) / yedekten geri yükleme başarısız /
+    // eşzamanlı oyun 409'u (sıfırlama değil)
+    "reset.cloudFailed": "Kaydın şu an sıfırlanamadı. Bağlantını kontrol edip tekrar dene.",
+    "reset.restoreFailed": "Yedek şu an geri yüklenemedi. Bağlantını kontrol edip tekrar dene.",
+    "reset.otherDeviceSync": "Oyuna başka bir cihazda ya da sekmede devam ettin. Güncel kaydın yüklendi."
   };
   // Yalnızca girişli oyunculara gösterilen metinler (misafir asla görmez)
   var RESET_SIGNED_ONLY = ['reset.backup', 'reset.restoreTitle', 'reset.restoreBody', 'reset.restoreBtn', 'reset.restoreDone', 'reset.restoreFailed', 'reset.cloudFailed'];
@@ -1303,7 +1302,8 @@
     applySave(d);
     Core.lastAdopt = sk ? 'otherDevice' : kind;   // uyumluluk: 409/başka sekme = 'otherDevice'
     Core.lastAdoptKind = sk || null;               // 'reset' | 'sync' (staleKind)
-    if (sk === 'reset' || sk === 'sync') toast('🔄 ' + otherDeviceText(signedIn(), sk), 7000);
+    if (sk === 'reset') toast('🔄 ' + otherDeviceText(signedIn(), sk), 7000);
+    else if (sk === 'sync') toast(otherDeviceText(signedIn(), sk), 7000);   // yalnız onaylı metin
     else if (kind === 'undoDone') toast('↩️ ' + resetText('reset.undoDone'), 4500);
     refreshRestoreBox();
   }
@@ -1437,7 +1437,7 @@
     p.then(finish, function (e) {
       resetting = false; resetBusy = false; closeModal();
       Core.lastResetError = (e && (e.code || e.message)) || 'error';
-      toast('⚠️ ' + resetText('reset.cloudFailed'), 5000);
+      toast(resetText('reset.cloudFailed'), 5000);
     });
     function finish(res) {
       var epoch = newEpoch();
@@ -1536,7 +1536,7 @@
           toast('✅ ' + resetText('reset.restoreDone'), 4500);
           refreshRestoreBox();
         }).catch(function () {
-          toast('⚠️ ' + resetText('reset.restoreFailed'), 4500);
+          toast(resetText('reset.restoreFailed'), 4500);
         });
       } }]
     });
