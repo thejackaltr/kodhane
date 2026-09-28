@@ -1449,6 +1449,7 @@
         localStorage.setItem(EPOCH_KEY, String(epoch));
         localStorage.removeItem(SAVE_KEY); LEGACY_KEYS.forEach(function (k) { localStorage.removeItem(k); });
       } catch (e) {}
+      track('reset_or_prestige'); // Umami isteği keepalive ile gider; yeniden açılış onu kesmez
       location.reload();
     }
   }
@@ -2059,6 +2060,7 @@
   // Sıralamadaki paylaşım yapısı: Web Share, yoksa panoya kopyala, o da yoksa metni göster
   function shareText(text) {
     Core.lastShare = text;
+    track('share_click');
     if (navigator.share) { navigator.share({ text: text }).catch(function () {}); }
     else if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(function () { toast('📋 Paylaşım metni kopyalandı.', 3000); }, function () { toast(text, 6000); });
@@ -2081,6 +2083,7 @@
       buttons.push({ label: 'Kapat', cls: 'ghost' });
       buttons.push({ label: n.action, cls: 'primary', onClick: function () {
         if (n.count) countEvent(n.count + '_click');
+        if (n.id === 'acik_ofis') track('acikofis_news_click');
         if (n.url) { Core.lastOpened = n.url; try { window.open(n.url, '_blank', 'noopener'); } catch (e) {} return; }
         if (isMobile()) setView('siralama'); else selectTab('siralama');
       } });
@@ -2090,6 +2093,26 @@
     Core.lastNews = n.id;
   }
   function countEvent(name) { if (typeof Core.countEvent === 'function') { try { Core.countEvent(name); } catch (e) {} } }
+  // Umami (analiz.teserix.com): yalnızca olay adı gider (e-posta, takma ad vb. asla). Betik async yüklenir; hazır olmadan
+  // gelen olaylar (game_start) bellekte küçük bir kuyrukta bekler ve betik yüklenince gönderilir. Betik yüklenmezse /
+  // engellenirse hiçbir şey gönderilmez; oyun Umami olmadan da aynen çalışır. Son olaylar test için Core.tracked'de.
+  var UMAMI_SRC = 'https://analiz.teserix.com/script.js', umamiQueue = [], umamiHooked = false;
+  function umamiReady() { try { var u = root.umami; return u && typeof u.track === 'function' ? u : null; } catch (e) { return null; } }
+  function umamiSend(u, name) { try { u.track(name); } catch (e) {} }
+  function umamiFlush() { var u = umamiReady(); if (!u) return; while (umamiQueue.length) umamiSend(u, umamiQueue.shift()); }
+  function track(name) {
+    Core.tracked.push(name); if (Core.tracked.length > 50) Core.tracked.shift();
+    var u = umamiReady();
+    if (u) { umamiFlush(); umamiSend(u, name); return; }
+    if (umamiQueue.length < 20) umamiQueue.push(name);
+    if (!umamiHooked) {
+      umamiHooked = true;
+      var tag = document.querySelector('script[src="' + UMAMI_SRC + '"]');
+      if (tag) tag.addEventListener('load', umamiFlush);
+      root.addEventListener('load', umamiFlush);
+    }
+  }
+  Core.tracked = []; Core.track = track; Core.umamiQueue = function () { return umamiQueue.slice(); };
 
   function showWelcomeBack(res) {
     if (!res || res.elapsed < 60 || res.gain <= 0) return;
@@ -2273,6 +2296,7 @@
           { label: 'Vazgeç', cls: 'ghost' },
           { label: 'Anlaştık!', cls: 'primary', onClick: function () {
             doPrestige(); lastStageShown = 0; upgSig = ''; save(); renderAll();
+            track('reset_or_prestige');
             toast('🚀 Yatırım turu tamamlandı! Yeni bir başlangıç.'); sfx('stage');
           } }
         ]
@@ -2290,6 +2314,7 @@
           { label: 'Vazgeç', cls: 'ghost' },
           { label: 'Halka arz et', cls: 'primary', onClick: function () {
             doIpo(); lastStageShown = 0; upgSig = ''; treeSig = ''; checkAchievements(); save(); renderAll();
+            track('reset_or_prestige');
             sfx('stage'); vibrate([20, 60, 20]);
             modal({
               emoji: '🔔', title: 'Borsa zili çaldı!',
@@ -2342,6 +2367,7 @@
     save();
     initUndo();
     initServiceWorker();
+    track('game_start');
   }
 
   // Test ve hata ayıklama için

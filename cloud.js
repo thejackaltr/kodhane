@@ -359,6 +359,7 @@
     for (var k in s) if (k !== 'lastSaved') c[k] = s[k];
     try { return JSON.stringify(c); } catch (e) { return String(Math.random()); }
   }
+  function track(name) { if (K && typeof K.track === 'function') K.track(name); }
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } }
   function toast(msg, ms) { if (K.toast) { try { K.toast(msg, ms); } catch (e) {} } }
@@ -462,6 +463,9 @@
     if (user) {
       var changed = !C.user || C.user.id !== user.id;
       C.user = user;
+      // Umami: yalnızca bu cihazda istenen bir giriş (bağlantı/kod) tamamlandığında; kayıtlı oturumun açılışta
+      // geri gelmesi giriş sayılmaz. Olayla birlikte hiçbir kullanıcı bilgisi gönderilmez.
+      if (changed && (C.pendingEmail || lsGet(PENDING_KEY))) track('login_success');
       if (C.pendingEmail || lsGet(PENDING_KEY)) setPending('');
       if (changed) {
         C.reconciled = false; C.lastPushSig = ''; C.revUid = null;
@@ -664,6 +668,8 @@
       var got = (r.data && typeof r.data.revision === 'number') ? r.data.revision : rev;
       if (C.user && C.user.id === uid) setRev(uid, got);
       C.lastPushSig = s; C.lastPushAt = now.getTime();
+      // Umami: otomatik yazma ~45 sn'de bir olduğundan olay oturum başına bir kez (ilk başarılı bulut kaydı) gider.
+      if (!C.cloudSaveTracked) { C.cloudSaveTracked = true; track('cloud_save'); }
       setStatus('saved', '');
       return true;
     }).catch(function (e) {
@@ -818,6 +824,8 @@
       setPending('');
       el.code.value = '';
       // Oturum SIGNED_IN olayıyla gelir; bağlantıyla girişteki akışın aynısı (onAuth -> reconcile) çalışır.
+      // (setPending('') yukarıda çağrıldığı için onAuth ikinci kez login_success saymaz)
+      track('login_success');
       if (r && r.data && r.data.session && r.data.session.user && !C.user) onAuth('SIGNED_IN', r.data.session);
       toast('✅ Giriş yapıldı.', 3000);
     }).catch(function (e) {

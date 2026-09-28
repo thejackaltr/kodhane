@@ -224,6 +224,7 @@
     if (!me) return;
     if (!me || typeof me.rank !== 'number') return;
     var text = shareText(me.rank);
+    if (K.track) K.track('share_click');
     if (navigator.share) {
       navigator.share({ text: text }).catch(function () {});
     } else if (navigator.clipboard && navigator.clipboard.writeText) {

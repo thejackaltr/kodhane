@@ -79,6 +79,8 @@ with sync_playwright() as p:
     sb_hits = []
     for _h in ('https://kodhane-api.teserix.com/**', 'https://supabase.teserix.com/**'):
         ctx.route(_h, lambda r: (sb_hits.append(r.request.url), r.abort('connectionrefused')))
+    # Umami (analiz.teserix.com) de gerçekten çağrılmaz: boş betik (window.umami tanımsız = izleyici yok yolu; çevrimdışı denemede konsol hatası olmasın)
+    ctx.route('https://analiz.teserix.com/**', lambda r: r.fulfill(status=200, content_type='application/javascript', body=''))
     page = ctx.new_page()
     errors = []
     watch(page, errors)

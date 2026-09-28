@@ -33,10 +33,10 @@ self.addEventListener('activate', function (e) {
 self.addEventListener('fetch', function (e) {
   var req = e.request;
   var url = new URL(req.url);
-  // Supabase (giriş/bulut kaydı), jsDelivr CDN ve diğer tüm dış istekler hiçbir zaman
+  // Supabase (giriş/bulut kaydı), jsDelivr CDN, Umami (analiz.teserix.com/script.js ve /api/send) ve diğer tüm dış istekler hiçbir zaman
   // önbelleğe alınmaz ve yakalanmaz; yalnızca GET ile istenen kendi dosyalarımız önbellekten sunulur.
   if (req.method !== 'GET' || url.origin !== self.location.origin) return;
-  if (/(^|\.)supabase\.(co|in)$/.test(url.hostname) || url.hostname === 'kodhane-api.teserix.com' || url.hostname === 'supabase.teserix.com' || url.hostname === 'cdn.jsdelivr.net') return;
+  if (/(^|\.)supabase\.(co|in)$/.test(url.hostname) || url.hostname === 'kodhane-api.teserix.com' || url.hostname === 'supabase.teserix.com' || url.hostname === 'cdn.jsdelivr.net' || url.hostname === 'analiz.teserix.com') return;
   // Giriş bağlantısından dönüşte (?code=, ?error=) sayfa doğrudan ağdan gelsin.
   if (req.mode === 'navigate' && /[?&](code|error|error_code|error_description|token_hash)=/.test(url.search)) return;
   var isApp = req.mode === 'navigate' && /\/(index\.html)?$/.test(url.pathname);
