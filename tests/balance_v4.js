@@ -19,6 +19,8 @@ if (process.argv[4]) K.CFG.halkaArz.threshold = +process.argv[4];
 if (process.env.BAL) {
   const o = JSON.parse(process.env.BAL);
   (o.at || []).forEach((v, i) => { K.STAGES[6 + i].at = v; });
+  if (o.ha) Object.assign(K.CFG.halkaArz, o.ha);          // ör. {"mode":"root","root":6}
+  if (o.nosector) K.CFG.sectors.share = 0;                 // sektör kartları kapalı (karşılaştırma)
   Object.keys(o.g || {}).forEach((id) => {
     const g = K.GENERATORS.find((x) => x.id === id), f = o.g[id][0] / g.base;
     K.UPGRADES.forEach((u) => { if (u.target === id) u.cost *= f; });
@@ -32,7 +34,7 @@ const out = { profil: name, halkaArz: ipoMode, esik: K.CFG.halkaArz.threshold };
 out['1. Halka Arz'] = m.ipo[0] ? fmtH(m.ipo[0].t) + ' (' + m.ipo[0].gain + ' pay)' : '—';
 out['3. Halka Arz'] = m.ipo[2] ? fmtH(m.ipo[2].t) + ' (' + m.ipo[2].gain + ' pay)' : '—';
 out['halka arzlar'] = m.ipo.map(x => fmtH(x.t) + ':' + x.gain).join(', ');
-out['ağaç'] = st.tree.length + '/12 düğüm, toplam kazanılan pay ' + st.ipoSharesEarned;
+out['ağaç'] = st.tree.length + '/12 düğüm, toplam kazanılan pay ' + st.ipoSharesEarned + ', harcanmamış ' + st.ipoShares + ' (+%' + Math.round(Math.min(st.ipoShares, K.CFG.halkaArz.unspentCap) * K.CFG.halkaArz.unspentBonus * 100) + ' üretim)';
 const cost40 = m.ipo.findIndex(x => x.earned >= 40);
 out['40 pay (tüm ağaç)'] = cost40 >= 0 ? fmtH(m.ipo[cost40].t) + ' (' + (cost40 + 1) + '. halka arz)' : '—';
 out['toplam kazanç'] = K.fmt(st.totalEarned);

@@ -102,13 +102,13 @@ with sync_playwright() as p:
     check('migrate: shares/prestige kept', st['shares'] == 3 and st['prestigeCount'] == 1)
     check('migrate: lifetime earnings kept', st['totalEarned'] >= 9e6 and st['runEarned'] >= 2.5e6 and st['clicks'] == 777 and st['eventsClicked'] == 5)
     check('migrate: stage kept', st['stage'] >= 3 and page.inner_text('#stageName') == 'Ajans', page.inner_text('#stageName'))
-    check('migrate: new fields + version 3', st['version'] == 3 and isinstance(st['daily'], dict) and st['reputation'] == 0)
+    check('migrate: new fields + version 4', st['version'] == 4 and isinstance(st['daily'], dict) and st['reputation'] == 0)
     check('migrate: v2 key written, v1 kept as backup', ev("!!localStorage.getItem('kodhane_ajans_save_v2')") and ev("localStorage.getItem('kodhane_ajans_save_v1')") == v1s)
     check('migrate: toast shown', 'taşındı' in page.inner_text('#toast'), page.inner_text('#toast').replace('\n', ' / ')[:160])
     check('migrate: retro achievements', 'kazanc_1m' in st['achievements'] and 'asama_3' in st['achievements'], json.dumps(st['achievements']))
     page.reload(); page.wait_for_selector('#clickBtn'); page.wait_for_timeout(300)
     st2 = ev('Kodhane.state')
-    check('migrate: survives reload from v2', ev('Kodhane.loadedVersion') == 3 and st2['gens'] == st['gens'] and st2['shares'] == 3 and st2['money'] >= v1['money'])
+    check('migrate: survives reload from v2', ev('Kodhane.loadedVersion') == 4 and st2['gens'] == st['gens'] and st2['shares'] == 3 and st2['money'] >= v1['money'])
 
     # ---------------------------------------------------------------- yeni oyun: temel akış
     page.goto(BASE + '/README.md'); ev('localStorage.clear()')
@@ -283,7 +283,7 @@ with sync_playwright() as p:
     for aid in ['tik_1', 'kritik_1', 'kazanc_1k', 'localhost', 'logo_5', 'revize_7', 'toplantisiz']:
         check('achievement unlocked: ' + aid, aid in ach)
     check('achievements give +1% each', abs(ev('Kodhane.achMult()') - (1 + 0.01 * len(ach))) < 1e-9, f"{len(ach)} ach")
-    check('achievement count 20-31', 20 <= ev('Kodhane.ACHIEVEMENTS.length') <= 31, str(ev('Kodhane.ACHIEVEMENTS.length')))
+    check('achievement count 20-34', 20 <= ev('Kodhane.ACHIEVEMENTS.length') <= 34, str(ev('Kodhane.ACHIEVEMENTS.length')))
     # olay geliştirmeleri
     ev("Kodhane.state.buffs = []; Kodhane.state.upgrades.push('kahve_fali')"); page.wait_for_timeout(300)
     check('Kahve Falı shows next event', page.is_visible('#falBar') and 'Kahve falı' in page.inner_text('#falBar'), page.inner_text('#falBar'))

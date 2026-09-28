@@ -1,7 +1,8 @@
 /* Dürüst oyuncu simülasyonları (sıralama makullük kontrolü testleri için).
  * Oyunun gerçek çekirdeğini (game.js) kullanır; olabildiğince hızlı ilerleyen ama hile yapmayan oyuncular:
  * sürekli tıklama (10-20/sn), açgözlü alım, her müşteri teklifini ve olay kartını en yüksek ödemeyle yakalama,
- * itibar 100, günlük görevler, çevrimdışı kazanç (8-24 saat sınırı), Yatırım Turları, v4: Halka Arz + Borsa Payı Ağacı.
+ * itibar 100, günlük görevler, çevrimdışı kazanç (8-24 saat sınırı), Yatırım Turları, v4: Halka Arz + Borsa Payı Ağacı,
+ * v4.1: müşteri sektörü kartları (oyunun gerçek kart seçimi; sektör kartları hep kabul, diğer kartlar en yüksek ödeme).
  * Ayrıca denge ölçümleri (aşamalara ve halka arzlara ulaşma süreleri) için kullanılır: tests/balance_v4.js
  * Kullanım: node tests/honest_sim.js [senaryo...]  -> JSON: [{name, now, save}]
  */
@@ -36,7 +37,7 @@ function run(name, { totalSec, plan, cps, prestige, ipo = 'none', epoch, log = f
   K.rng = Math.random;
   K.state = K.newState();
   const S0 = K.state; S0.startedAt = epoch; S0.lastSaved = epoch; S0.reputation = 100;
-  let t = 0, pi = 0, lastDay = null, offerAcc = 0;
+  let t = 0, pi = 0, lastDay = null, offerAcc = 0, lastIpoT = 0;
   const clock = () => epoch + t * 1000;
   const miles = { stage: {}, ipo: [], rounds: 0, p10: {} };
   const mark = () => {
@@ -61,7 +62,12 @@ function run(name, { totalSec, plan, cps, prestige, ipo = 'none', epoch, log = f
         else K.earn(Math.max(K.clickValue() * 40, K.baseTps() * 120, 50) * K.repMult() * K.offerPayMult());
         K.state.eventsClicked++; K.taskProgress('offer', 1);
       }
-      if (t % 150 === 0) { K.earn(K.pay(120)); K.state.eventsResolved++; }
+      if (t % 150 === 0) { // olay kartı: sektör kartıysa kabul (gerçek etkiler), değilse en yüksek ödeme
+        const id = K.pickEvent();
+        const e = K.EVENT_BY_ID[id];
+        if (e && e.sector) K.resolveEvent(id, 0);
+        else { K.earn(K.pay(120)); K.state.eventsResolved++; }
+      }
       if (t % 10 === 0) K.checkAchievements();
       greedy(cps);
       mark();
@@ -69,11 +75,12 @@ function run(name, { totalSec, plan, cps, prestige, ipo = 'none', epoch, log = f
       if ((prestige === 'asap' && g >= 1) || (prestige === 'smart' && g >= Math.max(1, K.state.shares))) { K.doPrestige(); miles.rounds++; }
       if (ipo !== 'none' && K.ipoUnlocked()) {
         const ig = K.ipoGain();
-        // asap: ilk fırsatta; smart: bir öncekinin en az iki katı pay verecekse (ilk halka arz: açılır açılmaz)
+        // asap: ilk fırsatta; smart: bir öncekinin en az iki katı pay verecekse ya da ağaç bitmemişken son halka arzdan
+        // 12 saat geçti ve en az bir önceki kadar pay verecekse (ilk halka arz: açılır açılmaz)
         const last = miles.ipo.length ? miles.ipo[miles.ipo.length - 1].gain : 0;
-        const want = ipo === 'asap' ? 1 : Math.max(1, 2 * last);
-        if (ig >= want) {
-          K.doIpo(); miles.ipo.push({ t, gain: ig, earned: K.state.ipoSharesEarned });
+        const smartOk = ig >= Math.max(1, 2 * last) || (ig >= Math.max(1, last) && t - lastIpoT >= 12 * 3600 && K.state.ipoSharesEarned < 40);
+        if (ipo === 'asap' ? ig >= 1 : smartOk) {
+          K.doIpo(); lastIpoT = t; miles.ipo.push({ t, gain: ig, earned: K.state.ipoSharesEarned });
           buyNodes();
         }
       }

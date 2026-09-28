@@ -13,7 +13,7 @@ function fresh() { K.state = K.newState(); return K.state; }
 const CFG = K.CFG, H = CFG.halkaArz, T = CFG.tree;
 
 // ---------------------------------------------------------------- sürüm, aşamalar
-check('version 4.0.0 / save version 3', K.VERSION === '4.0.0' && K.SAVE_VERSION === 3 && fresh().version === 3);
+check('version 4.1.0 / save version 4', K.VERSION === '4.1.0' && K.SAVE_VERSION === 4 && fresh().version === 4);
 const names = K.STAGES.map((s) => s.name);
 check('9 stages, 3 new after Global Holding', names.length === 9 && names.slice(5).join('|') === 'Global Holding|Teknoloji Devi|Yapay Zekâ Laboratuvarı|Mars Ofisi', names);
 check('stage thresholds strictly increasing', K.STAGES.every((s, i) => i === 0 || s.at > K.STAGES[i - 1].at));
@@ -47,13 +47,13 @@ check('rounding at the top suffix goes scientific', K.fmt(999.999e18) === '1e21'
 fresh();
 check('IPO locked with 0 rounds', !K.ipoUnlocked() && K.doIpo() === 0);
 function round(earn) { K.earn(earn); return K.doPrestige(); }
-round(1e10); round(1e10);
+round(1e9); round(1e9);
 check('IPO locked after 2 rounds', K.state.cycleRounds === 2 && !K.ipoUnlocked());
-round(1e10);
+round(1e9);
 check('IPO unlocks after CFG.halkaArz.rounds rounds', K.state.cycleRounds === H.rounds && K.ipoUnlocked());
-check('first IPO gives at least firstMin even with a small cycle', K.state.cycleEarned === 3e10 && K.ipoGain() === H.firstMin);
-K.earn(8e14 - 3e10);
-check('gain formula floor(k*(cycle/threshold)^(1/3))', K.ipoGain() === 2, K.ipoGain());
+check('first IPO gives at least firstMin even with a small cycle', K.state.cycleEarned === 3e9 && K.state.cycleStage === 4 && K.ipoGain() === H.firstMin);
+K.earn(8e14 - 3e9);
+check('gain = stagePays[highest stage this cycle] (Global Holding -> 2)', K.state.cycleStage === 5 && K.ipoGain() === H.stagePays[5] && K.ipoGain() === 2, [K.state.cycleStage, K.ipoGain()]);
 K.state.upgrades = ['click_2']; K.state.tree = []; K.state.achievements.push('tik_1');
 const before = clone(K.state);
 const g1 = K.doIpo();
@@ -66,15 +66,16 @@ check('IPO keeps achievements and stageBest', s.achievements.indexOf('tik_1') !=
 K.checkAchievements();
 check('Borsa Zili achievement', s.achievements.indexOf('borsa_zili') !== -1 && K.ACHIEVEMENTS.find((a) => a.id === 'borsa_zili').desc === 'İlk halka arzını yaptın.');
 check('IPO locked again right after', !K.ipoUnlocked());
-round(1e10); round(1e10); round(1e10);
+round(1e9); round(1e9); round(1e9);
 check('second IPO has no minimum (gain 0 -> refused)', K.ipoGain() === 0 && K.doIpo() === 0 && K.state.ipoCount === 1);
 // save round trip after IPO must not re-run the v3 migration
 const rt = JSON.parse(K.serialize()); K.deserialize(JSON.stringify(rt));
-check('post-IPO save reload keeps cycle fields', K.state.version === 3 && K.state.cycleRounds === 3 && K.state.cycleEarned === 3e10 && K.state.ipoCount === 1);
+check('post-IPO save reload keeps cycle fields', K.state.version === 4 && K.state.cycleRounds === 3 && K.state.cycleEarned === 3e9 && K.state.ipoCount === 1);
 const sv = H.rounds; H.rounds = 5;
 check('IPO round requirement is a setting', !K.ipoUnlocked()); H.rounds = sv;
-const sk = H.k; H.k = 2; K.state.cycleEarned = 1e14; K.state.ipoCount = 1;
-check('IPO k is a setting', K.ipoGain() === 2); H.k = sk;
+const sm = H.mode; H.mode = 'root'; K.state.cycleEarned = H.threshold * Math.pow(2, H.root); K.state.ipoCount = 1;
+check('IPO root mode (alternative) is a setting: floor(k*(cycle/T)^(1/root))', K.ipoGain() === 2, K.ipoGain());
+const sk = H.k; H.k = 2; check('IPO k is a setting (root mode)', K.ipoGain() === 4); H.k = sk; H.mode = sm;
 
 // ---------------------------------------------------------------- Borsa Payı Ağacı
 fresh();
@@ -92,7 +93,7 @@ check('tree: poor again', K.nodeState('ekip_1') === 'poor');
 fresh(); K.state.gens.stajyer = 10;
 const c0 = K.clickBase(), t0 = K.baseTps(), g0 = K.genCost(K.GENERATORS[0], 1);
 K.state.tree = ['kod_1']; check('Parmak Hızı doubles click', Math.abs(K.clickBase() - c0 * T.clickMult) < 1e-9);
-K.state.tree = ['kod_1', 'kod_2', 'kod_3']; check('Kısayol Ustası adds 1% of tps to click', Math.abs(K.clickBase() - (c0 * T.clickMult + T.clickPct * K.baseTps())) < 1e-9);
+K.state.tree = ['kod_1', 'kod_2', 'kod_3']; check('Kas Hafızası adds 1% of tps to click', Math.abs(K.clickBase() - (c0 * T.clickMult + T.clickPct * K.baseTps())) < 1e-9);
 K.state.tree = ['ekip_1']; check('İyi Referans x1.5 production', Math.abs(K.baseTps() - t0 * T.genMult) < 1e-9);
 K.state.tree = ['ekip_1', 'ekip_2', 'ekip_3']; check('İK Anlaşması cost growth 1.15 -> 1.14', K.costGrowth() === 1.14);
 K.state.gens.stajyer = 30;
@@ -107,7 +108,7 @@ K.state.tree = ['yatirim_1', 'yatirim_2']; check('Yatırımcı Güveni: share bo
 K.state.tree = ['yatirim_1', 'yatirim_2', 'yatirim_3']; check('Gece Vardiyası: 24 h', K.offlineCapSec() === 24 * 3600);
 K.state.tree = []; check('offer: 10 s, normal frequency and pay', K.offerSec() === 10 && K.offerFreq() === 1 && K.offerPayMult() === 1);
 K.state.tree = ['musteri_1', 'musteri_2', 'musteri_3'];
-check('Müşteri branch: more frequent, 15 s, x2 pay', K.offerFreq() === T.offerFreq && K.offerSec() === 15 && K.offerPayMult() === 2);
+check('Müşteri branch: 25% more offers, 15 s, x2 pay', Math.abs(K.offerFreq() - 1 / (1 + T.offerMore)) < 1e-12 && T.offerMore === 0.25 && K.offerSec() === 15 && K.offerPayMult() === 2);
 // Akış Hâli
 fresh(); K.state.tree = ['kod_1', 'kod_2']; K.rng = () => 0.01; K.state.money = 0;
 const base = K.clickValue ? K.clickBase() : 0; K.doClick();
@@ -119,7 +120,9 @@ K.rng = Math.random;
 const D = {}; K.TREE.forEach((b) => b.nodes.forEach((n) => { D[n.id] = n.desc(); }));
 check('desc: Parmak Hızı', D.kod_1 === "Klavye alev aldı. 'Kod yaz' kazancı ×2.", D.kod_1);
 check('desc: Akış Hâli', D.kod_2 === 'Kulaklık takıldı, dünya sustu. Her tıklamada %5 ihtimalle ×10 kazanç.', D.kod_2);
-check('desc: Kısayol Ustası', D.kod_3 === "Fareye gerek kalmadı. Her tıklama saniyelik gelirinin %1'ini de getirir.", D.kod_3);
+check('desc: Kas Hafızası', D.kod_3 === "Parmaklar artık kendi kendine yazıyor. Her tıklama saniyelik gelirinin %1'ini de getirir.", D.kod_3);
+check('name: Kas Hafızası', K.TREE[0].nodes[2].name === 'Kas Hafızası');
+check('desc: Sadık Müşteri (number from settings)', D.musteri_1 === 'Aynı müşteri, yine aynı logo. Proje teklifleri %25 daha sık gelir.', D.musteri_1);
 check('desc: İyi Referans', D.ekip_1 === 'Eski çalışanların seni her yerde övüyor. Tüm çalışanlar ×1,5 üretir.', D.ekip_1);
 check('desc: Hazır Kadro', D.ekip_2 === 'Kapıda sıra var. Her sıfırlamadan sonra 5 Stajyer ve 2 Junior ile başlarsın.', D.ekip_2);
 check('desc: İK Anlaşması', D.ekip_3 === "Maaş pazarlığı artık çay eşliğinde. Her yeni çalışanın fiyat artışı %15'ten %14'e iner.", D.ekip_3);
@@ -129,11 +132,11 @@ check('desc: Uzaktan Çalışma', D.yatirim_1 === 'Ekip evden de çalışıyor. 
 check('desc: Yatırımcı Güveni', D.yatirim_2 === 'Sunum slaytları artık animasyonlu. Yatırım turu bonusu %25 güçlenir.', D.yatirim_2);
 check('desc: Gece Vardiyası', D.yatirim_3 === 'Ofisin ışığı hiç sönmüyor. Çevrimdışı kazanç sınırı 24 saate çıkar.', D.yatirim_3);
 const keep = clone(T);
-T.clickMult = 3; T.flowChance = 0.1; T.clickPct = 0.03; T.costGrowth = 1.12; T.offerSec = 20; T.offlineHours1 = 16; T.shareBoost = 0.4; T.startGens = [['stajyer', 10]];
+T.clickMult = 3; T.flowChance = 0.1; T.clickPct = 0.03; T.costGrowth = 1.12; T.offerSec = 20; T.offerMore = 0.5; T.offlineHours1 = 16; T.shareBoost = 0.4; T.startGens = [['stajyer', 10]];
 const find = (id) => K.TREE.flatMap((b) => b.nodes).find((n) => n.id === id).desc();
 check('desc follows settings (click, flow, pct)', find('kod_1').endsWith('×3.') && find('kod_2').includes('%10 ihtimalle') && find('kod_3').includes("%3'ünü de"), [find('kod_1'), find('kod_2'), find('kod_3')]);
 check('desc follows settings (growth, offer, offline, boost, start)', find('ekip_3').endsWith("%15'ten %12'ye iner.") && find('musteri_2').includes('15 saniyeye') === false && find('musteri_2').includes('20 saniyeye') &&
-  find('yatirim_1').includes('16 saate') && find('yatirim_2').includes('%40') && find('ekip_2').includes('10 Stajyer ile'), [find('ekip_3'), find('ekip_2')]);
+  find('yatirim_1').includes('16 saate') && find('yatirim_2').includes('%40') && find('ekip_2').includes('10 Stajyer ile') && find('musteri_1').includes('%50 daha sık'), [find('ekip_3'), find('ekip_2')]);
 Object.assign(T, keep);
 check('Turkish suffix helpers', [1, 3, 4, 6, 9, 10, 12, 20, 25, 40, 50, 60, 100].map(K.sfxAcc3).join(',') === 'ini,ünü,ünü,sını,unu,unu,sini,sini,ini,ını,sini,ını,ünü', [1, 3, 4, 6, 9, 10, 12, 20, 25, 40, 50, 60, 100].map(K.sfxAcc3));
 
@@ -152,7 +155,7 @@ function v3Save(over) {
 const old = v3Save();
 K.deserialize(JSON.stringify(old));
 const m = K.state;
-check('migration: version bumped to 3, loadedVersion 2', m.version === 3 && K.loadedVersion === 2);
+check('migration: version bumped to 4, loadedVersion 2', m.version === 4 && K.loadedVersion === 2);
 check('migration: money, run and total earnings unchanged', m.money === old.money && m.runEarned === old.runEarned && m.totalEarned === old.totalEarned);
 check('migration: all old employees kept, new ones 0', Object.keys(old.gens).every((k) => m.gens[k] === old.gens[k]) && m.gens.arge === 0 && m.gens.yzlab === 0 && m.gens.mars === 0);
 check('migration: upgrades, achievements, shares, prestige kept', JSON.stringify(m.upgrades) === JSON.stringify(old.upgrades) && JSON.stringify(m.achievements) === JSON.stringify(old.achievements) && m.shares === 57 && m.prestigeCount === 4);
@@ -162,21 +165,23 @@ check('migration: cycle = all-time, rounds = prestige count (Halka Arz can unloc
 check('migration: no IPO / tree yet', m.ipoShares === 0 && m.ipoCount === 0 && m.tree.length === 0);
 check('migration: Global Holding player gets the new-stage news', m.stageBest === 5 && JSON.stringify(m.newsPending) === '["yeni_asama"]');
 K.deserialize(K.serialize());
-check('migration: reload of migrated save is stable (no second migration, news still pending)', K.loadedVersion === 3 && K.state.cycleRounds === 4 && JSON.stringify(K.state.newsPending) === '["yeni_asama"]');
+check('migration: reload of migrated save is stable (no second migration, news still pending)', K.loadedVersion === 4 && K.state.cycleRounds === 4 && JSON.stringify(K.state.newsPending) === '["yeni_asama"]');
 K.deserialize(JSON.stringify(v3Save({ stage: 3, runEarned: 2e6, totalEarned: 5e6, prestigeCount: 0, shares: 0 })));
 check('migration: early player gets no new-stage news', K.state.newsPending.length === 0 && K.state.stageBest === 3 && K.state.cycleRounds === 0);
 K.deserialize(JSON.stringify({ version: 1, money: 10, runEarned: 50, totalEarned: 50, gens: { stajyer: 2 } }));
-check('migration: very old v1 save loads', K.state.version === 3 && K.state.gens.stajyer === 2 && K.state.totalEarned === 50);
+check('migration: very old v1 save loads', K.state.version === 4 && K.state.gens.stajyer === 2 && K.state.totalEarned === 50);
 K.deserialize(JSON.stringify(Object.assign(v3Save({ version: 3 }), { tree: ['kod_2', 'kod_1', 'kod_1', 'yok', 'ekip_2'], newsSeen: ['siralama', 'x', 'siralama'], ipoShares: -3, cycleEarned: 1e30 })));
 check('v4 save sanitised: tree order/prefix, known news, no negatives, cycle <= total',
   JSON.stringify(K.state.tree) === '["kod_1"]' && JSON.stringify(K.state.newsSeen) === '["siralama"]' && K.state.ipoShares === 0 && K.state.cycleEarned === K.state.totalEarned, [K.state.tree, K.state.newsSeen]);
 
 // ---------------------------------------------------------------- haber kuyruğu
 fresh();
-check('news order: Global Holding news before Sıralama', K.NEWS.map((n) => n.id).join(',') === 'yeni_asama,siralama');
+check('news order: Global Holding, Sıralama, then Açık Ofis', K.NEWS.map((n) => n.id).join(',') === 'yeni_asama,siralama,acik_ofis');
+check('Açık Ofis news copy + link', K.NEWS[2].title === 'Kodhane ailesine yeni oyun: Açık Ofis!' && K.NEWS[2].text() === 'Kendi ofisini kur, masaları yerleştir, ekibini büyüt. Kodhane hesabınla giriş yapabilirsin.' &&
+  K.NEWS[2].action === "Açık Ofis'i dene" && K.NEWS[2].count === 'news_acikofis' && K.NEWS[2].url === 'https://thejackaltr.github.io/kodhane-acik-ofis/?utm_source=kodhane&utm_medium=news&utm_campaign=acikofis_v1');
 check('news copy', K.NEWS[1].title === 'Yeni: Sıralama!' && K.NEWS[1].text() === 'Toplam kazancınla listeye gir. Yatırım turu yapsan da yerin korunur.' && K.NEWS[1].action === 'Sıralamaya bak' &&
   K.NEWS[0].title === 'Global Holding son durak değilmiş.' && K.NEWS[0].text() === 'Yeni aşama açıldı: Teknoloji Devi.');
-check('no Sıralama news when the leaderboard is not configured', K.nextNews() === null);
+check('no Sıralama news when the leaderboard is not configured (Açık Ofis still)', K.nextNews().id === 'acik_ofis');
 K.newsNeedsLeaderboard = () => true;
 check('new player: Sıralama news', K.nextNews().id === 'siralama');
 K.state.newsPending = ['yeni_asama'];
@@ -184,13 +189,15 @@ check('Global Holding player: new-stage news first', K.nextNews().id === 'yeni_a
 K.markNewsSeen('yeni_asama');
 check('then Sıralama', K.nextNews().id === 'siralama' && K.state.newsPending.length === 0);
 K.markNewsSeen('siralama'); K.markNewsSeen('siralama');
-check('once only: nothing after both are seen (no duplicates)', K.nextNews() === null && JSON.stringify(K.state.newsSeen) === '["yeni_asama","siralama"]');
+check('then Açık Ofis', K.nextNews().id === 'acik_ofis');
+K.markNewsSeen('acik_ofis');
+check('once only: nothing after all are seen (no duplicates)', K.nextNews() === null && JSON.stringify(K.state.newsSeen) === '["yeni_asama","siralama","acik_ofis"]');
 K.earn(1e12); K.doPrestige();
-check('seen flags survive a Yatırım Turu', K.state.newsSeen.length === 2);
+check('seen flags survive a Yatırım Turu', K.state.newsSeen.length === 3);
 K.state.cycleRounds = 3; K.doIpo();
-check('seen flags survive a Halka Arz', K.state.newsSeen.length === 2 && K.nextNews() === null);
+check('seen flags survive a Halka Arz', K.state.newsSeen.length === 3 && K.nextNews() === null);
 K.deserialize(K.serialize());
-check('seen flags survive save/load', K.state.newsSeen.length === 2 && K.nextNews() === null);
+check('seen flags survive save/load', K.state.newsSeen.length === 3 && K.nextNews() === null);
 check('news settings', CFG.newsPerSession === 1 && CFG.newsDelaySec > 0);
 
 console.log(`\n${pass}/${pass + fail} passed`);

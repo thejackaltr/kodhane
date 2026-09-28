@@ -1,6 +1,6 @@
-/* Kodhane: Ajans Tycoon — v4 (yeni aşamalar + Halka Arz + Borsa Payı Ağacı)
+/* Kodhane: Ajans Tycoon — v4.1 (yeni aşamalar + Halka Arz + Borsa Payı Ağacı + müşteri sektörleri)
  * Vanilla JS, derleme adımı yok. Tüm oyun metinleri Türkçe.
- * v1 kayıtları ('kodhane_ajans_save_v1') ilk açılışta otomatik olarak taşınır; v2/v3 kayıtları kayıpsız v4 alanlarını alır.
+ * v1 kayıtları ('kodhane_ajans_save_v1') ilk açılışta otomatik olarak taşınır; v2/v3/v4 kayıtları kayıpsız yeni alanları alır.
  * Denge sayıları CFG (ayarlar) ve tablolarda durur; açıklama metinleri sayıları bu ayarlardan okur.
  * Bulut kaydı (isteğe bağlı giriş) cloud.js içindedir; oyun onsuz da tam çalışır.
  */
@@ -10,8 +10,8 @@
   // ------------------------------------------------------------------
   // Tanımlar (denge değerleri)
   // ------------------------------------------------------------------
-  var VERSION = '4.0.0';
-  var SAVE_VERSION = 3; // kayıt biçimi (v4 oyun sürümü)
+  var VERSION = '4.1.0';
+  var SAVE_VERSION = 4; // kayıt biçimi (v4.1 oyun sürümü; 3 = v4)
   var SAVE_KEY = 'kodhane_ajans_save_v2';
   var LEGACY_KEYS = ['kodhane_ajans_save_v1'];
   var SETTINGS_KEY = 'kodhane_ayarlar_v1';
@@ -35,26 +35,46 @@
     newsPerSession: 1,           // oturum başına en fazla haber
     halkaArz: {
       rounds: 3,                 // Halka Arz, bu döngüde bu kadar Yatırım Turu'ndan sonra açılır
-      k: 1,                      // hisse = max(ilk ? firstMin : 0, floor(k * (döngü kazancı / threshold)^(1/3)))
-      threshold: 1e14,
-      firstMin: 1
+      // Borsa Payı = max(ilk ? firstMin : 0, bu döngüde ulaşılan en yüksek aşamanın payı (stagePays[aşama]))
+      mode: 'stage',             // 'stage' (seçilen) | 'root': floor(k * (döngü kazancı / threshold)^(1/root)) (karşılaştırma için)
+      stagePays: [0, 0, 0, 0, 0, 2, 5, 8, 12],
+      repeatMinStage: 6,         // 2. halka arzdan itibaren pay için en az bu aşama (Global Holding'de hızlı tekrar = pay çiftliği olmasın)
+      k: 1, threshold: 1e14, root: 6,
+      firstMin: 1,
+      unspentBonus: 0.01,        // harcanmamış her Borsa Payı kalıcı +%1 üretim...
+      unspentCap: 50             // ...en fazla bu kadar pay sayılır (+%50; hızlı halka arz çiftliği katlanarak büyümesin)
     },
     tree: {
       costs: [1, 3, 6],          // her dalda 1., 2., 3. düğüm (Borsa Payı)
       clickMult: 2,              // Parmak Hızı
       flowChance: 0.05, flowMult: 10, // Akış Hâli
-      clickPct: 0.01,            // Kısayol Ustası
+      clickPct: 0.01,            // Kas Hafızası
       genMult: 1.5,              // İyi Referans
       startGens: [['stajyer', 5], ['junior', 2]], // Hazır Kadro
       costGrowth: 1.14,          // İK Anlaşması
-      offerFreq: 0.75,           // Sadık Müşteri: teklif aralığı çarpanı
+      offerMore: 0.25,           // Sadık Müşteri: teklifler %25 daha sık (aralık / 1,25)
       offerSec: 15,              // Esnek Teslim
       offerPayMult: 2,           // Referans Zinciri
       offlineHours1: 12,         // Uzaktan Çalışma
       shareBoost: 0.25,          // Yatırımcı Güveni
       offlineHours2: 24          // Gece Vardiyası (üst sınır)
     },
-    utm: { stage: 'asama_paylasim', ipo: 'halka_arz' } // paylaşım bağlantısı kampanya etiketleri
+    utm: { stage: 'asama_paylasim', ipo: 'halka_arz' }, // paylaşım bağlantısı kampanya etiketleri
+    // Müşteri sektörleri (olay kartları). Ödemeler "saniyelik üretim x saniye" (pay()), süreler saniye.
+    sectors: {
+      share: 0.5,                // açık sektör varken olay kartlarının bu kadarı sektör kartı
+      rejectSec: 600,            // reddedilen sektörden kartlar bu süre boyunca azalır...
+      rejectWeight: 0.25,        // ...bu ağırlıkla (itibar etkilenmez)
+      unlock: { esnaf: 0, eticaret: 2, oyun: 3, kamu: 4 }, // açıldığı aşama (en iyi aşama; Yatırım Turu'nda kapanmaz)
+      eticaret_sunucu: { cost: 20, pay: 120 },
+      eticaret_buton: { pay: 25, sec: 20, mult: 0.9 },
+      oyun_yama: { pay: 150, sec: 60, mult: 0.7 },
+      oyun_karakter: { pay: 40, sec: 40, mult: 0.85 },
+      kamu_ihale: { pay: 240, delay: 300 },
+      kamu_imza: { pay: 60, delay: 60 },
+      esnaf_kafe: { pay: 20, revisions: 3, revPay: 10, revSec: 15, revMult: 0.95 },
+      esnaf_emlak: { pay: 15, returnChance: 0.35, supportPay: 5, supportSec: 10, supportMult: 0.95 }
+    }
   };
 
   var GENERATORS = [
@@ -115,7 +135,7 @@
     { id: 'all_1', name: 'Türk Kahvesi Makinesi', icon: '☕', cost: 25000, req: { total: 15 }, all: 1.1, desc: 'Tüm üretim +%10' },
     { id: 'all_2', name: 'Ofis Kedisi', icon: '🐈', cost: 5000000, req: { total: 75 }, all: 1.15, desc: 'Tüm üretim +%15. Moral tavan.' },
     { id: 'all_3', name: 'Hibrit Çalışma Modeli', icon: '🏡', cost: 500000000, req: { total: 150 }, all: 1.25, desc: 'Tüm üretim +%25' },
-    { id: 'all_4', name: 'Halka Arz Hazırlığı', icon: '📊', cost: 100000000000, req: { total: 250 }, all: 1.5, desc: 'Tüm üretim +%50' }
+    { id: 'all_4', name: 'Yönetim Kurulu Odası', icon: '📊', cost: 100000000000, req: { total: 250 }, all: 1.5, desc: 'Tüm üretim +%50' }
   ].forEach(function (u) { u.type = 'all'; UPGRADES.push(u); });
   // Olay kartlarını etkileyen geliştirmeler
   [
@@ -136,7 +156,7 @@
     { name: 'Butik Stüdyo',   icon: '🏢', at: 50000,      desc: 'Küçük ama tatlı bir ekip, ilk kurumsal müşteriler.', msg: 'Kapıda adınız yazıyor. Müşteri artık ‘ekibiniz kaç kişi?’ diye sormaya çekinmiyor.' },
     { name: 'Ajans',          icon: '🚀', at: 1000000,    desc: 'Kendi binan, kendi tabelan.', msg: 'Artık ‘biz’ diyorsunuz ve bunu gerçekten ciddi söylüyorsunuz.' },
     { name: 'Dev Ajans',      icon: '🏙️', at: 50000000,   desc: 'Plaza katları, yüzlerce proje.', msg: 'Toplantı odalarına gezegen adı koyma zamanı geldi.' },
-    { name: 'Global Holding', icon: '🌐', at: 2500000000, desc: 'Kıtalar arası bir teknoloji devi.', msg: 'Tebrikler! Artık logoyu büyütmeyi siz istiyorsunuz.' },
+    { name: 'Global Holding', icon: '🌐', at: 2500000000, desc: 'Üç kıtada ofis, her saat diliminde bir toplantı.', msg: 'Tebrikler! Artık logoyu büyütmeyi siz istiyorsunuz.' },
     { name: 'Teknoloji Devi', icon: '🛰️', at: 1e15, desc: 'Müşteriler sırada, hepsi acil.', msg: 'Tebrikler! Artık müşteri aramıyorsunuz, müşteriler sizi arıyor. Hepsi de \'acil\' diyor.' },
     { name: 'Yapay Zekâ Laboratuvarı', icon: '🧬', at: 1e19, desc: 'Kodu model yazıyor, siz yön veriyorsunuz.', msg: 'Tebrikler! Kodu artık yapay zekâ yazıyor, siz de ona \'biraz daha büyüt\' diyorsunuz.' },
     { name: 'Mars Ofisi', icon: '🔴', at: 1e23, desc: 'Kızıl gezegende ilk ajans.', msg: 'Tebrikler! Mars\'tasınız. Mesajlar 20 dakikada geliyor, revize talepleri yine de anında.' }
@@ -150,7 +170,7 @@
     { id: 'kod', name: 'Kod', icon: '⌨️', nodes: [
       { id: 'kod_1', name: 'Parmak Hızı', desc: function () { return 'Klavye alev aldı. \'Kod yaz\' kazancı ×' + num(T.clickMult) + '.'; } },
       { id: 'kod_2', name: 'Akış Hâli', desc: function () { return 'Kulaklık takıldı, dünya sustu. Her tıklamada %' + num(T.flowChance * 100) + ' ihtimalle ×' + num(T.flowMult) + ' kazanç.'; } },
-      { id: 'kod_3', name: 'Kısayol Ustası', desc: function () { var p = T.clickPct * 100; return 'Fareye gerek kalmadı. Her tıklama saniyelik gelirinin %' + num(p) + '\'' + sfxAcc3(p) + ' de getirir.'; } }
+      { id: 'kod_3', name: 'Kas Hafızası', desc: function () { var p = T.clickPct * 100; return 'Parmaklar artık kendi kendine yazıyor. Her tıklama saniyelik gelirinin %' + num(p) + '\'' + sfxAcc3(p) + ' de getirir.'; } }
     ] },
     { id: 'ekip', name: 'Ekip', icon: '👥', nodes: [
       { id: 'ekip_1', name: 'İyi Referans', desc: function () { return 'Eski çalışanların seni her yerde övüyor. Tüm çalışanlar ×' + num(T.genMult) + ' üretir.'; } },
@@ -162,7 +182,7 @@
         return 'Maaş pazarlığı artık çay eşliğinde. Her yeni çalışanın fiyat artışı %' + a + '\'' + sfxAbl(a) + ' %' + b + '\'' + sfxDat(b) + ' iner.'; } }
     ] },
     { id: 'musteri', name: 'Müşteri', icon: '🤝', nodes: [
-      { id: 'musteri_1', name: 'Sadık Müşteri', desc: function () { return 'Aynı müşteri, yine aynı logo. Proje teklifleri daha sık gelir.'; } },
+      { id: 'musteri_1', name: 'Sadık Müşteri', desc: function () { return 'Aynı müşteri, yine aynı logo. Proje teklifleri %' + num(T.offerMore * 100) + ' daha sık gelir.'; } },
       { id: 'musteri_2', name: 'Esnek Teslim', desc: function () { return '\'Yarına yetişir mi?\' artık \'Öbür güne olur mu?\' oldu. Teklif süresi ' + CFG.offerSec + ' saniyeden ' + T.offerSec + ' saniyeye çıkar.'; } },
       { id: 'musteri_3', name: 'Referans Zinciri', desc: function () { return 'Her müşteri bir müşteri daha getiriyor. Proje ödülleri ×' + num(T.offerPayMult) + '.'; } }
     ] },
@@ -223,7 +243,7 @@
     out.push(s + ' sn');
     return out.join(' ');
   }
-  function fmtSec(s) { return Math.round(s) + ' sn'; }
+  function fmtSec(s) { s = Math.round(s); return s >= 120 && s % 60 === 0 ? s / 60 + ' dk' : s + ' sn'; }
   function pct(x) { return Math.round(x * 100); }
   function num(x) { return fixedTR(x, 2); } // ayar sayılarını metne yazar: 1.5 -> "1,5"
   // Türkçe ek uyumu (sayılar için): %1'ini, %15'ten, %14'e ...
@@ -260,7 +280,9 @@
       meetings: 0, serverCrashes: 0, reputation: 0, noMeetingSec: 0, daily: newDaily(),
       // v4
       ipoShares: 0, ipoSharesEarned: 0, ipoCount: 0, cycleEarned: 0, cycleRounds: 0, tree: [], stageBest: 0,
-      newsSeen: [], newsPending: []
+      newsSeen: [], newsPending: [],
+      // v4.1
+      cycleStage: 0, sectorCool: {}, followUps: { kafe: 0, emlak: 0 }, pendingPay: []
     };
   }
   var S = newState();
@@ -275,8 +297,9 @@
   function offlineCapSec() { return 3600 * (hasNode('yatirim_3') ? CFG.tree.offlineHours2 : hasNode('yatirim_1') ? CFG.tree.offlineHours1 : CFG.offlineCapHours); }
   function shareBonus() { return SHARE_BONUS * (1 + (hasNode('yatirim_2') ? CFG.tree.shareBoost : 0)); }
   function offerSec() { return hasNode('musteri_2') ? CFG.tree.offerSec : CFG.offerSec; }
-  function offerFreq() { return hasNode('musteri_1') ? CFG.tree.offerFreq : 1; }
+  function offerFreq() { return hasNode('musteri_1') ? 1 / (1 + CFG.tree.offerMore) : 1; } // teklif aralığı çarpanı
   function offerPayMult() { return hasNode('musteri_3') ? CFG.tree.offerPayMult : 1; }
+  function unspentMult() { return 1 + CFG.halkaArz.unspentBonus * Math.min(S.ipoShares, CFG.halkaArz.unspentCap); } // harcanmamış Borsa Payı bonusu
   function genUnlocked(g) { return !g.stage || S.stageBest >= g.stage; }
   function totalOwned() { var t = 0; for (var k in S.gens) t += S.gens[k]; return t; }
   function stageIndexOf(earned) {
@@ -291,6 +314,7 @@
     m *= 1 + shareBonus() * S.shares;
     m *= achMult();
     if (hasNode('ekip_1')) m *= CFG.tree.genMult;
+    m *= unspentMult();
     S.upgrades.forEach(function (id) { var u = UPG_BY_ID[id]; if (u && u.type === 'all') m *= u.all; });
     return m;
   }
@@ -363,6 +387,8 @@
   }
   function earn(x, src) {
     S.money += x; S.runEarned += x; S.totalEarned += x; S.cycleEarned += x;
+    var nx = S.cycleStage + 1; // bu döngüde (son halka arzdan beri) ulaşılan en yüksek aşama
+    if (nx < STAGES.length && S.runEarned >= STAGES[nx].at) S.cycleStage = stageIndexOf(S.runEarned);
     if (src !== 'offline' && src !== 'task') taskProgress('earn', x);
   }
 
@@ -403,7 +429,8 @@
   var KEEP_ON_PRESTIGE = ['totalEarned', 'clicks', 'clickEarned', 'playTime', 'startedAt', 'eventsClicked', 'offlineEarned',
     'achievements', 'critClicks', 'eventsResolved', 'logoAccepted', 'revisions', 'meetings', 'serverCrashes',
     'reputation', 'noMeetingSec', 'daily',
-    'ipoShares', 'ipoSharesEarned', 'ipoCount', 'cycleEarned', 'tree', 'stageBest', 'newsSeen', 'newsPending'];
+    'ipoShares', 'ipoSharesEarned', 'ipoCount', 'cycleEarned', 'tree', 'stageBest', 'newsSeen', 'newsPending',
+    'cycleStage', 'sectorCool', 'followUps', 'pendingPay'];
   // Sıfırlama sonrası (Yatırım Turu ve Halka Arz): Hazır Kadro başlangıç çalışanları
   function resetTo(keep) {
     S = newState();
@@ -422,9 +449,16 @@
   // Borsa Payı Ağacı, başarımlar ve sıralamadaki toplam kazanç (totalEarned) kalır.
   function ipoUnlocked() { return S.cycleRounds >= CFG.halkaArz.rounds; }
   function ipoGain() {
-    var H = CFG.halkaArz;
-    var g = Math.floor(H.k * Math.cbrt(Math.max(0, S.cycleEarned) / H.threshold) + 1e-9);
+    var H = CFG.halkaArz, g;
+    if (H.mode === 'root') g = Math.floor(H.k * Math.pow(Math.max(0, S.cycleEarned) / H.threshold, 1 / H.root) + 1e-9);
+    else g = (S.ipoCount > 0 && S.cycleStage < H.repeatMinStage) ? 0 : (H.stagePays[Math.min(S.cycleStage, H.stagePays.length - 1)] || 0);
     return Math.max(S.ipoCount === 0 ? H.firstMin : 0, g);
+  }
+  // Borsa Payı veren ilk aşama (ör. Global Holding): kilit açıkken 0 pay görünürse ipucu için
+  function ipoPayStage() {
+    var P = CFG.halkaArz.stagePays, from = S.ipoCount > 0 ? CFG.halkaArz.repeatMinStage : 0;
+    for (var i = from; i < P.length; i++) if (P[i] >= 1) return i;
+    return P.length - 1;
   }
   function doIpo() {
     if (!ipoUnlocked()) return 0;
@@ -433,7 +467,7 @@
     var keep = { prestigeCount: S.prestigeCount };
     KEEP_ON_PRESTIGE.forEach(function (k) { keep[k] = S[k]; });
     keep.ipoShares = S.ipoShares + gain; keep.ipoSharesEarned = S.ipoSharesEarned + gain; keep.ipoCount = S.ipoCount + 1;
-    keep.cycleEarned = 0;
+    keep.cycleEarned = 0; keep.cycleStage = 0;
     resetTo(keep);
     return gain;
   }
@@ -462,6 +496,8 @@
     }
     S.playTime += dt;
     S.noMeetingSec += dt;
+    for (var sc in S.sectorCool) { S.sectorCool[sc] -= dt; if (S.sectorCool[sc] <= 0) delete S.sectorCool[sc]; }
+    settlePending(dt);
   }
 
   // ------------------------------------------------------------------
@@ -563,16 +599,121 @@
         { label: 'Müşterilere yönlendir', hint: '+3 itibar', run: function () { addRep(3); return 'Gelen kutusu doldu. İtibar +3'; } }
       ] }
   ];
+
+  // ---- v4.1 Müşteri sektörleri: sektör kartları olay kartı olarak çıkar. Reddetmek o sektörden kartları bir süre azaltır.
+  var SC = CFG.sectors;
+  var SECTORS = [
+    { id: 'esnaf', name: 'Mahalle Esnafı', icon: '🏪' },
+    { id: 'eticaret', name: 'E-ticaret', icon: '🛒' },
+    { id: 'oyun', name: 'Oyun şirketi', icon: '🎮' },
+    { id: 'kamu', name: 'Kamu ihalesi', icon: '🏛️' }
+  ];
+  var SECTOR_BY_ID = {};
+  SECTORS.forEach(function (x) { SECTOR_BY_ID[x.id] = x; });
+  function sectorOpen(id) { return S.stageBest >= SC.unlock[id]; }
+  function sectorWeight(id) { return (S.sectorCool[id] || 0) > 0 ? SC.rejectWeight : 1; }
+  function payLater(sec, delay, label) {
+    var x = pay(sec);
+    S.pendingPay.push({ amount: x, left: delay, total: delay, label: label });
+    return x;
+  }
+  function settlePending(dt) { // gecikmeli ödemeler (çevrimdışıyken de işler)
+    if (!S.pendingPay.length) return;
+    var due = [];
+    S.pendingPay.forEach(function (p) { p.left -= dt; if (p.left <= 0) due.push(p); });
+    if (!due.length) return;
+    S.pendingPay = S.pendingPay.filter(function (p) { return p.left > 0; });
+    due.forEach(function (p) { earn(p.amount, 'event'); notify('paid', p); });
+  }
+  function rejectSector(id) {
+    S.sectorCool[id] = SC.rejectSec;
+    var x = SECTOR_BY_ID[id];
+    return x.name + ' müşterisi başka ajansa gitti. Bu sektörden teklifler bir süre azalacak.';
+  }
+  function rejectChoice(id) {
+    return { label: 'Reddet', hint: function () { return SECTOR_BY_ID[id].name + ' teklifleri ' + fmtSec(SC.rejectSec) + ' azalır'; },
+      run: function () { return rejectSector(id); } };
+  }
+  function sectorCard(sector, id, title, choice, extra) {
+    var sx = SECTOR_BY_ID[sector];
+    var e = { id: id, sector: sector, icon: sx.icon, title: title, text: sx.icon + ' ' + sx.name + ' müşterisi', choices: [choice, extra || rejectChoice(sector)] };
+    EVENTS.push(e);
+    return e;
+  }
+  sectorCard('eticaret', 'eticaret_sunucu', '“İndirim gecesi site yavaşladı. Sunucu ekler misin?”',
+    { label: 'Kabul et', hint: function () { var c = SC.eticaret_sunucu; return '-' + tl(Math.min(S.money, pay(c.cost))) + ' sunucu · +' + tl(pay(c.pay)); },
+      run: function () { var c = SC.eticaret_sunucu, k = Math.min(S.money, pay(c.cost)); S.money -= k; return cash(c.pay, 'Sunucular eklendi, site uçtu (-' + tl(k) + ' sunucu):'); } });
+  sectorCard('eticaret', 'eticaret_buton', '“Sepete ekle butonu biraz daha kırmızı olabilir mi?”',
+    { label: 'Kabul et', hint: function () { var c = SC.eticaret_buton; return '+' + tl(pay(c.pay)) + ' · ' + fmtSec(negSec(c.sec)) + ' verim -%' + pct(1 - c.mult); },
+      run: function () { var c = SC.eticaret_buton; S.revisions++; addBuff('buton', 'prod', c.mult, negSec(c.sec), 'Buton revizesi'); return cash(c.pay, 'Buton biraz daha kırmızı:'); } });
+  sectorCard('oyun', 'oyun_yama', '“Oyun çıktı ama ilk gün yaması lazım.”',
+    { label: 'Kabul et', hint: function () { var c = SC.oyun_yama; return '+' + tl(pay(c.pay)) + ' · ' + fmtSec(negSec(c.sec)) + ' verim -%' + pct(1 - c.mult); },
+      run: function () { var c = SC.oyun_yama; addBuff('yama', 'prod', c.mult, negSec(c.sec), 'İlk gün yaması'); return cash(c.pay, 'Yama yetişti, ekip bitkin:'); } });
+  sectorCard('oyun', 'oyun_karakter', '“Karakter bir tık daha havalı olsun. Nasıl yani, biz de bilmiyoruz.”',
+    { label: 'Kabul et', hint: function () { var c = SC.oyun_karakter; return '+' + tl(pay(c.pay)) + ' · ' + fmtSec(negSec(c.sec)) + ' verim -%' + pct(1 - c.mult); },
+      run: function () { var c = SC.oyun_karakter; S.revisions++; addBuff('karakter', 'prod', c.mult, negSec(c.sec), 'Havalı karakter revizesi'); return cash(c.pay, 'Karakter havalandı (sanırım):'); } });
+  sectorCard('kamu', 'kamu_ihale', '“İhale kazanıldı. Evrak listesi 14 sayfa.”',
+    { label: 'Kabul et', hint: function () { var c = SC.kamu_ihale; return '+' + tl(pay(c.pay)) + ' · ödeme ' + fmtSec(c.delay) + ' sonra'; },
+      run: function () { var c = SC.kamu_ihale, x = payLater(c.pay, c.delay, 'İhale ödemesi'); return 'Evraklar teslim edildi. ' + tl(x) + ' ödeme ' + fmtSec(c.delay) + ' sonra gelecek.'; } });
+  sectorCard('kamu', 'kamu_imza', '“Islak imza lazım, PDF olmaz.”',
+    { label: 'Kabul et', hint: function () { var c = SC.kamu_imza; return '+' + tl(pay(c.pay)) + ' · ödeme ' + fmtSec(c.delay) + ' sonra'; },
+      run: function () { var c = SC.kamu_imza, x = payLater(c.pay, c.delay, 'Islak imzalı ödeme'); return 'İmza atıldı, kargoya verildi. ' + tl(x) + ' ödeme ' + fmtSec(c.delay) + ' sonra gelecek.'; } });
+  sectorCard('esnaf', 'esnaf_kafe', '“Kafe: Menüyü siteye koyalım. Fiyatlar her hafta değişiyor ama.”',
+    { label: 'Kabul et', hint: function () { var c = SC.esnaf_kafe; return '+' + tl(pay(c.pay)) + ' · sonra fiyat revizeleri'; },
+      run: function () { var c = SC.esnaf_kafe; S.followUps.kafe = c.revisions; return cash(c.pay, 'Menü yayında:'); } });
+  sectorCard('esnaf', 'esnaf_emlak', '“Emlakçı: İlanları ben girerim, sen sadece şifremi hatırla.”',
+    { label: 'Kabul et', hint: function () { var c = SC.esnaf_emlak; return '+' + tl(pay(c.pay)) + ' · arada destek isteği'; },
+      run: function () { S.followUps.emlak = 1; return cash(SC.esnaf_emlak.pay, 'Kurulum tamam:'); } });
+  // Takip kartları (yalnızca kabul edilen esnaf işlerinden sonra)
+  sectorCard('esnaf', 'esnaf_kafe_revize', '“Kafe: Fiyatlar yine değişti.”',
+    { label: 'Güncelle', hint: function () { var c = SC.esnaf_kafe; return '+' + tl(pay(c.revPay)) + ' · ' + fmtSec(negSec(c.revSec)) + ' verim -%' + pct(1 - c.revMult); },
+      run: function () { var c = SC.esnaf_kafe; S.followUps.kafe = Math.max(0, S.followUps.kafe - 1); S.revisions++; addBuff('menu', 'prod', c.revMult, negSec(c.revSec), 'Menü revizesi'); return cash(c.revPay, 'Fiyatlar güncellendi:'); } },
+    { label: 'Artık yapamayız', hint: 'Kafe işi biter', run: function () { S.followUps.kafe = 0; return 'Kafe başka birini buldu.'; } });
+  sectorCard('esnaf', 'esnaf_emlak_destek', '“Emlakçı: Şifremi yine unuttum.”',
+    { label: 'Yardım et', hint: function () { var c = SC.esnaf_emlak; return '+' + tl(pay(c.supportPay)) + ' · ' + fmtSec(negSec(c.supportSec)) + ' verim -%' + pct(1 - c.supportMult); },
+      run: function () { var c = SC.esnaf_emlak; addBuff('sifre', 'prod', c.supportMult, negSec(c.supportSec), 'Şifre desteği'); return cash(c.supportPay, 'Şifre sıfırlandı (yine):'); } },
+    { label: 'Artık yapamayız', hint: 'Emlakçı işi biter', run: function () { S.followUps.emlak = 0; return 'Emlakçı yeğenine sordu.'; } });
+
   var EVENT_BY_ID = {};
   EVENTS.forEach(function (e) { EVENT_BY_ID[e.id] = e; });
-  function eventPool() {
+  function cardAvailable(e) {
+    if (!e) return false;
+    if (e.sector) {
+      if (!sectorOpen(e.sector)) return false;
+      if (e.id === 'esnaf_kafe_revize') return S.followUps.kafe > 0;
+      if (e.id === 'esnaf_emlak_destek') return S.followUps.emlak > 0;
+      return true;
+    }
+    if (e.id === 'cuma' && has('deploy_yasak')) return false;
+    if (e.id === 'sunucu' && totalOwned() < 5) return false;
+    return true;
+  }
+  function eventPool() { return EVENTS.filter(function (e) { return !e.sector && cardAvailable(e); }); }
+  function sectorPool(id) {
     return EVENTS.filter(function (e) {
-      if (e.id === 'cuma' && has('deploy_yasak')) return false;
-      if (e.id === 'sunucu' && totalOwned() < 5) return false;
+      if (e.sector !== id || !cardAvailable(e)) return false;
+      if (e.id === 'esnaf_emlak_destek') return rnd() < SC.esnaf_emlak.returnChance; // ara sıra geri döner
       return true;
     });
   }
+  function pickSector() {
+    var open = SECTORS.filter(function (x) { return sectorOpen(x.id); });
+    var tot = 0; open.forEach(function (x) { tot += sectorWeight(x.id); });
+    var r = rnd() * tot;
+    for (var i = 0; i < open.length; i++) { r -= sectorWeight(open[i].id); if (r < 0) return open[i].id; }
+    return open.length ? open[open.length - 1].id : null;
+  }
   function pickEvent(exclude) {
+    if (rnd() < SC.share) {
+      var sec = pickSector();
+      if (sec) {
+        var sp = sectorPool(sec).filter(function (e) { return e.id !== exclude; });
+        // kafe revizesi bekliyorsa önce o gelir
+        var fu = sp.filter(function (e) { return e.id === 'esnaf_kafe_revize'; });
+        if (fu.length && rnd() < 0.5) return fu[0].id;
+        if (sp.length) return sp[Math.floor(rnd() * sp.length)].id;
+      }
+    }
     var p = eventPool().filter(function (e) { return e.id !== exclude; });
     if (!p.length) p = eventPool();
     return p[Math.floor(rnd() * p.length)].id;
@@ -608,6 +749,9 @@
     { id: 'asama_2', icon: '🏢', name: 'Butik Hayaller', desc: 'Butik Stüdyo aşamasına ulaş', test: function () { return S.stage >= 2; } },
     { id: 'asama_3', icon: '🚀', name: 'Tabela Asıldı', desc: 'Ajans aşamasına ulaş', test: function () { return S.stage >= 3; } },
     { id: 'asama_5', icon: '🌐', name: 'Kıtalar Arası', desc: 'Global Holding aşamasına ulaş', test: function () { return S.stage >= 5; } },
+    { id: 'asama_6', icon: '🛰️', name: 'Acil Kuyruğu', desc: 'Teknoloji Devi aşamasına ulaş', test: function () { return S.stageBest >= 6; } },
+    { id: 'asama_7', icon: '🧬', name: 'Model Eğitildi', desc: 'Yapay Zekâ Laboratuvarı aşamasına ulaş', test: function () { return S.stageBest >= 7; } },
+    { id: 'asama_8', icon: '🔴', name: 'Kızıl Tabela', desc: 'Mars Ofisi aşamasına ulaş', test: function () { return S.stageBest >= 8; } },
     { id: 'localhost', icon: '💻', name: 'Localhost’ta Çalışıyordu', desc: 'Bir sunucu çökmesini atlat', test: function () { return S.serverCrashes >= 1; } },
     { id: 'revize_7', icon: '📑', name: 'Son Revize 7. Kez', desc: '7 revize talebini kabul et', test: function () { return S.revisions >= 7; } },
     { id: 'toplantisiz', icon: '🤫', name: 'Toplantısız Gün', desc: '10 dakika boyunca hiçbir toplantıya katılmadan oyna', test: function () { return S.noMeetingSec >= 600; } },
@@ -767,7 +911,7 @@
     base.tree = base.tree.filter(function (id) { var n = NODE_BY_ID[id]; var ok = n && !seen[id] && (!n.prev || seen[n.prev]); seen[id] = 1; return ok; });
     base.newsSeen = base.newsSeen.filter(function (id, i, a) { return typeof id === 'string' && NEWS_BY_ID[id] && a.indexOf(id) === i; });
     base.newsPending = base.newsPending.filter(function (id, i, a) { return typeof id === 'string' && NEWS_BY_ID[id] && a.indexOf(id) === i; });
-    ['ipoShares', 'ipoSharesEarned', 'ipoCount', 'cycleRounds', 'stageBest', 'shares', 'prestigeCount'].forEach(function (k) {
+    ['ipoShares', 'ipoSharesEarned', 'ipoCount', 'cycleRounds', 'stageBest', 'shares', 'prestigeCount', 'cycleStage'].forEach(function (k) {
       base[k] = Math.max(0, Math.floor(base[k]));
     });
     base.buffs = base.buffs.filter(function (b) {
@@ -779,15 +923,36 @@
       base.daily = nd;
     }
     base.reputation = Math.max(0, Math.min(REP_MAX, base.reputation));
+    // v4.1: sektör bekleme süreleri, esnaf takip işleri, gecikmeli ödemeler
+    base.sectorCool = {};
+    if (d.sectorCool && typeof d.sectorCool === 'object') {
+      SECTORS.forEach(function (x) { var v = d.sectorCool[x.id]; if (isNum(v) && v > 0) base.sectorCool[x.id] = Math.min(v, SC.rejectSec); });
+    }
+    base.followUps = { kafe: 0, emlak: 0 };
+    if (d.followUps && typeof d.followUps === 'object') {
+      if (isNum(d.followUps.kafe)) base.followUps.kafe = Math.max(0, Math.min(SC.esnaf_kafe.revisions, Math.floor(d.followUps.kafe)));
+      base.followUps.emlak = d.followUps.emlak ? 1 : 0;
+    }
+    base.pendingPay = base.pendingPay.filter(function (p) {
+      return p && isNum(p.amount) && p.amount >= 0 && isNum(p.left) && p.left > 0 && typeof p.label === 'string';
+    }).slice(0, 20).map(function (p) {
+      var maxDelay = Math.max(SC.kamu_ihale.delay, SC.kamu_imza.delay), left = Math.min(p.left, maxDelay);
+      return { amount: p.amount, left: left, total: isNum(p.total) ? Math.min(Math.max(p.total, left), maxDelay) : left, label: p.label.slice(0, 40) };
+    });
     // v2/v3 (oyun v1-v3) -> kayıt v3 (oyun v4): kayıpsız taşıma
-    if (Core.loadedVersion < SAVE_VERSION) {
+    if (Core.loadedVersion < 3) {
       base.cycleEarned = base.totalEarned;          // henüz halka arz yok: döngü = tüm zamanlar
       base.cycleRounds = base.prestigeCount;        // şimdiye kadarki yatırım turları Halka Arz koşuluna sayılır
       base.stageBest = Math.max(base.stage, stageIndexOf(base.runEarned));
       if (base.stageBest >= 5 && base.newsPending.indexOf('yeni_asama') === -1) base.newsPending.push('yeni_asama');
     }
+    // kayıt v3 (oyun v4) -> v4 (oyun v4.1): bu döngüde ulaşılan en yüksek aşama (halka arz yoksa tüm geçmiş)
+    if (Core.loadedVersion < 4) {
+      base.cycleStage = base.ipoCount === 0 ? Math.max(base.stageBest, base.stage, stageIndexOf(base.runEarned)) : Math.max(base.stage, stageIndexOf(base.runEarned));
+    }
     base.cycleEarned = Math.min(base.totalEarned, Math.max(base.cycleEarned, base.runEarned));
     base.stageBest = Math.max(base.stageBest, base.stage, stageIndexOf(base.runEarned));
+    base.cycleStage = Math.min(STAGES.length - 1, Math.max(0, Math.floor(base.cycleStage), stageIndexOf(base.runEarned)));
     base.version = SAVE_VERSION;
     S = base;
     return S;
@@ -798,6 +963,8 @@
     var sec = Math.min(elapsed, cap);
     var gain = baseTps() * sec;
     if (gain > 0) { earn(gain, 'offline'); S.offlineEarned += gain; }
+    for (var sc in S.sectorCool) { S.sectorCool[sc] -= elapsed; if (S.sectorCool[sc] <= 0) delete S.sectorCool[sc]; }
+    settlePending(elapsed);
     return { elapsed: elapsed, sec: sec, gain: gain, capped: elapsed > cap, capHours: cap / 3600 };
   }
 
@@ -811,7 +978,12 @@
     { id: 'siralama', emoji: '🏆', title: 'Yeni: Sıralama!',
       text: function () { return 'Toplam kazancınla listeye gir. Yatırım turu yapsan da yerin korunur.'; },
       action: 'Sıralamaya bak', count: 'news_leaderboard',
-      eligible: function () { return !!(Core.newsNeedsLeaderboard && Core.newsNeedsLeaderboard()); } }
+      eligible: function () { return !!(Core.newsNeedsLeaderboard && Core.newsNeedsLeaderboard()); } },
+    { id: 'acik_ofis', emoji: '🪑', title: 'Kodhane ailesine yeni oyun: Açık Ofis!',
+      text: function () { return 'Kendi ofisini kur, masaları yerleştir, ekibini büyüt. Kodhane hesabınla giriş yapabilirsin.'; },
+      action: 'Açık Ofis\'i dene', count: 'news_acikofis',
+      url: 'https://thejackaltr.github.io/kodhane-acik-ofis/?utm_source=kodhane&utm_medium=news&utm_campaign=acikofis_v1',
+      eligible: function () { return true; } }
   ];
   var NEWS_BY_ID = {};
   NEWS.forEach(function (n) { NEWS_BY_ID[n.id] = n; });
@@ -831,7 +1003,9 @@
     VERSION: VERSION, SAVE_VERSION: SAVE_VERSION, CFG: CFG, TREE: TREE, NEWS: NEWS, STAGE_TINTS: STAGE_TINTS,
     hasNode: hasNode, nodeState: nodeState, nodeCost: nodeCost, buyNode: buyNode, ipoUnlocked: ipoUnlocked, ipoGain: ipoGain, doIpo: doIpo,
     costGrowth: costGrowth, offlineCapSec: offlineCapSec, shareBonus: shareBonus, offerSec: offerSec, offerFreq: offerFreq, offerPayMult: offerPayMult,
-    genUnlocked: genUnlocked, nextNews: nextNews, markNewsSeen: markNewsSeen, sfxAcc3: sfxAcc3, sfxAbl: sfxAbl, sfxDat: sfxDat, GENERATORS: GENERATORS, UPGRADES: UPGRADES, STAGES: STAGES, EVENTS: EVENTS, ACHIEVEMENTS: ACHIEVEMENTS,
+    genUnlocked: genUnlocked, unspentMult: unspentMult, ipoPayStage: ipoPayStage, globalMult: globalMult,
+    SECTORS: SECTORS, sectorOpen: sectorOpen, sectorWeight: sectorWeight, sectorPool: sectorPool, pickSector: pickSector, cardAvailable: cardAvailable,
+    settlePending: settlePending, EVENT_BY_ID: EVENT_BY_ID, nextNews: nextNews, markNewsSeen: markNewsSeen, sfxAcc3: sfxAcc3, sfxAbl: sfxAbl, sfxDat: sfxDat, GENERATORS: GENERATORS, UPGRADES: UPGRADES, STAGES: STAGES, EVENTS: EVENTS, ACHIEVEMENTS: ACHIEVEMENTS,
     fmt: fmt, tl: tl, fmtTime: fmtTime,
     get state() { return S; }, set state(v) { S = v; }, newState: newState,
     tps: tps, baseTps: baseTps, clickValue: clickValue, clickBase: clickBase, genCost: genCost, genTps: genTps, maxAffordable: maxAffordable,
@@ -1205,6 +1379,10 @@
     el.ipoShares.textContent = fmt(S.ipoShares);
     el.ipoGain.textContent = fmt(gain) + ' Borsa Payı';
     el.ipoCount.textContent = fmt(S.ipoCount);
+    el.ipoBonus.textContent = '+%' + num(Math.min(S.ipoShares, H.unspentCap) * H.unspentBonus * 100) + ' üretim' + (S.ipoShares >= H.unspentCap ? ' (üst sınır)' : '');
+    var hint = open && gain < 1;
+    el.ipoHint.classList.toggle('hidden', !hint);
+    if (hint) { var ps = STAGES[ipoPayStage()]; el.ipoHint.textContent = 'Borsa Payı için bu döngüde ' + ps.icon + ' ' + ps.name + ' aşamasına ulaş.'; }
     el.ipoBtn.disabled = !open || gain < 1;
     var sig = S.tree.join(',') + '|' + S.ipoShares;
     if (sig === treeSig) return;
@@ -1272,6 +1450,9 @@
   function renderBuffs() {
     var parts = [];
     if (S.boostLeft > 0) parts.push('<span class="buff good">🔥 Acil teslim modu: tüm kazanç x2 — ' + Math.ceil(S.boostLeft) + ' sn</span>');
+    S.pendingPay.forEach(function (p) {
+      parts.push('<span class="buff good">⏳ ' + p.label + ': +' + tl(p.amount) + ' — ' + Math.ceil(p.left) + ' sn</span>');
+    });
     S.buffs.forEach(function (b) {
       var good = b.mult >= 1;
       var eff = b.kind === 'click' ? 'tık x' + fmt(b.mult) : (b.mult === 0 ? 'üretim durdu' : 'verim ' + (good ? '+' : '-') + '%' + Math.round(Math.abs(1 - b.mult) * 100));
@@ -1396,10 +1577,9 @@
     evs.nextId = pickEvent(evs.id);
   }
   function spawnEvent(id) {
-    var pool = eventPool();
     if (!id || !EVENT_BY_ID[id]) {
       id = evs.nextId;
-      if (!id || !pool.some(function (e) { return e.id === id; })) id = pickEvent(evs.id);
+      if (!id || !cardAvailable(EVENT_BY_ID[id])) id = pickEvent(evs.id);
     }
     var e = EVENT_BY_ID[id];
     evs.visible = true; evs.id = id; evs.until = Date.now() + EVENT_SHOW_MS;
@@ -1454,6 +1634,7 @@
       if (n.type === 'ach') { toast('🏅 Başarım açıldı: ' + n.data.name + ' — kalıcı +%1 üretim', 3800); sfx('ach'); vibrate([10, 30, 10]); }
       else if (n.type === 'task') { toast('✅ Görev tamam: ' + taskLabel(n.data) + ' (+' + tl(n.data.reward) + ')', 3800); sfx('buy'); }
       else if (n.type === 'streak') { toast('🔥 Günlük seri ' + n.data.streak + ' gün! Seri bonusu +' + tl(n.data.bonus), 4500); sfx('stage'); }
+      else if (n.type === 'paid') { toast('💸 ' + n.data.label + ' geldi: +' + tl(n.data.amount), 3800); sfx('buy'); }
       else if (n.type === 'newday') { toast('📅 Yeni günün görevleri hazır!' + (n.data.reset ? ' Dün görevler bitmediği için seri sıfırlandı.' : ''), 4200); }
     }
   }
@@ -1511,6 +1692,7 @@
       buttons.push({ label: 'Kapat', cls: 'ghost' });
       buttons.push({ label: n.action, cls: 'primary', onClick: function () {
         if (n.count) countEvent(n.count + '_click');
+        if (n.url) { Core.lastOpened = n.url; try { window.open(n.url, '_blank', 'noopener'); } catch (e) {} return; }
         if (isMobile()) setView('siralama'); else selectTab('siralama');
       } });
     } else buttons.push({ label: 'Tamam', cls: 'primary' });
@@ -1600,7 +1782,7 @@
       'prGain', 'prNext', 'prestigeBtn', 'streakBox', 'taskList', 'achHead', 'achGrid', 'clientOffer', 'coText', 'coTimerFill',
       'eventCard', 'evIcon', 'evTitle', 'evText', 'evChoices', 'evLater', 'evTimerFill', 'toast', 'updateBar', 'updateBtn',
       'modal', 'modalEmoji', 'modalTitle', 'modalText', 'modalActions', 'panelKod', 'panelEkip', 'panelSide', 'bottomNav',
-      'prPer', 'ipoSection', 'ipoLock', 'ipoBody', 'ipoShares', 'ipoGain', 'ipoCount', 'ipoBtn', 'treeGrid',
+      'prPer', 'ipoSection', 'ipoLock', 'ipoBody', 'ipoShares', 'ipoGain', 'ipoCount', 'ipoBonus', 'ipoHint', 'ipoBtn', 'treeGrid',
       'stageUp', 'suIcon', 'suTitle', 'suMsg', 'suBonus', 'suShare', 'suClose'
     ].forEach(function (id) { el[id] = $(id); });
 
@@ -1720,8 +1902,8 @@
       if (!ipoUnlocked() || g < 1) return;
       modal({
         emoji: '🔔', title: 'Halka arz et?',
-        html: 'Kasa, çalışanlar ve ofis sıfırlanacak. Karşılığında kalıcı Borsa Payı kazanacaksın. Sıralamadaki puanın olduğu gibi kalır.' +
-          '<br><small>Kazanacağın: <b>' + fmt(g) + ' Borsa Payı</b>. Yatırımcı hisselerin de sıfırlanır; Borsa Payı Ağacı ve başarımların kalır.</small>',
+        html: 'Kasa, çalışanlar, geliştirmeler ve yatırımcı hisselerin sıfırlanacak. Karşılığında kalıcı Borsa Payı kazanacaksın. Borsa Payı Ağacı, başarımların ve sıralamadaki puanın olduğu gibi kalır.' +
+          '<br><small>Kazanacağın: <b>' + fmt(g) + ' Borsa Payı</b>. Harcamadığın her Borsa Payı +%' + num(CFG.halkaArz.unspentBonus * 100) + ' üretim verir.</small>',
         buttons: [
           { label: 'Vazgeç', cls: 'ghost' },
           { label: 'Halka arz et', cls: 'primary', onClick: function () {

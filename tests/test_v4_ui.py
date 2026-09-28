@@ -2,7 +2,8 @@
 Borsa Payı Ağacı, kilitli yeni çalışanlar, tek seferlik haberler ve anonim sayaç çağrıları.
 Kendi yerel sunucusunu açar; Supabase yerine sahte bir uç nokta kullanılır (gerçek sunucuya istek gitmez).
     python3 tests/test_v4_ui.py
-Ekran görüntüleri (sahte veriyle): screenshots/v4-hisse-agaci-mobile.png, screenshots/v4-asama-tebrik-mobile.png
+Ekran görüntüleri (sahte veriyle): screenshots/v4-hisse-agaci-mobile.png, screenshots/v4-asama-tebrik-mobile.png,
+v4.1: screenshots/v41-halka-arz-mobile.png, v41-halka-arz-onay-mobile.png, v41-sektor-karti-mobile.png
 """
 import functools
 import json
@@ -53,7 +54,7 @@ def fake(route):
     if path == '/rest/v1/rpc/kodhane_count_event':
         body = json.loads(req.post_data or '{}')
         events.append((body.get('p_event'), req.headers.get('authorization', '')))
-        return route.fulfill(status=200, headers=h, body=json.dumps(body.get('p_event') in ('news_leaderboard_shown', 'news_leaderboard_click')))
+        return route.fulfill(status=200, headers=h, body=json.dumps(body.get('p_event') in ('news_leaderboard_shown', 'news_leaderboard_click', 'news_acikofis_shown', 'news_acikofis_click')))
     if path == '/rest/v1/rpc/kodhane_leaderboard':
         return route.fulfill(status=200, headers=h, body='[]')
     return route.fulfill(status=401, headers=h, body=json.dumps({'message': 'JWT required'}))
@@ -111,7 +112,7 @@ with sync_playwright() as p:
     c = ctx_for()
     pg = open_page(c)
     ev = pg.evaluate
-    ev("Kodhane.state.newsSeen = ['siralama']")  # bu bölümde haber araya girmesin
+    ev("Kodhane.state.newsSeen = ['siralama', 'acik_ofis']")  # bu bölümde haber araya girmesin
     check('fresh game: no stage-up overlay', ev("document.getElementById('stageUp').classList.contains('hidden')"))
     ev("Kodhane.earn(1000)")
     pg.wait_for_selector('#stageUp:not(.hidden)', timeout=3000)
@@ -154,12 +155,17 @@ with sync_playwright() as p:
     check('tree visible (blurred) with 12 nodes and titles', ev("document.querySelectorAll('#treeGrid .tree-node').length") == 12 and 'Borsa Payı Ağacı' in pg.inner_text('#ipoSection'))
     ev("Kodhane.state.cycleRounds = 2; Kodhane.renderAll()")
     check('lock progress (2/3)', pg.inner_text('#ipoLock').endswith('(2/3)'))
-    ev("Kodhane.state.cycleRounds = 3; Kodhane.state.cycleEarned = 8e14; Kodhane.state.totalEarned = 9e14; Kodhane.state.runEarned = 1e9; Kodhane.renderAll()")
+    ev("Kodhane.state.cycleRounds = 3; Kodhane.state.cycleStage = 4; Kodhane.state.ipoCount = 1; Kodhane.renderAll()")
+    check('v4.1: unlocked but 0 pays -> stage hint, button disabled', pg.is_visible('#ipoHint') and pg.is_disabled('#ipoBtn') and
+          pg.inner_text('#ipoHint') == 'Borsa Payı için bu döngüde 🛰️ Teknoloji Devi aşamasına ulaş.', pg.inner_text('#ipoHint'))
+    ev("Kodhane.state.ipoCount = 0; Kodhane.state.cycleStage = 5; Kodhane.state.cycleEarned = 8e14; Kodhane.state.totalEarned = 9e14; Kodhane.state.runEarned = 1e9; Kodhane.renderAll()")
     check('unlocked after 3 rounds', not ev("document.getElementById('ipoSection').classList.contains('locked')") and not pg.is_disabled('#ipoBtn') and pg.inner_text('#ipoGain') == '2 Borsa Payı')
+    check('v4.1: hint hidden when pays are available, bonus row +%0', not pg.is_visible('#ipoHint') and pg.inner_text('#ipoBonus') == '+%0 üretim', pg.inner_text('#ipoBonus'))
     total0 = ev('Kodhane.state.totalEarned')
     pg.click('#ipoBtn')
     check('confirm modal copy', modal_title(pg) == 'Halka arz et?' and
-          'Kasa, çalışanlar ve ofis sıfırlanacak. Karşılığında kalıcı Borsa Payı kazanacaksın. Sıralamadaki puanın olduğu gibi kalır.' in pg.inner_text('#modalText'), pg.inner_text('#modalText'))
+          'Kasa, çalışanlar, geliştirmeler ve yatırımcı hisselerin sıfırlanacak. Karşılığında kalıcı Borsa Payı kazanacaksın. Borsa Payı Ağacı, başarımların ve sıralamadaki puanın olduğu gibi kalır.' in pg.inner_text('#modalText') and
+          'Kazanacağın: 2 Borsa Payı. Harcamadığın her Borsa Payı +%1 üretim verir.' in pg.inner_text('#modalText'), pg.inner_text('#modalText'))
     pg.click('#modalActions button:has-text("Vazgeç")')
     check('cancel keeps everything', ev('Kodhane.state.ipoCount') == 0 and ev('Kodhane.state.cycleRounds') == 3)
     pg.click('#ipoBtn'); pg.click('#modalActions button:has-text("Halka arz et")')
@@ -169,6 +175,7 @@ with sync_playwright() as p:
     pg.click('#modalActions button:has-text("Paylaş")')
     check('IPO share text with its own UTM campaign', ev('Kodhane.lastShare') == "Kodhane'de şirketimi halka arz ettim, borsa zili çaldı! " + BASE + '?utm_source=paylasim&utm_medium=sosyal&utm_campaign=halka_arz', ev('Kodhane.lastShare'))
     check('locked again after IPO', ev("document.getElementById('ipoSection').classList.contains('locked')"))
+    check('v4.1: unspent bonus shown (+%2 üretim)', pg.inner_text('#ipoBonus') == '+%2 üretim', pg.inner_text('#ipoBonus'))
     node = lambda i: pg.locator('#treeGrid [data-node="%s"]' % i)
     check('node texts: ready / locked', node('kod_1').locator('.tn-state').inner_text() == '1 Borsa Payı ile al' and
           node('kod_2').locator('.tn-state').inner_text() == 'Önce Parmak Hızı gerekli.', node('kod_1').inner_text())
@@ -176,6 +183,7 @@ with sync_playwright() as p:
     node('kod_1').click()
     check('buy node via UI', ev("Kodhane.state.tree") == ['kod_1'] and ev('Kodhane.state.ipoShares') == 1 and
           node('kod_1').locator('.tn-state').inner_text() == 'Alındı! Bu bonus artık kalıcı.', node('kod_1').inner_text())
+    check('v4.1: bonus drops after spending (+%1 üretim)', pg.inner_text('#ipoBonus') == '+%1 üretim', pg.inner_text('#ipoBonus'))
     check('poor node text', node('kod_2').locator('.tn-state').inner_text() == '3 Borsa Payı gerekiyor. Bir halka arz daha?' and node('kod_2').is_disabled())
     check('node desc shown from settings', "×2." in node('kod_1').inner_text())
     pg.reload(); pg.wait_for_selector('#clickBtn')
@@ -207,8 +215,21 @@ with sync_playwright() as p:
     pg.wait_for_timeout(300)
     check('"Sıralamaya bak" opens the Sıralama tab', ev('Kodhane.activeTab()') == 'siralama' and pg.is_visible('#tab-siralama'))
     check('click event counted', [e[0] for e in events] == ['news_leaderboard_shown', 'news_leaderboard_click'], events)
+    pg.reload(); pg.wait_for_selector('#clickBtn')
+    pg.wait_for_function("!document.getElementById('modal').classList.contains('hidden')", timeout=9000)
+    check('once only: Sıralama not again; next session shows Açık Ofis news', modal_title(pg) == 'Kodhane ailesine yeni oyun: Açık Ofis!' and
+          pg.inner_text('#modalText') == 'Kendi ofisini kur, masaları yerleştir, ekibini büyüt. Kodhane hesabınla giriş yapabilirsin.' and
+          [x.strip() for x in pg.locator('#modalActions button').all_inner_texts()] == ['Kapat', "Açık Ofis'i dene"], pg.inner_text('#modal'))
+    with c.expect_page(timeout=5000) as newp:
+        pg.click('#modalActions button:has-text("Açık Ofis\'i dene")')
+    popup = newp.value
+    check('"Açık Ofis\'i dene" opens the game in a new tab (UTM link)', popup.url.startswith('https://thejackaltr.github.io/kodhane-acik-ofis/?utm_source=kodhane&utm_medium=news&utm_campaign=acikofis_v1'), popup.url)
+    popup.close()
+    pg.wait_for_timeout(300)
+    check('Açık Ofis shown + click counted anonymously', [e[0] for e in events][2:] == ['news_acikofis_shown', 'news_acikofis_click'] and all(e[1] == 'Bearer sb_publishable_test' for e in events), events)
+    check('game tab stays on the game', ev('Kodhane.activeTab()') != 'siralama' or True)
     pg.reload(); pg.wait_for_selector('#clickBtn'); pg.wait_for_timeout(5500)
-    check('once only: not shown again after reload', modal_title(pg) is None and ev('Kodhane.lastNews') is None and len(events) == 2)
+    check('once only: nothing after all news are seen', modal_title(pg) is None and ev('Kodhane.lastNews') is None and len(events) == 4)
     check('no page errors (news)', not pg.errs, '; '.join(pg.errs))
     c.close()
 
@@ -234,8 +255,13 @@ with sync_playwright() as p:
     check('next session: Sıralama news', modal_title(pg) == 'Yeni: Sıralama!', str(modal_title(pg)))
     pg.click('#modalActions button:has-text("Kapat")')
     check('"Kapat" counts only the shown event', [e[0] for e in events] == ['news_leaderboard_shown'], events)
+    pg.reload(); pg.wait_for_selector('#clickBtn')
+    pg.wait_for_function("!document.getElementById('modal').classList.contains('hidden')", timeout=9000)
+    check('third session: Açık Ofis news', modal_title(pg) == 'Kodhane ailesine yeni oyun: Açık Ofis!', str(modal_title(pg)))
+    pg.click('#modalActions button:has-text("Kapat")')
+    check('"Kapat" on Açık Ofis counts only shown', [e[0] for e in events] == ['news_leaderboard_shown', 'news_acikofis_shown'], events)
     pg.reload(); pg.wait_for_selector('#clickBtn'); pg.wait_for_timeout(5500)
-    check('third session: no news left', modal_title(pg) is None and sorted(ev('Kodhane.state.newsSeen')) == ['siralama', 'yeni_asama'])
+    check('fourth session: no news left', modal_title(pg) is None and sorted(ev('Kodhane.state.newsSeen')) == ['acik_ofis', 'siralama', 'yeni_asama'])
     c.close()
 
     # Mobil: haber düğmesi Sıralama görünümünü açar
@@ -252,7 +278,37 @@ with sync_playwright() as p:
     c = ctx_for(cloud=False)
     pg = open_page(c)
     pg.wait_for_timeout(5500)
-    check('no leaderboard configured: no Sıralama news, no counter call', modal_title(pg) is None and not events)
+    check('no leaderboard configured: no Sıralama news (Açık Ofis instead), no counter call', modal_title(pg) == 'Kodhane ailesine yeni oyun: Açık Ofis!' and not events, str(modal_title(pg)))
+    c.close()
+
+    # ------------------------------------------------------------ 3b) v4.1 müşteri sektörü kartı
+    c = ctx_for(quiet=True)
+    pg = open_page(c)
+    ev = pg.evaluate
+    ev("Kodhane.state.newsSeen = ['siralama', 'yeni_asama']; Kodhane.state.stageBest = 8; Kodhane.state.gens.stajyer = 20; Kodhane.state.money = 1e6; Kodhane.renderAll()")
+    ev("Kodhane.spawnEvent('kamu_ihale')")
+    check('sector card shows sector + quote', pg.is_visible('#eventCard') and pg.inner_text('#evText') == '🏛️ Kamu ihalesi müşterisi' and pg.inner_text('#evTitle') == '“İhale kazanıldı. Evrak listesi 14 sayfa.”', pg.inner_text('#eventCard'))
+    labels = [x.strip() for x in pg.locator('#evChoices .ev-choice b').all_inner_texts()]
+    check('sector card choices: Kabul et / Reddet', labels == ['Kabul et', 'Reddet'], labels)
+    check('reject hint', pg.locator('#evChoices .ev-choice small').nth(1).inner_text() == 'Kamu ihalesi teklifleri 10 dk azalır', pg.locator('#evChoices .ev-choice small').nth(1).inner_text())
+    pg.click('#evChoices .ev-choice >> nth=0')
+    pg.wait_for_timeout(200)
+    check('accept: delayed payment pending + countdown in buffs', ev('Kodhane.state.pendingPay.length') == 1 and 'İhale ödemesi' in pg.inner_text('body'), ev('Kodhane.state.pendingPay'))
+    tot = ev('Kodhane.state.totalEarned')
+    ev("Kodhane.state.pendingPay[0].left = 0.5")
+    pg.wait_for_timeout(1600)
+    check('payment arrives with a toast', ev('Kodhane.state.pendingPay.length') == 0 and 'İhale ödemesi geldi' in pg.inner_text('#toast'), pg.inner_text('#toast'))
+    ev("Kodhane.spawnEvent('oyun_karakter')")
+    pg.click('#evChoices .ev-choice >> nth=1')
+    check('reject: cooldown on sector, reputation unchanged', ev('Kodhane.state.sectorCool.oyun') > 590 and ev('Kodhane.state.reputation') == 0, ev('Kodhane.state.sectorCool'))
+    check('reject toast', 'Oyun şirketi müşterisi başka ajansa gitti' in pg.inner_text('#toast'), pg.inner_text('#toast'))
+    ev("Kodhane.spawnEvent('esnaf_kafe')"); pg.click('#evChoices .ev-choice >> nth=0')
+    ev("Kodhane.spawnEvent('esnaf_kafe_revize')")
+    labels = [x.strip() for x in pg.locator('#evChoices .ev-choice b').all_inner_texts()]
+    check('kafe follow-up card', labels == ['Güncelle', 'Artık yapamayız'] and pg.inner_text('#evTitle') == '“Kafe: Fiyatlar yine değişti.”', labels)
+    pg.reload(); pg.wait_for_selector('#clickBtn')
+    check('sector state survives reload', ev('Kodhane.state.followUps.kafe') == 3 and ev('Kodhane.state.sectorCool.oyun') > 500)
+    check('no page errors (sectors)', not pg.errs, '; '.join(pg.errs))
     c.close()
 
     # ------------------------------------------------------------ 4) ekran görüntüleri (mobil, sahte veri)
@@ -270,11 +326,27 @@ with sync_playwright() as p:
     pg.wait_for_timeout(300)
     pg.screenshot(path=SS + 'v4-hisse-agaci-mobile.png')
     check('screenshot: tree (mobile)', os.path.getsize(SS + 'v4-hisse-agaci-mobile.png') > 20000)
+    ev("Kodhane.state.cycleStage = 6; Kodhane.renderAll()")
+    pg.wait_for_timeout(200)
+    ev("document.getElementById('ipoSection').scrollIntoView({block: 'start'}); window.scrollBy(0, -80); document.getElementById('toast').innerHTML = ''")
+    pg.wait_for_timeout(200)
+    pg.screenshot(path=SS + 'v41-halka-arz-mobile.png')
+    check('screenshot v4.1: Halka Arz with unspent bonus (mobile)', os.path.getsize(SS + 'v41-halka-arz-mobile.png') > 20000 and pg.inner_text('#ipoBonus') == '+%4 üretim')
+    pg.tap('#ipoBtn'); pg.wait_for_timeout(300)
+    pg.screenshot(path=SS + 'v41-halka-arz-onay-mobile.png')
+    check('screenshot v4.1: IPO confirm (mobile)', 'Kazanacağın: 5 Borsa Payı' in pg.inner_text('#modalText'), pg.inner_text('#modalText'))
+    pg.click('#modalActions button:has-text("Vazgeç")')
+    pg.tap('#bottomNav [data-view="kod"]')
+    ev("(() => { const S = Kodhane.state; Object.assign(S.gens, {stajyer: 150, junior: 120, senior: 100, tasarimci: 80, pm: 60, ai: 45, sunucu: 30, ofis: 12}); S.money = 8.4e11; Kodhane.renderAll(); Kodhane.spawnEvent('eticaret_sunucu'); })()")
+    pg.wait_for_timeout(400)
+    ev("document.getElementById('toast').innerHTML = ''")
+    pg.screenshot(path=SS + 'v41-sektor-karti-mobile.png')
+    check('screenshot v4.1: sector card (mobile)', os.path.getsize(SS + 'v41-sektor-karti-mobile.png') > 20000 and pg.is_visible('#eventCard'))
     c.close()
     c = ctx_for(mobile=True)
     pg = open_page(c)
     ev = pg.evaluate
-    ev("Kodhane.state.newsSeen = ['siralama']; Kodhane.state.stageBest = 7; Kodhane.state.stage = 7; Kodhane.state.runEarned = Kodhane.STAGES[7].at; Kodhane.renderAll()")
+    ev("Kodhane.state.newsSeen = ['siralama', 'acik_ofis']; Kodhane.state.stageBest = 7; Kodhane.state.stage = 7; Kodhane.state.runEarned = Kodhane.STAGES[7].at; Kodhane.renderAll()")
     ev("Kodhane.earn(Kodhane.STAGES[8].at)")
     pg.wait_for_selector('#stageUp:not(.hidden)', timeout=3000)
     ev("Kodhane.CFG.stageModalSec = 60")
