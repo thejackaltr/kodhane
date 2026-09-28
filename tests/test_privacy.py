@@ -453,6 +453,20 @@ with sync_playwright() as p:
         pg.click('[data-test=tel-details]')
         pg.wait_for_selector('.tel-details')
         check(tagv + ' details open from the band without answering the notice', pg.evaluate("localStorage.getItem('kodhane_tel_notice')") is None and pg.is_visible('[data-test=tel-details-close]'))
+        pg.wait_for_timeout(350)
+        sc = pg.evaluate("""() => { const c = document.getElementById('modalCard'); const r = c.getBoundingClientRect();
+            return { scrollable: c.scrollHeight > c.clientHeight + 1, fits: r.top >= -0.5 && r.bottom <= innerHeight + 0.5 }; }""")
+        rows = vis(pg, '[data-test=tel-details-close]')
+        check(tagv + ' details: card fits the screen, Kapat fully visible and on top before scrolling', sc['fits'] and len(rows) == 1 and not all_ok(rows), [sc, rows])
+        pg.screenshot(path=os.path.join(SHOTS, 'kodhane-details-%s.png' % vname))
+        pg.evaluate("(() => { const c = document.getElementById('modalCard'); c.scrollTop = c.scrollHeight; })()")
+        pg.wait_for_timeout(200)
+        last = vis(pg, '.tel-details p:last-child')
+        rows = vis(pg, '[data-test=tel-details-close]')
+        check(tagv + ' details: scrolls to the last paragraph (%s), Kapat still on top' % ('scrollable' if sc['scrollable'] else 'fits without scrolling'),
+              len(last) == 1 and last[0]['inside'] and len(rows) == 1 and not all_ok(rows), [last, rows])
+        if sc['scrollable']:
+            pg.screenshot(path=os.path.join(SHOTS, 'kodhane-details-%s-scrolled.png' % vname))
         pg.click('[data-test=tel-details-close]'); pg.wait_for_timeout(200)
         check(tagv + ' details closed, band still there', pg.is_hidden('#modal') and pg.is_visible('[data-test=tel-banner]'))
         page_w = pg.evaluate('document.documentElement.scrollWidth')
@@ -474,7 +488,7 @@ with sync_playwright() as p:
         pg.wait_for_timeout(500)
         pg.screenshot(path=os.path.join(SHOTS, 'kodhane-band-%s.png' % vname))
         pg.click('[data-test=tel-details]'); pg.wait_for_selector('.tel-details'); pg.wait_for_timeout(400)
-        pg.screenshot(path=os.path.join(SHOTS, 'kodhane-details-%s.png' % vname))
+        pg.screenshot(path=os.path.join(SHOTS, 'kodhane-details-%s.png' % vname))  # (same view as the layout pass)
         dtext = pg.inner_text('#modal')
         check('[copy][%s] band shows the approved title/body/buttons' % vname, pg.inner_text('.nb-text b').strip() == COPY['telemetry.title']
               and COPY['telemetry.body'] in pg.inner_text('[data-test=tel-banner]'), pg.inner_text('[data-test=tel-banner]'))
