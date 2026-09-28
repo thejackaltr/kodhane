@@ -632,7 +632,7 @@ with sync_playwright() as p:
     wait_until(page, '!!navigator.serviceWorker.controller', 5000)
     keys = page.evaluate("caches.keys()")
     cached = page.evaluate("caches.keys().then(ks => Promise.all(ks.map(k => caches.open(k).then(c => c.keys())))).then(a => a.flat().map(r => r.url))")
-    check('sw: cache version bumped (v4.1)', any(re.match(r'kodhane-v4\.1-', k) for k in keys), str(keys))
+    check('sw: cache version bumped (v4.1.1)', any(re.match(r'kodhane-v4\.1\.1-', k) for k in keys), str(keys))
     check('sw: cloud.js cached for offline', any(u.endswith('/cloud.js') for u in cached))
     check('sw: never caches Supabase/CDN', not any(('supabase' in u) or ('jsdelivr' in u) for u in cached), str([u for u in cached if 'http' in u and BASE not in u]))
     ctx.set_offline(True)

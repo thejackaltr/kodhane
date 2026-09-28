@@ -87,8 +87,8 @@ check('sector share ≈ CFG.sectors.share', Math.abs((8000 - c.genel) / 8000 - S
 // reddetme
 K.state.money = 1000; K.state.reputation = 12;
 const msg = K.resolveEvent('kamu_ihale', 1);
-check('reject: cooldown on that sector, reputation unchanged', K.state.sectorCool.kamu === SC.rejectSec && K.state.reputation === 12 && /Kamu ihalesi müşterisi başka ajansa gitti/.test(msg), msg);
-check('reject hint mentions duration', K.EVENT_BY_ID.kamu_ihale.choices[1].hint() === 'Kamu ihalesi teklifleri 10 dk azalır', K.EVENT_BY_ID.kamu_ihale.choices[1].hint());
+check('reject: cooldown on that sector, reputation unchanged', K.state.sectorCool.kamu === SC.rejectSec && K.state.reputation === 12 && msg === 'Teklifi geri çevirdin. Kamu ihalesi teklifleri bir süre seyrek gelecek.', msg);
+check('reject hint mentions duration', K.EVENT_BY_ID.kamu_ihale.choices[1].hint() === 'Kamu ihalesi teklifleri 10:00 seyrek gelir', K.EVENT_BY_ID.kamu_ihale.choices[1].hint());
 check('rejected sector weight drops', K.sectorWeight('kamu') === SC.rejectWeight && K.sectorWeight('oyun') === 1);
 c = counts(8000);
 check('rejected sector appears less often', c.kamu < c.oyun * 0.5, c);
@@ -186,5 +186,24 @@ check('v4.1 save sanitised', K.state.cycleStage === 8 && JSON.stringify(Object.k
 K.deserialize(JSON.stringify(v4Save({ ipoCount: 1, ipoShares: 0, ipoSharesEarned: 1, tree: ['kod_1'], stage: 1, stageBest: 4, runEarned: 5000, cycleEarned: 5000, cycleRounds: 0, prestigeCount: 3, shares: 0 })));
 check('first account shape: loads, no retro pays', K.state.cycleStage === 1 && K.state.ipoSharesEarned === 1 && K.state.tree.length === 1);
 
+
+// ---------------------------------------------------------------- v4.1.1: Yazı metin düzeltmeleri + B1 ayarları
+check('B1: sector unlock stages, stage pays, repeatMinStage, unspentCap live in CFG', SC.unlock && typeof SC.unlock.kamu === 'number' && Array.isArray(H.stagePays) && typeof H.repeatMinStage === 'number' && typeof H.unspentCap === 'number');
+{ const u = SC.unlock, k0 = u.kamu; fresh(); K.state.stageBest = k0 - 1; const closed = !K.sectorOpen('kamu'); u.kamu = k0 - 1; const moved = K.sectorOpen('kamu'); u.kamu = k0;
+  check('B1: sectorOpen reads CFG.sectors.unlock', closed && moved); }
+check('sector card subtitle: icon + sector name only', K.EVENT_BY_ID.kamu_ihale.text === '🏛️ Kamu ihalesi' && K.EVENT_BY_ID.eticaret_sunucu.text === '🛒 E-ticaret', K.EVENT_BY_ID.kamu_ihale.text);
+fresh(); K.state.stageBest = 8;
+check('reject result text', K.resolveEvent('oyun_yama', 1) === 'Teklifi geri çevirdin. Oyun şirketi teklifleri bir süre seyrek gelecek.');
+check('reject hint text (m:ss)', K.EVENT_BY_ID.eticaret_buton.choices[1].hint() === 'E-ticaret teklifleri 10:00 seyrek gelir', K.EVENT_BY_ID.eticaret_buton.choices[1].hint());
+prodSetup(); { const k = K.tl(K.pay(SC.eticaret_sunucu.cost)), x = K.tl(K.pay(SC.eticaret_sunucu.pay)); const m = K.resolveEvent('eticaret_sunucu', 0);
+  check('Sunucu result text', m === 'Sunucular eklendi, site uçtu. Gider -' + k + ', gelir +' + x, m); }
+prodSetup(); { const x = K.tl(K.pay(SC.kamu_ihale.pay)); const m = K.resolveEvent('kamu_ihale', 0);
+  check('İhale result text', m === 'Evraklar teslim edildi. Ödeme ' + K.fmtSec(SC.kamu_ihale.delay) + ' sonra geliyor: +' + x && /Ödeme 5:00 sonra/.test(m), m); }
+prodSetup(); { const x = K.tl(K.pay(SC.kamu_imza.pay)); const m = K.resolveEvent('kamu_imza', 0);
+  check('Islak imza result text', m === 'İmza atıldı, kargoya verildi. Ödeme ' + K.fmtSec(SC.kamu_imza.delay) + ' sonra geliyor: +' + x, m); }
+check('durations over 60 s as m:ss', K.fmtSec(540) === '9:00' && K.fmtSec(600) === '10:00' && K.fmtSec(61) === '1:01' && K.fmtSec(60) === '60 sn' && K.fmtSec(45) === '45 sn' && K.fmtSec(3725) === '1:02:05', [K.fmtSec(540), K.fmtSec(61), K.fmtSec(3725)]);
+{ const a = K.ACHIEVEMENTS.find((x) => x.id === 'ekip_50'); check('50-employee achievement renamed to "Kat Doldu", id kept', a && a.name === 'Kat Doldu' && !K.ACHIEVEMENTS.some((x) => x.name === 'Açık Ofis')); }
+{ fresh(); K.state.achievements = ['ekip_50']; const str = K.serialize(); K.state = K.newState(); const st = K.deserialize(str); const got = (st && st.achievements) || K.state.achievements;
+  check('earners keep ekip_50 across save/load (id unchanged)', got.includes('ekip_50'), got); }
 console.log(`\n${pass}/${pass + fail} passed`);
 process.exit(fail ? 1 : 0);

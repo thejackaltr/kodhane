@@ -1,4 +1,4 @@
-/* Kodhane: Ajans Tycoon — v4.1 (yeni aşamalar + Halka Arz + Borsa Payı Ağacı + müşteri sektörleri)
+/* Kodhane: Ajans Tycoon — v4.1.1 (yeni aşamalar + Halka Arz + Borsa Payı Ağacı + müşteri sektörleri)
  * Vanilla JS, derleme adımı yok. Tüm oyun metinleri Türkçe.
  * v1 kayıtları ('kodhane_ajans_save_v1') ilk açılışta otomatik olarak taşınır; v2/v3/v4 kayıtları kayıpsız yeni alanları alır.
  * Denge sayıları CFG (ayarlar) ve tablolarda durur; açıklama metinleri sayıları bu ayarlardan okur.
@@ -10,7 +10,7 @@
   // ------------------------------------------------------------------
   // Tanımlar (denge değerleri)
   // ------------------------------------------------------------------
-  var VERSION = '4.1.0';
+  var VERSION = '4.1.1';
   var SAVE_VERSION = 4; // kayıt biçimi (v4.1 oyun sürümü; 3 = v4)
   var SAVE_KEY = 'kodhane_ajans_save_v2';
   var LEGACY_KEYS = ['kodhane_ajans_save_v1'];
@@ -243,7 +243,13 @@
     out.push(s + ' sn');
     return out.join(' ');
   }
-  function fmtSec(s) { s = Math.round(s); return s >= 120 && s % 60 === 0 ? s / 60 + ' dk' : s + ' sn'; }
+  // Süre/sayaç: 60 sn'ye kadar "45 sn", üstü dk:sn ("9:00"), saat üstü sa:dk:sn
+  function fmtSec(s) {
+    s = Math.max(0, Math.round(s));
+    if (s <= 60) return s + ' sn';
+    var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+    return (h ? h + ':' + pad(m) : m) + ':' + pad(r);
+  }
   function pct(x) { return Math.round(x * 100); }
   function num(x) { return fixedTR(x, 2); } // ayar sayılarını metne yazar: 1.5 -> "1,5"
   // Türkçe ek uyumu (sayılar için): %1'ini, %15'ten, %14'e ...
@@ -628,21 +634,21 @@
   function rejectSector(id) {
     S.sectorCool[id] = SC.rejectSec;
     var x = SECTOR_BY_ID[id];
-    return x.name + ' müşterisi başka ajansa gitti. Bu sektörden teklifler bir süre azalacak.';
+    return 'Teklifi geri çevirdin. ' + x.name + ' teklifleri bir süre seyrek gelecek.';
   }
   function rejectChoice(id) {
-    return { label: 'Reddet', hint: function () { return SECTOR_BY_ID[id].name + ' teklifleri ' + fmtSec(SC.rejectSec) + ' azalır'; },
+    return { label: 'Reddet', hint: function () { return SECTOR_BY_ID[id].name + ' teklifleri ' + fmtSec(SC.rejectSec) + ' seyrek gelir'; },
       run: function () { return rejectSector(id); } };
   }
   function sectorCard(sector, id, title, choice, extra) {
     var sx = SECTOR_BY_ID[sector];
-    var e = { id: id, sector: sector, icon: sx.icon, title: title, text: sx.icon + ' ' + sx.name + ' müşterisi', choices: [choice, extra || rejectChoice(sector)] };
+    var e = { id: id, sector: sector, icon: sx.icon, title: title, text: sx.icon + ' ' + sx.name, choices: [choice, extra || rejectChoice(sector)] };
     EVENTS.push(e);
     return e;
   }
   sectorCard('eticaret', 'eticaret_sunucu', '“İndirim gecesi site yavaşladı. Sunucu ekler misin?”',
     { label: 'Kabul et', hint: function () { var c = SC.eticaret_sunucu; return '-' + tl(Math.min(S.money, pay(c.cost))) + ' sunucu · +' + tl(pay(c.pay)); },
-      run: function () { var c = SC.eticaret_sunucu, k = Math.min(S.money, pay(c.cost)); S.money -= k; return cash(c.pay, 'Sunucular eklendi, site uçtu (-' + tl(k) + ' sunucu):'); } });
+      run: function () { var c = SC.eticaret_sunucu, k = Math.min(S.money, pay(c.cost)); S.money -= k; var x = pay(c.pay); earn(x, 'event'); return 'Sunucular eklendi, site uçtu. Gider -' + tl(k) + ', gelir +' + tl(x); } });
   sectorCard('eticaret', 'eticaret_buton', '“Sepete ekle butonu biraz daha kırmızı olabilir mi?”',
     { label: 'Kabul et', hint: function () { var c = SC.eticaret_buton; return '+' + tl(pay(c.pay)) + ' · ' + fmtSec(negSec(c.sec)) + ' verim -%' + pct(1 - c.mult); },
       run: function () { var c = SC.eticaret_buton; S.revisions++; addBuff('buton', 'prod', c.mult, negSec(c.sec), 'Buton revizesi'); return cash(c.pay, 'Buton biraz daha kırmızı:'); } });
@@ -654,10 +660,10 @@
       run: function () { var c = SC.oyun_karakter; S.revisions++; addBuff('karakter', 'prod', c.mult, negSec(c.sec), 'Havalı karakter revizesi'); return cash(c.pay, 'Karakter havalandı (sanırım):'); } });
   sectorCard('kamu', 'kamu_ihale', '“İhale kazanıldı. Evrak listesi 14 sayfa.”',
     { label: 'Kabul et', hint: function () { var c = SC.kamu_ihale; return '+' + tl(pay(c.pay)) + ' · ödeme ' + fmtSec(c.delay) + ' sonra'; },
-      run: function () { var c = SC.kamu_ihale, x = payLater(c.pay, c.delay, 'İhale ödemesi'); return 'Evraklar teslim edildi. ' + tl(x) + ' ödeme ' + fmtSec(c.delay) + ' sonra gelecek.'; } });
+      run: function () { var c = SC.kamu_ihale, x = payLater(c.pay, c.delay, 'İhale ödemesi'); return 'Evraklar teslim edildi. Ödeme ' + fmtSec(c.delay) + ' sonra geliyor: +' + tl(x); } });
   sectorCard('kamu', 'kamu_imza', '“Islak imza lazım, PDF olmaz.”',
     { label: 'Kabul et', hint: function () { var c = SC.kamu_imza; return '+' + tl(pay(c.pay)) + ' · ödeme ' + fmtSec(c.delay) + ' sonra'; },
-      run: function () { var c = SC.kamu_imza, x = payLater(c.pay, c.delay, 'Islak imzalı ödeme'); return 'İmza atıldı, kargoya verildi. ' + tl(x) + ' ödeme ' + fmtSec(c.delay) + ' sonra gelecek.'; } });
+      run: function () { var c = SC.kamu_imza, x = payLater(c.pay, c.delay, 'Islak imzalı ödeme'); return 'İmza atıldı, kargoya verildi. Ödeme ' + fmtSec(c.delay) + ' sonra geliyor: +' + tl(x); } });
   sectorCard('esnaf', 'esnaf_kafe', '“Kafe: Menüyü siteye koyalım. Fiyatlar her hafta değişiyor ama.”',
     { label: 'Kabul et', hint: function () { var c = SC.esnaf_kafe; return '+' + tl(pay(c.pay)) + ' · sonra fiyat revizeleri'; },
       run: function () { var c = SC.esnaf_kafe; S.followUps.kafe = c.revisions; return cash(c.pay, 'Menü yayında:'); } });
@@ -742,7 +748,7 @@
     { id: 'kazanc_1b', icon: '🏦', name: 'Milyar Değerleme', desc: 'Toplam 1 Mr TL kazan', test: function () { return S.totalEarned >= 1e9; } },
     { id: 'kazanc_1t', icon: '👑', name: 'Trilyon Kulübü', desc: 'Toplam 1 Tn TL kazan', test: function () { return S.totalEarned >= 1e12; } },
     { id: 'ekip_10', icon: '👥', name: 'Küçük Ekip', desc: 'Aynı anda 10 çalışanın olsun', test: function () { return totalOwned() >= 10; } },
-    { id: 'ekip_50', icon: '🏢', name: 'Açık Ofis', desc: 'Aynı anda 50 çalışanın olsun', test: function () { return totalOwned() >= 50; } },
+    { id: 'ekip_50', icon: '🏢', name: 'Kat Doldu', desc: 'Aynı anda 50 çalışanın olsun', test: function () { return totalOwned() >= 50; } },
     { id: 'ekip_150', icon: '🧍', name: 'Kalabalık Stand-up', desc: 'Aynı anda 150 çalışanın olsun', test: function () { return totalOwned() >= 150; } },
     { id: 'ekip_300', icon: '🗃️', name: 'İK Departmanı Şart', desc: 'Aynı anda 300 çalışanın olsun', test: function () { return totalOwned() >= 300; } },
     { id: 'robot', icon: '🤖', name: 'Robot Meslektaş', desc: 'İlk Yapay Zekâ Kod Ajanını işe al', test: function () { return S.gens.ai >= 1; } },
@@ -1006,7 +1012,7 @@
     genUnlocked: genUnlocked, unspentMult: unspentMult, ipoPayStage: ipoPayStage, globalMult: globalMult,
     SECTORS: SECTORS, sectorOpen: sectorOpen, sectorWeight: sectorWeight, sectorPool: sectorPool, pickSector: pickSector, cardAvailable: cardAvailable,
     settlePending: settlePending, EVENT_BY_ID: EVENT_BY_ID, nextNews: nextNews, markNewsSeen: markNewsSeen, sfxAcc3: sfxAcc3, sfxAbl: sfxAbl, sfxDat: sfxDat, GENERATORS: GENERATORS, UPGRADES: UPGRADES, STAGES: STAGES, EVENTS: EVENTS, ACHIEVEMENTS: ACHIEVEMENTS,
-    fmt: fmt, tl: tl, fmtTime: fmtTime,
+    fmt: fmt, tl: tl, fmtTime: fmtTime, fmtSec: fmtSec,
     get state() { return S; }, set state(v) { S = v; }, newState: newState,
     tps: tps, baseTps: baseTps, clickValue: clickValue, clickBase: clickBase, genCost: genCost, genTps: genTps, maxAffordable: maxAffordable,
     availableUpgrades: availableUpgrades, buyGen: buyGen, buyUpgrade: buyUpgrade, doClick: doClick, tick: tick,
@@ -1379,10 +1385,10 @@
     el.ipoShares.textContent = fmt(S.ipoShares);
     el.ipoGain.textContent = fmt(gain) + ' Borsa Payı';
     el.ipoCount.textContent = fmt(S.ipoCount);
-    el.ipoBonus.textContent = '+%' + num(Math.min(S.ipoShares, H.unspentCap) * H.unspentBonus * 100) + ' üretim' + (S.ipoShares >= H.unspentCap ? ' (üst sınır)' : '');
+    el.ipoBonus.textContent = '+%' + num(Math.min(S.ipoShares, H.unspentCap) * H.unspentBonus * 100) + ' üretim' + (S.ipoShares >= H.unspentCap ? ' (en fazla)' : '');
     var hint = open && gain < 1;
     el.ipoHint.classList.toggle('hidden', !hint);
-    if (hint) { var ps = STAGES[ipoPayStage()]; el.ipoHint.textContent = 'Borsa Payı için bu döngüde ' + ps.icon + ' ' + ps.name + ' aşamasına ulaş.'; }
+    if (hint) { var ps = STAGES[ipoPayStage()]; el.ipoHint.textContent = 'Borsa Payı kazanmak için önce ' + ps.icon + ' ' + ps.name + ' aşamasına ulaşman gerekiyor.'; }
     el.ipoBtn.disabled = !open || gain < 1;
     var sig = S.tree.join(',') + '|' + S.ipoShares;
     if (sig === treeSig) return;
@@ -1449,14 +1455,14 @@
   }
   function renderBuffs() {
     var parts = [];
-    if (S.boostLeft > 0) parts.push('<span class="buff good">🔥 Acil teslim modu: tüm kazanç x2 — ' + Math.ceil(S.boostLeft) + ' sn</span>');
+    if (S.boostLeft > 0) parts.push('<span class="buff good">🔥 Acil teslim modu: tüm kazanç x2 — ' + fmtSec(Math.ceil(S.boostLeft)) + '</span>');
     S.pendingPay.forEach(function (p) {
-      parts.push('<span class="buff good">⏳ ' + p.label + ': +' + tl(p.amount) + ' — ' + Math.ceil(p.left) + ' sn</span>');
+      parts.push('<span class="buff good">⏳ ' + p.label + ': +' + tl(p.amount) + ' — ' + fmtSec(Math.ceil(p.left)) + '</span>');
     });
     S.buffs.forEach(function (b) {
       var good = b.mult >= 1;
       var eff = b.kind === 'click' ? 'tık x' + fmt(b.mult) : (b.mult === 0 ? 'üretim durdu' : 'verim ' + (good ? '+' : '-') + '%' + Math.round(Math.abs(1 - b.mult) * 100));
-      parts.push('<span class="buff ' + (good ? 'good' : 'bad') + '">' + (good ? '🚀 ' : '🐢 ') + b.label + ': ' + eff + ' — ' + Math.ceil(b.left) + ' sn</span>');
+      parts.push('<span class="buff ' + (good ? 'good' : 'bad') + '">' + (good ? '🚀 ' : '🐢 ') + b.label + ': ' + eff + ' — ' + fmtSec(Math.ceil(b.left)) + '</span>');
     });
     var html = parts.join('');
     if (html !== el.boostBar._html) { el.boostBar.innerHTML = html; el.boostBar._html = html; }
@@ -1467,7 +1473,7 @@
     if (show) {
       var e = EVENT_BY_ID[evs.nextId];
       var sec = Math.max(0, Math.ceil((evs.nextAt - Date.now()) / 1000));
-      var txt = '🔮 Kahve falı: sıradaki olay ' + e.icon + ' ' + e.title + ' — yaklaşık ' + fmtTime(sec) + ' sonra';
+      var txt = '🔮 Kahve falı: sıradaki olay ' + e.icon + ' ' + e.title + ' — yaklaşık ' + fmtSec(sec) + ' sonra';
       if (el.falBar.textContent !== txt) el.falBar.textContent = txt;
     }
     el.falBar.classList.toggle('hidden', !show);

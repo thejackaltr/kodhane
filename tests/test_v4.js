@@ -13,7 +13,7 @@ function fresh() { K.state = K.newState(); return K.state; }
 const CFG = K.CFG, H = CFG.halkaArz, T = CFG.tree;
 
 // ---------------------------------------------------------------- sürüm, aşamalar
-check('version 4.1.0 / save version 4', K.VERSION === '4.1.0' && K.SAVE_VERSION === 4 && fresh().version === 4);
+check('version 4.1.1 / save version 4', K.VERSION === '4.1.1' && K.SAVE_VERSION === 4 && fresh().version === 4);
 const names = K.STAGES.map((s) => s.name);
 check('9 stages, 3 new after Global Holding', names.length === 9 && names.slice(5).join('|') === 'Global Holding|Teknoloji Devi|Yapay Zekâ Laboratuvarı|Mars Ofisi', names);
 check('stage thresholds strictly increasing', K.STAGES.every((s, i) => i === 0 || s.at > K.STAGES[i - 1].at));

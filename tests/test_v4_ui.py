@@ -157,7 +157,7 @@ with sync_playwright() as p:
     check('lock progress (2/3)', pg.inner_text('#ipoLock').endswith('(2/3)'))
     ev("Kodhane.state.cycleRounds = 3; Kodhane.state.cycleStage = 4; Kodhane.state.ipoCount = 1; Kodhane.renderAll()")
     check('v4.1: unlocked but 0 pays -> stage hint, button disabled', pg.is_visible('#ipoHint') and pg.is_disabled('#ipoBtn') and
-          pg.inner_text('#ipoHint') == 'Borsa Payı için bu döngüde 🛰️ Teknoloji Devi aşamasına ulaş.', pg.inner_text('#ipoHint'))
+          pg.inner_text('#ipoHint') == 'Borsa Payı kazanmak için önce 🛰️ Teknoloji Devi aşamasına ulaşman gerekiyor.', pg.inner_text('#ipoHint'))
     ev("Kodhane.state.ipoCount = 0; Kodhane.state.cycleStage = 5; Kodhane.state.cycleEarned = 8e14; Kodhane.state.totalEarned = 9e14; Kodhane.state.runEarned = 1e9; Kodhane.renderAll()")
     check('unlocked after 3 rounds', not ev("document.getElementById('ipoSection').classList.contains('locked')") and not pg.is_disabled('#ipoBtn') and pg.inner_text('#ipoGain') == '2 Borsa Payı')
     check('v4.1: hint hidden when pays are available, bonus row +%0', not pg.is_visible('#ipoHint') and pg.inner_text('#ipoBonus') == '+%0 üretim', pg.inner_text('#ipoBonus'))
@@ -184,6 +184,9 @@ with sync_playwright() as p:
     check('buy node via UI', ev("Kodhane.state.tree") == ['kod_1'] and ev('Kodhane.state.ipoShares') == 1 and
           node('kod_1').locator('.tn-state').inner_text() == 'Alındı! Bu bonus artık kalıcı.', node('kod_1').inner_text())
     check('v4.1: bonus drops after spending (+%1 üretim)', pg.inner_text('#ipoBonus') == '+%1 üretim', pg.inner_text('#ipoBonus'))
+    ev("Kodhane.state.ipoShares = 60; Kodhane.renderAll()")
+    check('v4.1.1: bonus at cap labelled (en fazla)', pg.inner_text('#ipoBonus') == '+%50 üretim (en fazla)', pg.inner_text('#ipoBonus'))
+    ev("Kodhane.state.ipoShares = 1; Kodhane.renderAll()")
     check('poor node text', node('kod_2').locator('.tn-state').inner_text() == '3 Borsa Payı gerekiyor. Bir halka arz daha?' and node('kod_2').is_disabled())
     check('node desc shown from settings', "×2." in node('kod_1').inner_text())
     pg.reload(); pg.wait_for_selector('#clickBtn')
@@ -287,10 +290,10 @@ with sync_playwright() as p:
     ev = pg.evaluate
     ev("Kodhane.state.newsSeen = ['siralama', 'yeni_asama']; Kodhane.state.stageBest = 8; Kodhane.state.gens.stajyer = 20; Kodhane.state.money = 1e6; Kodhane.renderAll()")
     ev("Kodhane.spawnEvent('kamu_ihale')")
-    check('sector card shows sector + quote', pg.is_visible('#eventCard') and pg.inner_text('#evText') == '🏛️ Kamu ihalesi müşterisi' and pg.inner_text('#evTitle') == '“İhale kazanıldı. Evrak listesi 14 sayfa.”', pg.inner_text('#eventCard'))
+    check('sector card shows sector + quote', pg.is_visible('#eventCard') and pg.inner_text('#evText') == '🏛️ Kamu ihalesi' and pg.inner_text('#evTitle') == '“İhale kazanıldı. Evrak listesi 14 sayfa.”', pg.inner_text('#eventCard'))
     labels = [x.strip() for x in pg.locator('#evChoices .ev-choice b').all_inner_texts()]
     check('sector card choices: Kabul et / Reddet', labels == ['Kabul et', 'Reddet'], labels)
-    check('reject hint', pg.locator('#evChoices .ev-choice small').nth(1).inner_text() == 'Kamu ihalesi teklifleri 10 dk azalır', pg.locator('#evChoices .ev-choice small').nth(1).inner_text())
+    check('reject hint', pg.locator('#evChoices .ev-choice small').nth(1).inner_text() == 'Kamu ihalesi teklifleri 10:00 seyrek gelir', pg.locator('#evChoices .ev-choice small').nth(1).inner_text())
     pg.click('#evChoices .ev-choice >> nth=0')
     pg.wait_for_timeout(200)
     check('accept: delayed payment pending + countdown in buffs', ev('Kodhane.state.pendingPay.length') == 1 and 'İhale ödemesi' in pg.inner_text('body'), ev('Kodhane.state.pendingPay'))
@@ -301,7 +304,7 @@ with sync_playwright() as p:
     ev("Kodhane.spawnEvent('oyun_karakter')")
     pg.click('#evChoices .ev-choice >> nth=1')
     check('reject: cooldown on sector, reputation unchanged', ev('Kodhane.state.sectorCool.oyun') > 590 and ev('Kodhane.state.reputation') == 0, ev('Kodhane.state.sectorCool'))
-    check('reject toast', 'Oyun şirketi müşterisi başka ajansa gitti' in pg.inner_text('#toast'), pg.inner_text('#toast'))
+    check('reject toast', 'Teklifi geri çevirdin. Oyun şirketi teklifleri bir süre seyrek gelecek.' in pg.inner_text('#toast'), pg.inner_text('#toast'))
     ev("Kodhane.spawnEvent('esnaf_kafe')"); pg.click('#evChoices .ev-choice >> nth=0')
     ev("Kodhane.spawnEvent('esnaf_kafe_revize')")
     labels = [x.strip() for x in pg.locator('#evChoices .ev-choice b').all_inner_texts()]
