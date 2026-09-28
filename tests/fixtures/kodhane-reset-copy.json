@@ -1,0 +1,22 @@
+{
+  "reset.title": "Kaydın sıfırlansın mı?",
+  "reset.body": "Oyuna en baştan başlarsın. Sıfırlama kaydının tamamını siler, bir kısmını seçip tutamazsın.",
+  "reset.deleteTitle": "Silinecekler",
+  "reset.deleteList": ["Para ve kazanç", "Çalışanlar", "Geliştirmeler", "Başarımlar", "Yatırım turu hisseleri ve yatırım turu sayısı", "Halka Arz, Borsa Payları ve ağaç", "Aşama ilerlemesi", "Haberler", "İtibar ve günlük seri"],
+  "reset.keepTitle": "Kalacaklar",
+  "reset.keepList": ["Tüm Zamanlar puanın ve sıradaki yerin", "Takma adın", "Kodhane hesabın", "Ses ve titreşim ayarların"],
+  "reset.prestigeHint": "Başarımlarını, itibarını ve günlük serini korumak istiyorsan sıfırlamak yerine yatırım turuna çık. Yatırım turunda bunlar korunur, üstüne kalıcı bonus kazanırsın.",
+  "reset.prestigeBtn": "Yatırım turuna git",
+  "reset.backup": "Silinen kayıt {d} gün boyunca yedekte kalır. Bu süre içinde geri yükleyebilirsin.",
+  "reset.hold": "Sıfırlamak için basılı tut",
+  "reset.holding": "Sıfırlanıyor… Vazgeçmek için bırak.",
+  "reset.cancel": "Vazgeç",
+  "reset.done": "Kaydın sıfırlandı. Oyun baştan başlıyor.",
+  "reset.undo": "Geri al ({s})",
+  "reset.undoDone": "Sıfırlama geri alındı. Kaldığın yerden devam ediyorsun.",
+  "reset.restoreTitle": "Yedekten geri yükle",
+  "reset.restoreBody": "Yedekteki kayıt, şu anki ilerlemenin yerine geçer.",
+  "reset.restoreBtn": "Geri yükle",
+  "reset.restoreDone": "Kaydın geri yüklendi.",
+  "reset.otherDevice": "Kaydın başka bir cihazda sıfırlandı. Bu cihazda da oyun baştan başlıyor. Yanlışlıkla olduysa yedeği geri yükleyebilirsin."
+}

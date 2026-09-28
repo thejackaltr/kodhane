@@ -112,6 +112,12 @@
           <button id="saveBtn" class="btn ghost">Şimdi kaydet</button>
           <button id="resetBtn" class="btn danger">Kaydı sıfırla</button>
         </div>
+        <div id="restoreBox" class="restore-box hidden">
+          <h4 id="restoreTitle"></h4>
+          <p id="restoreBody"></p>
+          <p id="restoreNote" class="save-note"></p>
+          <button id="restoreBtn" type="button" class="btn ghost"></button>
+        </div>
         <p class="save-note" id="saveNote">Oyun her 10 saniyede bir otomatik kaydedilir. Ana ekrana ekleyip çevrimdışı da oynayabilirsin.</p>
       </div>
       <div class="tab hidden" id="tab-prestige">
@@ -194,6 +200,11 @@
 
   <div id="toast" class="toasts" aria-live="polite"></div>
 
+  <div id="undoBar" class="undo-bar hidden" role="status" aria-live="polite">
+    <span id="undoText"></span>
+    <button id="undoBtn" type="button" class="btn"></button>
+  </div>
+
   <div id="updateBar" class="update-bar hidden">
     <span>✨ Yeni sürüm hazır.</span>
     <button id="updateBtn" class="btn">Yenile</button>
@@ -214,10 +225,11 @@
   </div>
 
   <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
-    <div class="modal-card">
+    <div class="modal-card" id="modalCard">
       <div class="modal-emoji" id="modalEmoji">👋</div>
       <h3 id="modalTitle">Başlık</h3>
       <p id="modalText"></p>
+      <div id="modalExtra"></div>
       <div class="modal-actions" id="modalActions"></div>
     </div>
   </div>

@@ -430,9 +430,14 @@ with sync_playwright() as p:
     page.click('[data-tab="upgrades"]')
 
     # ---------------------------------------------------------------- sıfırlama
+    # v4.2: onay = 2 sn basılı tutma (ayrıntılı testler tests/test_reset_ui.py içinde)
     page.click('[data-tab="stats"]'); page.click('#resetBtn'); page.wait_for_timeout(200)
-    check('reset confirm dialog', 'Kaydı sıfırla?' in page.inner_text('#modal'))
-    page.click('#modalActions .btn.danger'); page.wait_for_load_state('load'); page.wait_for_selector('#clickBtn'); page.wait_for_timeout(300)
+    check('reset confirm dialog', 'Kaydın sıfırlansın mı?' in page.inner_text('#modal'))
+    page.click('#resetHold'); page.wait_for_timeout(300)
+    check('reset: a single click does not reset', ev('Kodhane.state.clicks') > 0 and not page.is_hidden('#modal'))
+    with page.expect_navigation():
+        page.hover('#resetHold'); page.mouse.down(); page.wait_for_timeout(2300); page.mouse.up()
+    page.wait_for_selector('#clickBtn'); page.wait_for_timeout(300)
     st = ev('Kodhane.state')
     check('reset clears save', st['clicks'] == 0 and st['money'] == 0 and st['shares'] == 0 and st['achievements'] == [])
     errors = [e for e in errors if 'ERR_CONNECTION_REFUSED' not in e]  # bilerek kesilen Supabase isteği (Sıralama hata durumu testi)

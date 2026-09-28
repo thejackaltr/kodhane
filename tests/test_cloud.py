@@ -20,6 +20,9 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 from playwright.sync_api import sync_playwright
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from fake_saves_v22 import RPC as SAVE_RPC, SaveStore  # noqa: E402  (Backend v2.2 kayıt sözleşmesi taklidi)
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PORT = int(os.environ.get('KODHANE_CLOUD_TEST_PORT', '8766'))
 BASE = 'http://127.0.0.1:%d' % PORT
@@ -120,6 +123,8 @@ class FakeSupabase:
         self.hidden = set()  # yöneticinin gizlediği uid'ler
         self.pending = set() # puanı makul bulunmayan (kontrol edilen) uid'ler
         self.events = []     # anonim haber sayacı çağrıları: (p_event, kullanıcı jetonu var mı)
+        self.saves = SaveStore()  # v2.2: revision kuralı + reset_save/restore_save/list_save_backups
+        self.saves.rows = self.rows
 
     @staticmethod
     def nick_key(n):
@@ -197,6 +202,9 @@ class FakeSupabase:
             ok = body.get('p_event') in ('news_leaderboard_shown', 'news_leaderboard_click')
             self.events.append((body.get('p_event'), bool(claims)))
             return self.reply(route, 200, ok)
+        if u.path.startswith('/rest/v1/rpc/') and u.path.rsplit('/', 1)[1] in SAVE_RPC.values() and method == 'POST':
+            st, body = self.saves.rpc(claims['sub'] if claims else None, u.path.rsplit('/', 1)[1], json.loads(req.post_data or '{}'))
+            return self.reply(route, st, body)
         if u.path == PROFILES_PATH:
             if not claims:
                 return self.reply(route, 401, {'code': '42501', 'message': 'permission denied for table kodhane_profiles'})
@@ -233,15 +241,13 @@ class FakeSupabase:
                 body = json.loads(req.post_data or '{}')
                 items = body if isinstance(body, list) else [body]
                 for it in items:
-                    if it.get('user_id') != uid:
-                        return self.reply(route, 403, {'code': '42501', 'message': 'new row violates row-level security policy'})
-                    self.rows[uid] = {'data': it['data'], 'save_version': it.get('save_version'), 'updated_at': it.get('updated_at') or time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}
+                    st, eb = self.saves.write(uid, it)
+                    if st != 201:
+                        return self.reply(route, st, eb)
                 return route.fulfill(status=201, headers=CORS, body='')
             if method == 'DELETE':
-                want = (q.get('user_id') or [''])[0].replace('eq.', '')
-                if want == uid:
-                    self.rows.pop(uid, None)
-                return route.fulfill(status=204, headers=CORS, body='')
+                # v2.2: istemci DELETE'i yasak (delete policy ve DELETE yetkisi kaldırıldı)
+                return self.reply(route, 403, {'code': '42501', 'message': 'permission denied for table kodhane_saves'})
         return self.reply(route, 404, {'message': 'not found'})
 
     def count(self, method, path):
@@ -596,21 +602,27 @@ with sync_playwright() as p:
     check('sign-out: no page/console errors', not perrs and not errs, '; '.join(perrs + errs))
     ctx.close()
 
-    # ------------------------------------------------------------ 8) girişliyken sıfırlama buluttaki satırı da siler
+    # ------------------------------------------------------------ 8) girişliyken sıfırlama: satır silinmez, kodhane_reset_save RPC'si (v2.2)
     fake = FakeSupabase()
     ctx = new_ctx(fake, init=seed_script(save=local_save(3000, started, clicks=30), session=session_obj(UID_A, EMAIL_A)))
     page, errs, perrs = open_page(ctx)
     wait_until(page, 'Kodhane.cloud.state.reconciled && Kodhane.cloud.state.lastPushAt > 0', 10000)
-    check('reset: row exists before', UID_A in fake.rows)
+    check('reset: row exists before (with revision)', UID_A in fake.rows and fake.rows[UID_A]['revision'] >= 1)
+    rev0 = fake.rows[UID_A]['revision']
     page.click('[data-tab="stats"]')
     page.click('#resetBtn')
-    check('reset: dialog mentions cloud', 'buluttaki kaydın da silinecek' in page.inner_text('#modal'))
-    page.click('#modalActions .btn.danger')
-    page.wait_for_timeout(2500)
+    check('reset: dialog mentions the backup (signed in)', 'gün boyunca yedekte kalır' in page.inner_text('#modal'))
+    with page.expect_navigation():
+        page.hover('#resetHold'); page.mouse.down(); page.wait_for_timeout(2300); page.mouse.up()
     page.wait_for_selector('#clickBtn')
     wait_until(page, 'Kodhane.cloud.state.reconciled && Kodhane.cloud.state.lastPushAt > 0', 10000)
-    check('reset: cloud row deleted then fresh save uploaded', fake.count('DELETE', SAVES_PATH) == 1 and fake.rows.get(UID_A, {}).get('data', {}).get('clicks') == 0,
-          str(fake.rows.get(UID_A, {}).get('data', {}).get('clicks')))
+    row = fake.rows.get(UID_A, {})
+    check('reset: no DELETE, kodhane_reset_save RPC (no params), fresh save uploaded',
+          fake.count('DELETE', SAVES_PATH) == 0 and (SAVE_RPC['reset'], {}) in fake.saves.rpc_log and SAVE_RPC['reset'] == 'kodhane_reset_save'
+          and row.get('data', {}).get('clicks') == 0 and row.get('revision', 0) >= rev0 + 2 and row.get('best_score', 0) >= 3000,
+          json.dumps({k: row.get(k) for k in ('revision', 'best_score')}))
+    check('reset: backup kept on server', len(fake.saves.backups) == 1 and fake.saves.backups[0]['payload']['clicks'] == 30)
+    check('reset: no page errors', not perrs, '; '.join(perrs))
     ctx.close()
 
     # ------------------------------------------------------------ 9) Supabase erişilemez (girişli) -> oyun devam eder
@@ -635,7 +647,7 @@ with sync_playwright() as p:
     wait_until(page, '!!navigator.serviceWorker.controller', 5000)
     keys = page.evaluate("caches.keys()")
     cached = page.evaluate("caches.keys().then(ks => Promise.all(ks.map(k => caches.open(k).then(c => c.keys())))).then(a => a.flat().map(r => r.url))")
-    check('sw: cache version bumped (v4.1.1)', any(re.match(r'kodhane-v4\.1\.1-', k) for k in keys), str(keys))
+    check('sw: cache version bumped (v4.2)', any(re.match(r'kodhane-v4\.2-', k) for k in keys), str(keys))
     check('sw: cloud.js cached for offline', any(u.endswith('/cloud.js') for u in cached))
     check('sw: never caches Supabase/CDN', not any(('supabase' in u) or ('jsdelivr' in u) for u in cached), str([u for u in cached if 'http' in u and BASE not in u]))
     ctx.set_offline(True)

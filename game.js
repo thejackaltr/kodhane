@@ -1,4 +1,4 @@
-/* Kodhane: Ajans Tycoon — v4.1.1 (yeni aşamalar + Halka Arz + Borsa Payı Ağacı + müşteri sektörleri)
+/* Kodhane: Ajans Tycoon — v4.2 (güvenli kayıt sıfırlama + yeni aşamalar + Halka Arz + Borsa Payı Ağacı + müşteri sektörleri)
  * Vanilla JS, derleme adımı yok. Tüm oyun metinleri Türkçe.
  * v1 kayıtları ('kodhane_ajans_save_v1') ilk açılışta otomatik olarak taşınır; v2/v3/v4 kayıtları kayıpsız yeni alanları alır.
  * Denge sayıları CFG (ayarlar) ve tablolarda durur; açıklama metinleri sayıları bu ayarlardan okur.
@@ -74,8 +74,63 @@
       kamu_imza: { pay: 60, delay: 60 },
       esnaf_kafe: { pay: 20, revisions: 3, revPay: 10, revSec: 15, revMult: 0.95 },
       esnaf_emlak: { pay: 15, returnChance: 0.35, supportPay: 5, supportSec: 10, supportMult: 0.95 }
+    },
+    // v4.2: Kaydı sıfırla. Metinlerdeki {s} = undoSeconds, {d} = backupDays (metinlere sayı yazılmaz).
+    reset: {
+      undoSeconds: 10,           // sıfırladıktan sonra "Geri al" düğmesinin kalma süresi (sn)
+      backupDays: 30             // YER TUTUCU (onay bekliyor): silinen bulut kaydının yedekte kalma süresi (gün); Backend'in saklama süresiyle aynı olmalı
     }
   };
+  // Testler için geçersiz kılma (ör. { reset: { undoSeconds: 2 } })
+  if (root && root.KODHANE_CFG_OVERRIDE && typeof root.KODHANE_CFG_OVERRIDE === 'object') {
+    var CO = root.KODHANE_CFG_OVERRIDE;
+    if (CO.reset && typeof CO.reset === 'object') for (var cok in CO.reset) CFG.reset[cok] = CO.reset[cok];
+  }
+
+  // v4.2: "Kaydı sıfırla" metinlerinin tamamı (anahtarlar ve yazım, metin yazarının kodhane-reset-copy.json dosyasından birebir).
+  // {s} ve {d} yer tutucuları resetText() ile CFG.reset'ten doldurulur.
+  var RESET_TEXT = {
+    "reset.title": "Kaydın sıfırlansın mı?",
+    "reset.body": "Oyuna en baştan başlarsın. Sıfırlama kaydının tamamını siler, bir kısmını seçip tutamazsın.",
+    "reset.deleteTitle": "Silinecekler",
+    "reset.deleteList": ["Para ve kazanç", "Çalışanlar", "Geliştirmeler", "Başarımlar", "Yatırım turu hisseleri ve yatırım turu sayısı", "Halka Arz, Borsa Payları ve ağaç", "Aşama ilerlemesi", "Haberler", "İtibar ve günlük seri"],
+    "reset.keepTitle": "Kalacaklar",
+    "reset.keepList": ["Tüm Zamanlar puanın ve sıradaki yerin", "Takma adın", "Kodhane hesabın", "Ses ve titreşim ayarların"],
+    "reset.prestigeHint": "Başarımlarını, itibarını ve günlük serini korumak istiyorsan sıfırlamak yerine yatırım turuna çık. Yatırım turunda bunlar korunur, üstüne kalıcı bonus kazanırsın.",
+    "reset.prestigeBtn": "Yatırım turuna git",
+    "reset.backup": "Silinen kayıt {d} gün boyunca yedekte kalır. Bu süre içinde geri yükleyebilirsin.",
+    "reset.hold": "Sıfırlamak için basılı tut",
+    "reset.holding": "Sıfırlanıyor… Vazgeçmek için bırak.",
+    "reset.cancel": "Vazgeç",
+    "reset.done": "Kaydın sıfırlandı. Oyun baştan başlıyor.",
+    "reset.undo": "Geri al ({s})",
+    "reset.undoDone": "Sıfırlama geri alındı. Kaldığın yerden devam ediyorsun.",
+    "reset.restoreTitle": "Yedekten geri yükle",
+    "reset.restoreBody": "Yedekteki kayıt, şu anki ilerlemenin yerine geçer.",
+    "reset.restoreBtn": "Geri yükle",
+    "reset.restoreDone": "Kaydın geri yüklendi.",
+    "reset.otherDevice": "Kaydın başka bir cihazda sıfırlandı. Bu cihazda da oyun baştan başlıyor. Yanlışlıkla olduysa yedeği geri yükleyebilirsin.",
+    // Aşağıdaki iki metin copy dosyasında YOK (metin yazarının onayı bekleniyor):
+    // girişli oyuncuda kodhane_reset_save RPC'si başarısız olursa (sıfırlama yapılmaz) / yedekten geri yükleme başarısız olursa
+    "reset.cloudFailed": "Bulut kaydın şu an sıfırlanamıyor. İnternet bağlantını kontrol edip tekrar dene.",
+    "reset.restoreFailed": "Yedek geri yüklenemedi. Bağlantını kontrol edip tekrar dene."
+  };
+  // Yalnızca girişli oyunculara gösterilen metinler (misafir asla görmez)
+  var RESET_SIGNED_ONLY = ['reset.backup', 'reset.restoreTitle', 'reset.restoreBody', 'reset.restoreBtn', 'reset.restoreDone', 'reset.restoreFailed', 'reset.cloudFailed'];
+  function resetText(key, vars) {
+    var t = RESET_TEXT[key];
+    if (Array.isArray(t)) return t.slice();
+    if (typeof t !== 'string') return '';
+    var v = { s: CFG.reset.undoSeconds, d: CFG.reset.backupDays };
+    if (vars) for (var vk in vars) v[vk] = vars[vk];
+    return t.replace(/\{(s|d)\}/g, function (m, k) { return String(v[k]); });
+  }
+  // "Başka cihazda sıfırlandı" metni: yedek/geri yükleme cümlesi yalnızca girişli oyuncuya gösterilir.
+  function otherDeviceText(signedIn) {
+    var t = resetText('reset.otherDevice');
+    if (signedIn) return t;
+    return (t.match(/[^.]+\.?/g) || [t]).filter(function (x) { return !/yede|geri yükle/i.test(x); }).join('').trim();
+  }
 
   var GENERATORS = [
     { id: 'stajyer',  name: 'Stajyer',               icon: '🧑‍🎓', base: 15,        tps: 0.2,   desc: 'Kahve getirir, bazen de kod yazar.' },
@@ -892,13 +947,24 @@
   // ------------------------------------------------------------------
   // Kayıt (v1 -> v2 taşıma dahil)
   // ------------------------------------------------------------------
-  function serialize() { S.lastSaved = Date.now(); return JSON.stringify(S); }
+  // v4.2: kayıt kuşağı bilgisi. Oyun durumunun (S) dışında tutulur: Yatırım Turu / Halka Arz (resetTo) ona hiç
+  // dokunmaz; kayda (yerel ve bulut) eklenir.
+  //  - epoch: bu kaydın kuşağı (ms). Her sıfırlama ve geri alma/geri yüklemede yenilenir. Aynı tarayıcıdaki sekmeler,
+  //    'kodhane_save_epoch' anahtarındaki değerden eski kuşaktaysa yerel kayda yazamaz (bayat sekme koruması).
+  //  - resetAt: bu kaydın en son sıfırlandığı an (ms). Sunucunun kodhane_reset_save() yükü de 'resetAt' yazar; bulut
+  //    kazanınca başka cihazdaki sıfırlama buradan anlaşılır.
+  //  Bulut revizyonu (kodhane_saves.revision) kaydın içinde değil, cloud.js'te tutulur.
+  var meta = { epoch: 0, resetAt: 0 };
+  function saveData() { var o = {}; for (var k in S) o[k] = S[k]; o.epoch = meta.epoch; o.resetAt = meta.resetAt; return o; }
+  function serialize() { S.lastSaved = Date.now(); return JSON.stringify(saveData()); }
   function isNum(x) { return typeof x === 'number' && isFinite(x); }
   function deserialize(str) {
     var d = JSON.parse(str);
     if (!d || typeof d !== 'object') throw new Error('Geçersiz kayıt');
     var base = newState();
     Core.loadedVersion = d.version || 1;
+    meta.epoch = isNum(d.epoch) && d.epoch > 0 ? d.epoch : 0;
+    meta.resetAt = isNum(d.resetAt) && d.resetAt > 0 ? d.resetAt : 0;
     for (var k in base) {
       if (d[k] === undefined || d[k] === null) continue;
       if (typeof base[k] === 'number') { if (isNum(d[k])) base[k] = d[k]; }
@@ -1022,6 +1088,8 @@
     eventPool: eventPool, pickEvent: pickEvent, resolveEvent: resolveEvent, checkAchievements: checkAchievements,
     checkDaily: checkDaily, makeTasks: makeTasks, taskProgress: taskProgress, taskLabel: taskLabel, today: today, shiftDay: shiftDay,
     streakBonus: streakBonus, setToday: function (s) { Core.fakeToday = s || null; },
+    RESET_TEXT: RESET_TEXT, RESET_SIGNED_ONLY: RESET_SIGNED_ONLY, resetText: resetText, otherDeviceText: otherDeviceText, saveData: saveData,
+    meta: meta,
     rng: Math.random, lastCrit: false, fakeToday: null, loadedVersion: null,
     CRIT_CHANCE: CRIT_CHANCE, CRIT_MULT: CRIT_MULT
   };
@@ -1109,6 +1177,8 @@
     el.modalTitle.textContent = opts.title;
     el.modalText.innerHTML = opts.html;
     el.modalActions.innerHTML = '';
+    if (el.modalExtra) { el.modalExtra.innerHTML = ''; if (opts.extra) el.modalExtra.appendChild(opts.extra); }
+    if (el.modalCard) el.modalCard.className = 'modal-card' + (opts.cardClass ? ' ' + opts.cardClass : '');
     (opts.buttons || [{ label: 'Tamam', cls: 'primary' }]).forEach(function (b) {
       var btn = document.createElement('button');
       btn.className = 'btn ' + (b.cls || '');
@@ -1122,12 +1192,17 @@
 
   function save() {
     if (resetting) return;
-    try { localStorage.setItem(SAVE_KEY, serialize()); } catch (e) { /* kota vb. */ }
+    if (staleLocal()) return; // başka sekmede sıfırlandı/geri yüklendi: bu sekmenin eski kaydı yazılmaz
+    try {
+      if (meta.epoch > readEpoch()) localStorage.setItem(EPOCH_KEY, String(meta.epoch));
+      localStorage.setItem(SAVE_KEY, serialize());
+    } catch (e) { /* kota vb. */ }
     if (typeof Core.onSaved === 'function') { try { Core.onSaved(); } catch (e) { /* bulut kancası oyunu durdurmamalı */ } }
   }
   // Buluttan (veya başka bir kaynaktan) gelen kaydı uygula: yerel kaydı değiştirir ve arayüzü yeniler.
   function applySave(data) {
     deserialize(typeof data === 'string' ? data : JSON.stringify(data));
+    meta.epoch = Math.max(meta.epoch, readEpoch()); // uygulanan kayıt (bulut/geri yükleme) bu tarayıcıda güncel kuşaktır
     var res = applyOffline(Date.now());
     lastStageShown = stageIndex(S.runEarned);
     S.stage = Math.max(S.stage, lastStageShown);
@@ -1152,11 +1227,294 @@
         if (raw) migrated = true;
       }
     } catch (e) {}
-    if (!raw) return null;
-    try { deserialize(raw); } catch (e) { S = newState(); return null; }
+    var floor = readEpoch();
+    var fresh = function () { S = newState(); meta.epoch = floor; meta.resetAt = floor; return null; };
+    if (!raw) return fresh();
+    try { deserialize(raw); } catch (e) { return fresh(); }
+    // Sıfırlamadan sonra kalmış eski kuşaktan kayıt (ör. eski sürümlü bir sekme yazdıysa) yüklenmez.
+    if (meta.epoch < floor) return fresh();
     var res = applyOffline(Date.now());
     res.migrated = migrated;
     return res;
+  }
+
+  // ------------------------------------------------------------------
+  // v4.2: Kaydı sıfırla. Basılı tutarak onay, "Geri al", yedekten geri yükleme ve bayat sekme/cihaz koruması.
+  // Bulut tarafı (kodhane_reset_save / kodhane_restore_save RPC'leri — adlar yalnızca cloud.js RPC sabitinde —, revision kuralı) cloud.js içindedir.
+  // ------------------------------------------------------------------
+  var RESET_HOLD_MS = 2000;                  // basılı tutma süresi: bilerek sabit (ayar değil)
+  var EPOCH_KEY = 'kodhane_save_epoch';      // localStorage: bu tarayıcıdaki en yeni kayıt kuşağı (tüm sekmeler)
+  var UNDO_KEY = 'kodhane_reset_undo';       // sessionStorage: sıfırlamadan hemen önceki kayıt + geri alma bilgisi (yalnızca bu sekme)
+  var UNDO_RELOAD_MS = 60000;                // sıfırlama ile sayfanın yeniden açılması arasında izin verilen en uzun süre
+  var resetBusy = false;
+  var undoState = { timer: 0, marker: null };
+  function readEpoch() { try { var n = Number(localStorage.getItem(EPOCH_KEY)); return n > 0 && isFinite(n) ? n : 0; } catch (e) { return 0; } }
+  function newEpoch() { return Math.max(Date.now(), readEpoch() + 1, meta.epoch + 1); }
+  function signedIn() { return !!(Core.cloudSignedIn && Core.cloudSignedIn()); }
+  function cloudApi(name) { return Core.cloud && typeof Core.cloud[name] === 'function' ? Core.cloud : null; }
+  function esc(t) { return String(t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function num0(x) { return typeof x === 'number' && isFinite(x) ? x : 0; }
+
+  // Bu sekme eski kuşaktaysa (başka sekmede sıfırlama/geri alma oldu): yerel kayda yazmaz, güncel kaydı yükler.
+  function staleLocal() {
+    var floor = readEpoch();
+    if (floor <= meta.epoch) return false;
+    var cur = null;
+    try { cur = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch (e) { cur = null; }
+    if (!cur || typeof cur !== 'object' || !(num0(cur.epoch) >= floor)) cur = null; // diğer sekme henüz yazmadı: boş kayıt
+    var otherReset = !cur || num0(cur.resetAt) > meta.resetAt;
+    if (!cur) { cur = saveDataOf(newState()); cur.epoch = floor; cur.resetAt = floor; }
+    adoptSave(cur, otherReset ? 'otherDevice' : 'undoDone');
+    return true;
+  }
+  function saveDataOf(st) { var o = {}; for (var k in st) o[k] = st[k]; return o; }
+
+  // Başka sekmede/cihazda yapılmış değişikliğin sonucunu uygula. kind: 'otherDevice' (orada sıfırlandı),
+  // 'undoDone' (orada sıfırlama geri alındı), 'silent' (mesajı çağıran gösterir).
+  function adoptSave(data, kind) {
+    if (undoState.marker) hideUndo(true); // bu sekmedeki geri alma artık geçersiz
+    if (!el.modal.classList.contains('hidden')) closeModal();
+    var d = JSON.parse(JSON.stringify(data));
+    if (kind === 'otherDevice' && !d.lastSaved) d.lastSaved = Date.now();
+    applySave(d);
+    Core.lastAdopt = kind;
+    if (kind === 'otherDevice') toast('🔄 ' + otherDeviceText(signedIn()), 7000);
+    else if (kind === 'undoDone') toast('↩️ ' + resetText('reset.undoDone'), 4500);
+    refreshRestoreBox();
+  }
+  Core.adoptSave = adoptSave;
+
+  // Geri alınan / yedekten gelen kaydı yeni kuşakla uygula (eski sekmeler üstüne yazamasın).
+  function applyRestored(data) {
+    var d = JSON.parse(JSON.stringify(data));
+    d.epoch = newEpoch();
+    d.lastSaved = Date.now(); // yedekte geçen süre için çevrimdışı kazanç verilmez
+    applySave(d);
+  }
+
+  function goPrestige() { if (isMobile()) setView('prestige'); else selectTab('prestige'); }
+
+  function listBlock(title, items, cls) {
+    var box = document.createElement('div'); box.className = 'reset-col ' + cls;
+    var h = document.createElement('h4'); h.textContent = title; box.appendChild(h);
+    var ul = document.createElement('ul');
+    items.forEach(function (t) { var li = document.createElement('li'); li.textContent = t; ul.appendChild(li); });
+    box.appendChild(ul);
+    return box;
+  }
+
+  // Basılı tutma düğmesi: 2 sn dolum (sayı yok), erken bırakmak iptal eder; fare/dokunma ve Space/Enter.
+  function makeHoldButton(onDone) {
+    var btn = document.createElement('button');
+    btn.type = 'button'; btn.id = 'resetHold'; btn.className = 'btn danger hold-btn';
+    var fill = document.createElement('span'); fill.className = 'hold-fill'; fill.setAttribute('aria-hidden', 'true');
+    var label = document.createElement('span'); label.className = 'hold-label'; label.textContent = resetText('reset.hold');
+    btn.appendChild(fill); btn.appendChild(label);
+    var t0 = 0, raf = 0, timer = 0, via = null, done = false;
+    function paint(p) { fill.style.transform = 'scaleX(' + p + ')'; }
+    function frame() {
+      if (!t0) return;
+      paint(Math.min(1, (performance.now() - t0) / RESET_HOLD_MS));
+      raf = requestAnimationFrame(frame);
+    }
+    function start(src) {
+      if (done || t0) return;
+      t0 = performance.now(); via = src;
+      btn.classList.add('holding'); label.textContent = resetText('reset.holding');
+      vibrate(10);
+      raf = requestAnimationFrame(frame);
+      timer = setTimeout(finish, RESET_HOLD_MS);
+    }
+    function cancel(src) {
+      if (done || !t0 || (src && src !== via)) return;
+      t0 = 0; via = null; clearTimeout(timer); cancelAnimationFrame(raf);
+      btn.classList.remove('holding'); label.textContent = resetText('reset.hold'); paint(0);
+    }
+    function finish() {
+      if (!t0) return;
+      // Pencere bu arada kapandıysa / değiştiyse sıfırlama yapılmaz.
+      if (!btn.isConnected || el.modal.classList.contains('hidden')) { cancel(); return; }
+      t0 = 0; cancelAnimationFrame(raf);
+      done = true; paint(1); btn.classList.remove('holding'); btn.classList.add('done'); btn.disabled = true;
+      vibrate([20, 40, 20]);
+      onDone();
+    }
+    btn.addEventListener('pointerdown', function (e) {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      e.preventDefault();
+      try { btn.setPointerCapture(e.pointerId); } catch (x) {}
+      start('pointer');
+    });
+    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(function (t) { btn.addEventListener(t, function () { cancel('pointer'); }); });
+    btn.addEventListener('contextmenu', function (e) { e.preventDefault(); });   // mobilde uzun basış menüsü açılmasın
+    btn.addEventListener('selectstart', function (e) { e.preventDefault(); });
+    btn.addEventListener('click', function (e) { e.preventDefault(); });         // tek tık hiçbir şey yapmaz
+    function holdKey(e) { return e.code === 'Space' || e.key === ' ' || e.key === 'Enter'; }
+    // Oyun Space tuşunu genel olarak dinler (kod yazma); burada yayılım durdurulur, basılı tutma kod yazmaz.
+    btn.addEventListener('keydown', function (e) {
+      if (!holdKey(e)) return;
+      e.preventDefault(); e.stopPropagation();
+      if (!e.repeat) start('key');
+    });
+    btn.addEventListener('keyup', function (e) {
+      if (!holdKey(e)) return;
+      e.preventDefault(); e.stopPropagation();
+      cancel('key');
+    });
+    btn.addEventListener('blur', function () { cancel(); });
+    return { btn: btn, cancel: cancel };
+  }
+
+  function openResetDialog() {
+    var signed = signedIn();
+    var extra = document.createElement('div'); extra.className = 'reset-extra';
+    var cols = document.createElement('div'); cols.className = 'reset-cols';
+    cols.appendChild(listBlock(resetText('reset.deleteTitle'), resetText('reset.deleteList'), 'del'));
+    cols.appendChild(listBlock(resetText('reset.keepTitle'), resetText('reset.keepList'), 'keep'));
+    extra.appendChild(cols);
+    var hint = document.createElement('p'); hint.className = 'reset-hint'; hint.textContent = resetText('reset.prestigeHint');
+    extra.appendChild(hint);
+    var pbtn = document.createElement('button'); pbtn.type = 'button'; pbtn.id = 'resetPrestige'; pbtn.className = 'btn ghost reset-prestige';
+    pbtn.textContent = resetText('reset.prestigeBtn');
+    pbtn.addEventListener('click', function () { closeModal(); goPrestige(); });
+    extra.appendChild(pbtn);
+    if (signed) {
+      var bk = document.createElement('p'); bk.className = 'reset-backup'; bk.textContent = resetText('reset.backup');
+      extra.appendChild(bk);
+    }
+    modal({ emoji: '⚠️', title: resetText('reset.title'), html: esc(resetText('reset.body')), extra: extra, cardClass: 'reset-card',
+      buttons: [{ label: resetText('reset.cancel'), cls: 'ghost' }] });
+    var hold = makeHoldButton(performReset);
+    el.modalActions.appendChild(hold.btn);
+    try { el.modalActions.firstChild.focus(); } catch (e) {}
+  }
+
+  function withTimeout(p, ms) {
+    return new Promise(function (resolve, reject) {
+      var t = setTimeout(function () { var e = new Error('timeout'); e.code = 'timeout'; reject(e); }, ms);
+      p.then(function (v) { clearTimeout(t); resolve(v); }, function (e) { clearTimeout(t); reject(e); });
+    });
+  }
+
+  // Sıfırla. Girişliyse önce sunucu: kodhane_reset_save RPC (satır silinmez; yedek alınır, revision artar). RPC başarısızsa
+  // sıfırlama yapılmaz (yerelde sıfırlansa bir sonraki eşitlemede buluttaki kayıt geri gelirdi). Sonra yerel: kaydın
+  // kopyası bu sekmede tutulur (Geri al), yeni kuşak yazılır, kayıt silinir, sayfa yeniden açılır.
+  // Başarımlar/itibar/seri dahil kaydın tamamı silinir (v4.1.1 ile aynı; Yatırım Turu bunları korur).
+  function performReset() {
+    if (resetBusy) return;
+    save();
+    if (readEpoch() > meta.epoch) return; // bu sekme bayatmış; güncel kayıt yüklendi, sıfırlama yapılmadı
+    resetBusy = true;
+    var snapshot = serialize();
+    var signed = signedIn();
+    var p = signed && typeof Core.beforeReset === 'function' ? withTimeout(Promise.resolve(Core.beforeReset()), 10000) : Promise.resolve(null);
+    resetting = true;
+    p.then(finish, function (e) {
+      resetting = false; resetBusy = false; closeModal();
+      Core.lastResetError = (e && (e.code || e.message)) || 'error';
+      toast('⚠️ ' + resetText('reset.cloudFailed'), 5000);
+    });
+    function finish(res) {
+      var epoch = newEpoch();
+      try {
+        sessionStorage.setItem(UNDO_KEY, JSON.stringify({ v: 1, at: Date.now(), epoch: epoch,
+          backupId: res && res.backupId ? res.backupId : null, save: snapshot }));
+      } catch (e) { /* sessionStorage yoksa geri alma gösterilmez */ }
+      try {
+        localStorage.setItem(EPOCH_KEY, String(epoch));
+        localStorage.removeItem(SAVE_KEY); LEGACY_KEYS.forEach(function (k) { localStorage.removeItem(k); });
+      } catch (e) {}
+      location.reload();
+    }
+  }
+
+  // ---- Geri al (sayfa yeniden açıldıktan sonra, CFG.reset.undoSeconds boyunca)
+  function readUndo() { try { var m = JSON.parse(sessionStorage.getItem(UNDO_KEY) || 'null'); return m && m.v === 1 ? m : null; } catch (e) { return null; } }
+  function clearUndo() { try { sessionStorage.removeItem(UNDO_KEY); } catch (e) {} }
+  function hideUndo(clear) {
+    clearInterval(undoState.timer); undoState.timer = 0; undoState.marker = null;
+    if (el.undoBar) el.undoBar.classList.add('hidden');
+    if (clear) clearUndo();
+  }
+  function initUndo() {
+    var m = readUndo();
+    if (!m) return;
+    var now = Date.now();
+    if (!m.expiresAt) {
+      if (now - num0(m.at) > UNDO_RELOAD_MS || m.epoch !== meta.epoch || typeof m.save !== 'string') { clearUndo(); return; }
+      m.expiresAt = now + CFG.reset.undoSeconds * 1000;
+      try { sessionStorage.setItem(UNDO_KEY, JSON.stringify(m)); } catch (e) { clearUndo(); return; }
+    } else if (m.epoch !== meta.epoch) { clearUndo(); return; }
+    if (now >= m.expiresAt) { clearUndo(); return; }
+    undoState.marker = m;
+    el.undoText.textContent = resetText('reset.done');
+    el.undoBtn.disabled = false;
+    el.undoBar.classList.remove('hidden');
+    var paint = function () {
+      var left = Math.ceil((m.expiresAt - Date.now()) / 1000);
+      if (left <= 0 || !undoState.marker) { hideUndo(true); return; }
+      el.undoBtn.textContent = resetText('reset.undo', { s: left });
+    };
+    paint();
+    undoState.timer = setInterval(paint, 250);
+  }
+  function doUndo() {
+    var m = undoState.marker;
+    if (!m || Date.now() >= m.expiresAt) { hideUndo(true); return; }
+    el.undoBtn.disabled = true;
+    clearInterval(undoState.timer); undoState.timer = 0;
+    // Girişli: kodhane_restore_save RPC (sunucudaki yedekten). Misafir ya da yedek kimliği yoksa: bu sekmedeki kopyadan.
+    var api = m.backupId ? cloudApi('restoreSave') : null;
+    var p = api ? withTimeout(api.restoreSave({ backupId: m.backupId }), 10000) : Promise.reject(new Error('local'));
+    p.then(function (res) {
+      if (!res || !res.data) throw new Error('empty');
+      applyRestored(res.data);
+      Core.lastUndo = 'cloud';
+    }).catch(function () {
+      // RPC'ye ulaşılamadıysa da yerel kopya uygulanır; girişliyse bir sonraki yazma (revision + 1) onu buluta taşır.
+      applyRestored(JSON.parse(m.save));
+      Core.lastUndo = 'local';
+      var c = cloudApi('push'); if (c && signedIn()) c.push(true);
+    }).then(function () {
+      hideUndo(true);
+      toast('↩️ ' + resetText('reset.undoDone'), 4500);
+      refreshRestoreBox();
+    });
+  }
+
+  // ---- Yedekten geri yükle (yalnızca girişli oyuncu; İstatistik sekmesinde, geri yüklenebilir yedek varsa)
+  var restoreSigned = null;
+  function refreshRestoreBox() {
+    var box = el.restoreBox;
+    if (!box) return;
+    var api = signedIn() ? cloudApi('latestBackup') : null;
+    if (!api) { box.classList.add('hidden'); box._backup = null; return; }
+    api.latestBackup().then(function (b) {
+      box._backup = b && b.backupId ? b : null;
+      box.classList.toggle('hidden', !box._backup || !signedIn());
+    }, function () { box._backup = null; box.classList.add('hidden'); });
+  }
+  function onCloudRenderReset() {
+    var s = signedIn();
+    if (s !== restoreSigned) { restoreSigned = s; refreshRestoreBox(); }
+  }
+  function openRestoreDialog() {
+    var b = el.restoreBox && el.restoreBox._backup;
+    if (!b || !signedIn()) return;
+    modal({ emoji: '🗂️', title: resetText('reset.restoreTitle'), html: esc(resetText('reset.restoreBody')),
+      buttons: [{ label: resetText('reset.cancel'), cls: 'ghost' }, { label: resetText('reset.restoreBtn'), cls: 'primary', onClick: function () {
+        var api = cloudApi('restoreSave');
+        if (!api) return;
+        withTimeout(api.restoreSave({ backupId: b.backupId }), 10000).then(function (res) {
+          if (!res || !res.data) throw new Error('empty');
+          applyRestored(res.data);
+          toast('✅ ' + resetText('reset.restoreDone'), 4500);
+          refreshRestoreBox();
+        }).catch(function () {
+          toast('⚠️ ' + resetText('reset.restoreFailed'), 4500);
+        });
+      } }]
+    });
   }
 
   // Sayaç animasyonu (~250 ms rAF geçişi)
@@ -1735,6 +2093,7 @@
     if (!fromNav && view !== 'kod' && view !== 'ekip') { view = TAB_GROUP[name] || view; navActive(); }
     renderAll();
     if (name === 'siralama' && typeof Core.onLeaderboardShown === 'function') { try { Core.onLeaderboardShown(); } catch (e) {} }
+    if (name === 'stats') refreshRestoreBox();
   }
   function navActive() {
     document.querySelectorAll('#bottomNav button').forEach(function (b) { b.classList.toggle('active', b.dataset.view === view); });
@@ -1789,7 +2148,8 @@
       'eventCard', 'evIcon', 'evTitle', 'evText', 'evChoices', 'evLater', 'evTimerFill', 'toast', 'updateBar', 'updateBtn',
       'modal', 'modalEmoji', 'modalTitle', 'modalText', 'modalActions', 'panelKod', 'panelEkip', 'panelSide', 'bottomNav',
       'prPer', 'ipoSection', 'ipoLock', 'ipoBody', 'ipoShares', 'ipoGain', 'ipoCount', 'ipoBonus', 'ipoHint', 'ipoBtn', 'treeGrid',
-      'stageUp', 'suIcon', 'suTitle', 'suMsg', 'suBonus', 'suShare', 'suClose'
+      'stageUp', 'suIcon', 'suTitle', 'suMsg', 'suBonus', 'suShare', 'suClose',
+      'modalCard', 'modalExtra', 'undoBar', 'undoText', 'undoBtn', 'restoreBox', 'restoreTitle', 'restoreBody', 'restoreNote', 'restoreBtn'
     ].forEach(function (id) { el[id] = $(id); });
 
     var offlineRes = load();
@@ -1867,26 +2227,16 @@
       settings.vibrate = !settings.vibrate; saveSettings(); renderSettings();
       if (settings.vibrate) vibrate(15);
     });
-    el.resetBtn.addEventListener('click', function () {
-      modal({
-        emoji: '⚠️', title: 'Kaydı sıfırla?',
-        html: 'Tüm ilerlemen, çalışanların, geliştirmelerin, başarımların ve yatırımcı hisselerin <b>kalıcı olarak silinecek</b>. Bu işlem geri alınamaz.' +
-          (Core.cloudSignedIn && Core.cloudSignedIn() ? '<br><small>Giriş yaptığın için buluttaki kaydın da silinecek.</small>' : ''),
-        buttons: [
-          { label: 'Vazgeç', cls: 'ghost' },
-          { label: 'Evet, sıfırla', cls: 'danger', onClick: function () {
-            resetting = true;
-            try { localStorage.removeItem(SAVE_KEY); LEGACY_KEYS.forEach(function (k) { localStorage.removeItem(k); }); } catch (e) {}
-            var done = false;
-            var go = function () { if (!done) { done = true; location.reload(); } };
-            // Girişliyse buluttaki kayıt da silinir (en fazla 4 sn beklenir)
-            var p = null;
-            try { p = typeof Core.beforeReset === 'function' ? Core.beforeReset() : null; } catch (e) { p = null; }
-            if (p && typeof p.then === 'function') { p.then(go, go); setTimeout(go, 4000); } else go();
-          } }
-        ]
-      });
-    });
+    el.resetBtn.addEventListener('click', openResetDialog);
+    el.undoBtn.addEventListener('click', doUndo);
+    el.restoreBtn.addEventListener('click', openRestoreDialog);
+    el.restoreTitle.textContent = resetText('reset.restoreTitle');
+    el.restoreBody.textContent = resetText('reset.restoreBody');
+    el.restoreNote.textContent = resetText('reset.backup');
+    el.restoreBtn.textContent = resetText('reset.restoreBtn');
+    // Başka sekmede sıfırlama/geri alma: kuşak anahtarı değişince hemen kaydetmeyi dene (bayatsa yazma reddedilir,
+    // güncel kayıt yüklenir).
+    window.addEventListener('storage', function (e) { if (e.key === EPOCH_KEY && !resetting) save(); });
     el.prestigeBtn.addEventListener('click', function () {
       var g = sharesGain();
       if (g < 1) return;
@@ -1964,6 +2314,7 @@
     if (offlineRes && offlineRes.migrated) toast('📦 Kaydın yeni sürüme taşındı. Hoş geldin, Kodhane v2!', 4500);
     if (retro.length) toast('🏅 ' + retro.length + ' başarım açıldı! Her biri kalıcı +%1 üretim.', 4500);
     save();
+    initUndo();
     initServiceWorker();
   }
 
@@ -1977,6 +2328,9 @@
   Core.activeTab = function () { return activeTab; };
   Core.showStageUp = showStageUp; Core.hideStageUp = hideStageUp; Core.shareLink = shareLink; Core.shareText = shareText;
   Core.maybeShowNews = maybeShowNews; Core.newsSession = news;
+  Core.onResetCloudRender = onCloudRenderReset; Core.refreshRestoreBox = refreshRestoreBox; Core.openResetDialog = openResetDialog;
+  Core.EPOCH_KEY = EPOCH_KEY; Core.UNDO_KEY = UNDO_KEY; Core.RESET_HOLD_MS = RESET_HOLD_MS;
+  Core.undoActive = function () { return !!undoState.marker; };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();

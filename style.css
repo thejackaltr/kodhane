@@ -448,3 +448,40 @@ body::before { content: ''; position: fixed; inset: 0; pointer-events: none; z-i
 
 /* v4.1 */
 .ipo-hint { margin: 6px 0 8px; font-size: .9rem; color: var(--muted, #9aa3c7); }
+
+/* v4.2: Kaydı sıfırla penceresi, basılı tutma düğmesi, Geri al çubuğu, yedekten geri yükleme */
+.modal-card.reset-card { max-width: 480px; max-height: 100%; overflow-y: auto; }
+.reset-card #modalText { margin-bottom: 12px; }
+.reset-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; text-align: left; margin: 0 0 12px; }
+.reset-col { background: var(--card2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+.reset-col h4 { margin: 0 0 6px; font-size: .9rem; }
+.reset-col.del h4 { color: var(--danger); }
+.reset-col ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: .82rem; line-height: 1.45; }
+.modal-card p.reset-hint { font-size: .86rem; margin: 0 0 8px; text-align: left; }
+.btn.reset-prestige { width: 100%; margin: 0 0 12px; }
+.modal-card p.reset-backup { font-size: .8rem; margin: 0 0 12px; text-align: left; }
+.hold-btn {
+  position: relative; overflow: hidden; min-height: 48px; min-width: 44px;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: none;
+  -webkit-tap-highlight-color: transparent; background: #ff5c7a14; border-color: var(--danger);
+}
+.hold-btn .hold-fill {
+  position: absolute; inset: 0; background: var(--danger); opacity: .85; transform: scaleX(0); transform-origin: left center;
+  pointer-events: none;
+}
+.hold-btn .hold-label { position: relative; pointer-events: none; }
+.hold-btn.holding, .hold-btn.done { color: #fff; }
+.hold-btn:disabled { cursor: default; }
+.undo-bar {
+  position: fixed; left: 50%; bottom: calc(84px + var(--sab)); transform: translateX(-50%); z-index: 45;
+  display: flex; align-items: center; gap: 12px; width: min(480px, 92vw); background: var(--card); border: 1px solid var(--danger);
+  border-radius: 12px; padding: 8px 10px 8px 14px; box-shadow: 0 10px 30px #0009; font-weight: 700;
+}
+.undo-bar span { flex: 1; font-size: .9rem; }
+.undo-bar .btn { flex: none; min-height: 44px; background: var(--danger); border-color: transparent; color: #fff; }
+.restore-box { margin-top: 14px; border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: var(--card2); }
+.restore-box h4 { margin: 0 0 4px; }
+.restore-box p { margin: 0 0 6px; color: var(--muted); font-size: .88rem; }
+.restore-box .btn { width: 100%; margin-top: 6px; }
+@media (max-width: 420px) { .reset-cols { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { .hold-btn .hold-fill { transition: none; } }
