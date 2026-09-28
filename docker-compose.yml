@@ -1,0 +1,15 @@
+# Dokploy (project "Kodhane"): builds the Dockerfile and serves the game on teserix_network.
+# The Cloudflare Tunnel (teserix-apps) routes kodhane.teserix.com to http://kodhane-web:80.
+services:
+  web:
+    build: .
+    restart: unless-stopped
+    mem_limit: 64m
+    networks:
+      teserix_network:
+        aliases:
+          - kodhane-web
+
+networks:
+  teserix_network:
+    external: true
