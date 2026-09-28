@@ -198,7 +198,9 @@ with sync_playwright() as p:
         ctx.add_init_script(init + ''.join(seed))
         f = fake or FakeSB()
         ctx.route(FAKE + '/**', f.handle)
-        ctx.route('https://supabase.teserix.com/**', lambda r: r.abort('connectionrefused'))
+        # güvenlik ağı: gerçek API'ye (main'deki kodhane-api.teserix.com ve eski ad) asla gidilmez
+        for host in ('https://kodhane-api.teserix.com/**', 'https://supabase.teserix.com/**'):
+            ctx.route(host, lambda r: r.abort('connectionrefused'))
         ctx.route('https://cdn.jsdelivr.net/**', lambda r: r.fulfill(status=200, headers={'content-type': 'application/javascript', 'access-control-allow-origin': '*'}, body=SDK_BYTES))
         return ctx
 
