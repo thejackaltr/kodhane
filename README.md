@@ -16,12 +16,15 @@ Kodhane: Ajans Tycoon, evde tek bir laptopla başlayıp kıtalar arası bir tekn
 - **Ses ve titreşim:** Web Audio ile üretilen sesler (varsayılan olarak kapalı) ve mobilde titreşim. İkisi de İstatistik sekmesinden açılıp kapatılır.
 - **Uygulama olarak yükle (PWA):** Ana ekrana eklenebilir, çevrimdışı çalışır. Yeni sürüm yayınlandığında "Yeni sürüm hazır" bildirimi çıkar.
 - **Kayıt uyumluluğu:** Eski kayıtlar yeni biçime otomatik ve kayıpsız taşınır.
+- **Bulut kaydı (isteğe bağlı):** Sağ üstteki **Hesap** düğmesinden e-posta adresine gelen tek kullanımlık giriş bağlantısıyla (şifresiz) giriş yap; ilerlemen Supabase üzerinde saklanır ve başka cihazlarda kaldığın yerden devam edersin. Girişliyken oyun hem cihaza hem de (değişiklik varsa yaklaşık 45 saniyede bir ve sekme kapanırken) buluta kaydedilir. İlk girişte cihazdaki kayıt buluta yüklenir; iki kayıt çakışırsa ömür boyu kazancı büyük olan (eşitse daha yeni olan) kazanır, diğeri `kodhane_ajans_save_backup` anahtarına yedeklenir. Giriş yapmadan misafir olarak ve çevrimdışıyken oynamaya her zaman devam edebilirsin; bulut kitaplığı yalnızca gerektiğinde yüklenir.
 
 ## Yerelde çalıştırma
 
 Depoyu indir ya da klonla, ardından `index.html` dosyasını tarayıcında aç. Kurulum veya sunucu gerekmez. Çevrimdışı mod (service worker) ve uygulama yükleme için bir yerel sunucu gerekir, örneğin `python3 -m http.server`; PNG simgeler `python3 tools/make_icons.py` ile üretilir.
 
-Testler: `python3 tests/test_idle.py` (Playwright gerekir), denge simülasyonu: `node tests/balance_sim.js`.
+Testler: `python3 tests/test_idle.py` ve `python3 tests/test_cloud.py` (Playwright gerekir; bulut testleri Supabase'i taklit eder, gerçek projeye bağlanmaz), denge simülasyonu: `node tests/balance_sim.js`.
+
+Bulut kaydı ayarları `cloud.js` başındadır (proje adresi ve herkese açık publishable anahtar; veri erişimi veritabanındaki RLS kurallarıyla korunur).
 
 ## Ekran görüntüsü
 

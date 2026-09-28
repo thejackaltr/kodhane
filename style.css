@@ -39,7 +39,17 @@ button { font: inherit; color: inherit; cursor: pointer; }
 }
 .brand h1 { margin: 0; font-size: 1.25rem; letter-spacing: .5px; }
 .brand small { color: var(--muted); }
+.top-right { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .money-box { text-align: right; }
+.account-btn {
+  position: relative; display: flex; align-items: center; gap: 6px; min-height: 44px; min-width: 44px; padding: 6px 12px;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--card2); color: var(--text); font-weight: 700; font-size: .88rem;
+}
+.account-btn:hover { border-color: var(--accent); }
+.acc-ico { font-size: 1.1rem; line-height: 1; }
+.acc-dot { position: absolute; top: 5px; right: 5px; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); opacity: .6; }
+.account-btn.signed .acc-dot { background: var(--accent2); opacity: 1; box-shadow: 0 0 8px #22d3a699; }
+.account-btn.err .acc-dot { background: var(--gold); opacity: 1; }
 .money { font-size: clamp(1.3rem, 3.6vw, 2rem); font-weight: 800; font-variant-numeric: tabular-nums; transition: color .25s, text-shadow .25s; }
 .money.spend { color: var(--danger); text-shadow: 0 0 14px #ff5c7a66; }
 .rate { color: var(--accent2); font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -132,8 +142,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .gen-owned { font-size: 1.3rem; font-weight: 800; color: #fff; opacity: .85; }
 
 /* Tabs */
-.tabs { display: flex; flex-wrap: wrap; gap: 4px; background: #0004; border-radius: 10px; padding: 3px; margin-bottom: 12px; }
-.tabs button { flex: 1 1 auto; border: 0; background: transparent; padding: 7px 8px; border-radius: 8px; color: var(--muted); font-weight: 700; font-size: .82rem; position: relative; white-space: nowrap; min-height: 36px; }
+.tabs { display: flex; flex-wrap: nowrap; gap: 2px; background: #0004; border-radius: 10px; padding: 3px; margin-bottom: 12px; overflow-x: auto; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
+.tabs button { flex: 1 0 auto; border: 0; background: transparent; padding: 7px 5px; border-radius: 8px; color: var(--muted); font-weight: 700; font-size: .76rem; position: relative; white-space: nowrap; min-height: 36px; }
 .tabs button.active { background: var(--card2); color: var(--text); }
 .badge { display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 99px; background: var(--accent2); color: #062; font-size: .72rem; line-height: 18px; text-align: center; }
 
@@ -256,6 +267,27 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .modal-actions { display: flex; gap: 8px; }
 .modal-actions .btn.primary { margin-top: 0; }
 
+/* Hesap penceresi */
+.account-card { position: relative; text-align: left; }
+.account-card .modal-emoji, .account-card h3 { text-align: center; }
+.acc-close { position: absolute; top: 10px; right: 10px; width: 40px; height: 40px; border: 1px solid var(--line); border-radius: 10px; background: transparent; color: var(--muted); font-size: 1rem; }
+.acc-form { display: flex; flex-direction: column; gap: 10px; }
+.acc-form input {
+  width: 100%; min-height: 46px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--bg2); color: var(--text); font: inherit; font-size: 1rem;
+}
+.acc-form input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px #7c5cff44; }
+.acc-form .btn.primary { margin-top: 0; }
+.account-card .acc-who { margin-bottom: 10px; text-align: center; word-break: break-all; }
+.acc-sync { background: var(--card2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-weight: 700; font-size: .9rem; margin-bottom: 12px; text-align: center; }
+.acc-sync.ok { border-color: #22d3a666; color: var(--accent2); }
+.acc-sync.err { border-color: #ffc85766; color: var(--gold); }
+.account-card .acc-msg { margin: 10px 0 0; font-size: .88rem; color: var(--text); min-height: 0; }
+.account-card .acc-msg:empty { display: none; }
+.account-card .acc-msg.err { color: var(--gold); }
+.account-card .save-note { margin-top: 12px; line-height: 1.45; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
 /* Bottom nav (yalnızca mobil) */
 .bottom-nav { display: none; }
 
@@ -268,6 +300,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
   body { padding: 8px 8px calc(84px + env(safe-area-inset-bottom)); }
   .layout { grid-template-columns: 1fr; }
   .mhide { display: none !important; }
+  .acc-label { display: none; }
+  .account-btn { padding: 6px; justify-content: center; }
+  .top-right { gap: 8px; }
   .topbar { position: sticky; top: 0; z-index: 20; margin: -8px -8px 10px; padding: 8px; background: #0b0e1ae6; backdrop-filter: blur(6px); border-bottom: 1px solid var(--line); }
   .click-panel { min-height: 0; padding: 22px 10px; grid-column: auto; }
   .click-btn { width: min(210px, 60vw); }

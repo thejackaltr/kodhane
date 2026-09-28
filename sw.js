@@ -3,8 +3,9 @@
  * böylece her yayında yeni bir önbellek oluşur ve oyuncuya "Yeni sürüm hazır" bildirimi gider.
  */
 var BUILD = '__BUILD__';
-var CACHE = 'kodhane-' + BUILD;
-var ASSETS = ['./', './index.html', './style.css', './game.js', './manifest.webmanifest',
+var CACHE_VERSION = 'v3';
+var CACHE = 'kodhane-' + CACHE_VERSION + '-' + BUILD;
+var ASSETS = ['./', './index.html', './style.css', './game.js', './cloud.js', './manifest.webmanifest',
   './icon.svg', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', function (e) {
@@ -32,7 +33,12 @@ self.addEventListener('activate', function (e) {
 self.addEventListener('fetch', function (e) {
   var req = e.request;
   var url = new URL(req.url);
+  // Supabase (giriş/bulut kaydı), jsDelivr CDN ve diğer tüm dış istekler hiçbir zaman
+  // önbelleğe alınmaz ve yakalanmaz; yalnızca GET ile istenen kendi dosyalarımız önbellekten sunulur.
   if (req.method !== 'GET' || url.origin !== self.location.origin) return;
+  if (/(^|\.)supabase\.(co|in)$/.test(url.hostname) || url.hostname === 'supabase.teserix.com' || url.hostname === 'cdn.jsdelivr.net') return;
+  // Giriş bağlantısından dönüşte (?code=, ?error=) sayfa doğrudan ağdan gelsin.
+  if (req.mode === 'navigate' && /[?&](code|error|error_code|error_description|token_hash)=/.test(url.search)) return;
   var isApp = req.mode === 'navigate' && /\/(index\.html)?$/.test(url.pathname);
   e.respondWith(caches.open(CACHE).then(function (cache) {
     var key = isApp ? './index.html' : req;

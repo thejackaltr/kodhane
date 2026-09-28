@@ -1,6 +1,7 @@
-/* Kodhane: Ajans Tycoon — v2
+/* Kodhane: Ajans Tycoon — v3
  * Vanilla JS, derleme adımı yok. Tüm oyun metinleri Türkçe.
  * v1 kayıtları ('kodhane_ajans_save_v1') ilk açılışta otomatik olarak v2 biçimine taşınır.
+ * Bulut kaydı (isteğe bağlı giriş) cloud.js içindedir; oyun onsuz da tam çalışır.
  */
 (function (root) {
   'use strict';
@@ -8,7 +9,7 @@
   // ------------------------------------------------------------------
   // Tanımlar (denge değerleri)
   // ------------------------------------------------------------------
-  var VERSION = '2.0.0';
+  var VERSION = '3.0.0';
   var SAVE_KEY = 'kodhane_ajans_save_v2';
   var LEGACY_KEYS = ['kodhane_ajans_save_v1'];
   var SETTINGS_KEY = 'kodhane_ayarlar_v1';
@@ -730,6 +731,23 @@
   function save() {
     if (resetting) return;
     try { localStorage.setItem(SAVE_KEY, serialize()); } catch (e) { /* kota vb. */ }
+    if (typeof Core.onSaved === 'function') { try { Core.onSaved(); } catch (e) { /* bulut kancası oyunu durdurmamalı */ } }
+  }
+  // Buluttan (veya başka bir kaynaktan) gelen kaydı uygula: yerel kaydı değiştirir ve arayüzü yeniler.
+  function applySave(data) {
+    deserialize(typeof data === 'string' ? data : JSON.stringify(data));
+    var res = applyOffline(Date.now());
+    lastStageShown = stageIndex(S.runEarned);
+    S.stage = Math.max(S.stage, lastStageShown);
+    checkDaily();
+    checkAchievements();
+    queue = queue.filter(function (n) { return n.type !== 'ach' && n.type !== 'newday'; });
+    upgSig = ''; achSig = '';
+    setCounter('money', S.money, true);
+    setCounter('rate', tps(), true);
+    save();
+    renderAll();
+    return res;
   }
   function load() {
     var raw = null, migrated = false;
@@ -1284,13 +1302,19 @@
     el.resetBtn.addEventListener('click', function () {
       modal({
         emoji: '⚠️', title: 'Kaydı sıfırla?',
-        html: 'Tüm ilerlemen, çalışanların, geliştirmelerin, başarımların ve yatırımcı hisselerin <b>kalıcı olarak silinecek</b>. Bu işlem geri alınamaz.',
+        html: 'Tüm ilerlemen, çalışanların, geliştirmelerin, başarımların ve yatırımcı hisselerin <b>kalıcı olarak silinecek</b>. Bu işlem geri alınamaz.' +
+          (Core.cloudSignedIn && Core.cloudSignedIn() ? '<br><small>Giriş yaptığın için buluttaki kaydın da silinecek.</small>' : ''),
         buttons: [
           { label: 'Vazgeç', cls: 'ghost' },
           { label: 'Evet, sıfırla', cls: 'danger', onClick: function () {
             resetting = true;
             try { localStorage.removeItem(SAVE_KEY); LEGACY_KEYS.forEach(function (k) { localStorage.removeItem(k); }); } catch (e) {}
-            location.reload();
+            var done = false;
+            var go = function () { if (!done) { done = true; location.reload(); } };
+            // Girişliyse buluttaki kayıt da silinir (en fazla 4 sn beklenir)
+            var p = null;
+            try { p = typeof Core.beforeReset === 'function' ? Core.beforeReset() : null; } catch (e) { p = null; }
+            if (p && typeof p.then === 'function') { p.then(go, go); setTimeout(go, 4000); } else go();
           } }
         ]
       });
@@ -1349,6 +1373,7 @@
   Core.spawnEvent = spawnEvent; Core.chooseEvent = chooseEvent; Core.laterEvent = laterEvent; Core.setView = setView; Core.selectTab = selectTab;
   Core.eventState = evs; Core.getSettings = function () { return settings; };
   Core.SAVE_KEY = SAVE_KEY; Core.LEGACY_KEYS = LEGACY_KEYS; Core.SETTINGS_KEY = SETTINGS_KEY;
+  Core.applySave = applySave; Core.toast = toast; Core.isResetting = function () { return resetting; };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();

@@ -3,3 +3,4 @@ icon-512.png
 apple-touch-icon.png
 __pycache__/
 node_modules/
+tests/.cache/

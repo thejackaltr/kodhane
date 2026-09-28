@@ -24,9 +24,14 @@
         <small>Ajans Tycoon</small>
       </div>
     </div>
-    <div class="money-box">
-      <div class="money" id="money">0 TL</div>
-      <div class="rate" id="rate">0 TL/sn</div>
+    <div class="top-right">
+      <div class="money-box">
+        <div class="money" id="money">0 TL</div>
+        <div class="rate" id="rate">0 TL/sn</div>
+      </div>
+      <button id="accountBtn" class="account-btn" type="button" aria-haspopup="dialog" aria-controls="accountPanel" aria-label="Hesap: misafir">
+        <span class="acc-ico" aria-hidden="true">👤</span><span class="acc-label">Hesap</span><span class="acc-dot" aria-hidden="true"></span>
+      </button>
     </div>
   </header>
 
@@ -168,6 +173,33 @@
     </div>
   </div>
 
+  <div id="accountPanel" class="modal account-modal hidden" role="dialog" aria-modal="true" aria-labelledby="accTitle">
+    <div class="modal-card account-card">
+      <button id="accClose" class="acc-close" type="button" aria-label="Kapat">✕</button>
+      <div class="modal-emoji">☁️</div>
+      <h3 id="accTitle">Hesap</h3>
+      <div id="accGuest">
+        <p>Giriş yap, ilerlemen buluta kaydedilsin; telefonda ve bilgisayarda aynı ajansla devam et. Şifre yok: e-postana tek kullanımlık bir <b>giriş bağlantısı</b> göndeririz.</p>
+        <form id="accForm" class="acc-form" novalidate>
+          <label for="accEmail" class="sr-only">E-posta adresi</label>
+          <input id="accEmail" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" placeholder="ornek@eposta.com" required>
+          <button id="accSend" type="submit" class="btn primary">Giriş bağlantısı gönder</button>
+        </form>
+      </div>
+      <div id="accUser" class="hidden">
+        <p class="acc-who">Giriş yapıldı:<br><b id="accEmailShown"></b></p>
+        <div id="accSync" class="acc-sync">☁️ Bulut kaydı hazır</div>
+        <div class="modal-actions">
+          <button id="accSyncNow" type="button" class="btn ghost">Şimdi eşitle</button>
+          <button id="accSignOut" type="button" class="btn danger">Çıkış yap</button>
+        </div>
+      </div>
+      <p id="accMsg" class="acc-msg" aria-live="polite"></p>
+      <p class="save-note">Giriş yapmadan da oynayabilirsin; misafir kaydın bu cihazda tutulur. Girişliyken oyun hem bu cihaza hem de buluta (yaklaşık 45 sn’de bir) kaydedilir.</p>
+    </div>
+  </div>
+
   <script src="game.js"></script>
+  <script src="cloud.js"></script>
 </body>
 </html>
