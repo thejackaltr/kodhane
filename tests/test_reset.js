@@ -8,7 +8,7 @@ const fs = require('fs');
 const { execFileSync } = require('child_process');
 const ROOT = path.join(__dirname, '..');
 const K = require(path.join(ROOT, 'game.js'));
-const { createSaveMock, RPC } = require(path.join(ROOT, 'cloud.js'));
+const { createSaveMock, RPC, TabGate, WRITER_KEY, staleKind } = require(path.join(ROOT, 'cloud.js'));
 let pass = 0, fail = 0;
 function check(name, cond, info) {
   if (cond) pass++; else fail++;
@@ -23,7 +23,7 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
   check('every copy key present with verbatim wording', Object.keys(copy).every((k) => JSON.stringify(T[k]) === JSON.stringify(copy[k])),
     Object.keys(copy).filter((k) => JSON.stringify(T[k]) !== JSON.stringify(copy[k])));
   const extra = Object.keys(T).filter((k) => !(k in copy));
-  check('only the two flagged non-copy keys added', extra.join(',') === 'reset.cloudFailed,reset.restoreFailed', extra);
+  check('only the two flagged non-copy keys added', extra.join(',') === 'reset.cloudFailed,reset.restoreFailed,reset.otherDeviceSync', extra);
   const src = fs.readFileSync(path.join(ROOT, 'game.js'), 'utf8');
   check('old hardcoded reset texts removed', !/kalıcı olarak silinecek|buluttaki kaydın da silinecek|Kaydı sıfırla\?|Evet, sıfırla/.test(src));
   check('copy strings appear only once in game.js (single RESET_TEXT object)', Object.keys(copy).every((k) => typeof copy[k] !== 'string' || copy[k].length < 20 || src.split(copy[k]).length === 2));
@@ -157,7 +157,7 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
     return {
       name, rev: 0, state: save(0),
       async pull() { const x = (await S2.select(V)).data; this.rev = x ? x.revision : 0; if (x) this.state = x.data; return x; },
-      async push() { const x = await S2.upsert(V, { user_id: V, data: this.state, save_version: 4, updated_at: new Date().toISOString(), revision: this.rev + 1 }); if (!x.error) this.rev += 1; return x; },
+      async push() { const x = await S2.upsert(V, { user_id: V, data: this.state, save_version: 4, updated_at: new Date().toISOString(), revision: this.rev + 1 }); if (!x.error) this.rev = (x.data && typeof x.data.revision === 'number') ? x.data.revision : this.rev + 1; return x; },
       async reset() { const x = await S2.rpc(V, RPC.reset, {}); this.rev = x.data.revision; this.state = save(0, { resetAt: Date.now() }); return x; }
     };
   }
@@ -177,6 +177,79 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
   r = await B.reset(); check('B resets', !r.error);
   A.state = save(80); r = await A.push(); check('A stale write rejected after B reset', r.status === 409 && r.error.message === 'stale_revision');
   await A.pull(); check('A loads current save', A.state.totalEarned === 0 && A.rev === B.rev);
+
+
+  // ---------------------------------------------------------------- return=representation: lenient satırda eski istemci pull→push arasına yazarsa L = dönen
+  {
+    const st = memStorage();
+    const M = createSaveMock({ storage: st, channel: false });
+    const U = 'u-lenient';
+    // eski istemci (revision yok) → lenient satır rev 0, sonra eşit kabul → rev 1
+    let r = await M.upsert(U, { user_id: U, data: save(100), save_version: 4 });
+    check('legacy insert returns revision 0', r.data && r.data.revision === 0, r.data);
+    r = await M.upsert(U, { user_id: U, data: save(110), save_version: 4 }); // equal (none) on lenient
+    check('legacy equal on lenient -> server revision 1, stays lenient', r.data.revision === 1 && !M._db().rows['kodhane:' + U].strict_revision, r.data);
+    // v2.2 pulls rev 1; before its push (rev 2) the old client writes again → server goes to 2
+    let L = 1;
+    r = await M.upsert(U, { user_id: U, data: save(120), save_version: 4 }); // old client again
+    check('old client between pull and push bumps server to 2 (lenient)', r.data.revision === 2 && !M._db().rows['kodhane:' + U].strict_revision);
+    // v2.2 sends L+1 = 2 (equal to server) → accepted as old+1=3, stays lenient; client MUST take returned 3
+    r = await M.upsert(U, { user_id: U, data: save(130), save_version: 4, updated_at: new Date().toISOString(), revision: L + 1 });
+    check('v2.2 equal-on-lenient accepted; returned revision is what server stored (3)', r.data.revision === 3 && !M._db().rows['kodhane:' + U].strict_revision, r.data);
+    L = r.data.revision; // client sets L = returned
+    r = await M.upsert(U, { user_id: U, data: save(140), save_version: 4, updated_at: new Date().toISOString(), revision: L + 1 });
+    check('next push with L+1=4 is not stuck at equal', !r.error && r.data.revision === 4 && M._db().rows['kodhane:' + U].strict_revision === true, r.data);
+  }
+
+  // ---------------------------------------------------------------- best_score / best_stage never decrease
+  {
+    const M = createSaveMock({ storage: memStorage(), channel: false });
+    const U = 'u-best';
+    await M.upsert(U, { user_id: U, data: Object.assign(save(5000), { stage: 1 }), revision: 1 });
+    let cur = (await M.select(U)).data;
+    check('best_score/best_stage set from save', cur.best_score === 5000 && cur.best_stage === 1, cur);
+    const peak = { best_score: cur.best_score, best_stage: cur.best_stage };
+    const rr = await M.rpc(U, RPC.reset, {});
+    cur = (await M.select(U)).data;
+    check('reset: best_score/best_stage unchanged', cur.best_score === peak.best_score && cur.best_stage === peak.best_stage && rr.data.best_score === peak.best_score && rr.data.best_stage === peak.best_stage, { cur, rr: rr.data });
+    await M.upsert(U, { user_id: U, data: Object.assign(save(10), { stage: 0, resetAt: Date.now() }), revision: cur.revision + 1 });
+    cur = (await M.select(U)).data;
+    check('low save after reset: best_* still peak', cur.best_score === peak.best_score && cur.best_stage === peak.best_stage, cur);
+    // restore old high backup then write low: best stays
+    const bid = rr.data.backup_id;
+    await M.rpc(U, RPC.restore, { p_backup_id: bid });
+    cur = (await M.select(U)).data;
+    check('restore: best_* at least peak', cur.best_score >= peak.best_score && cur.best_stage >= peak.best_stage, cur);
+    const stale = await M.upsert(U, { user_id: U, data: Object.assign(save(1), { stage: 0 }), revision: 1 });
+    cur = (await M.select(U)).data;
+    check('stale write (409) leaves best_* untouched', stale.status === 409 && cur.best_score >= peak.best_score && cur.best_stage >= peak.best_stage, { stale: stale.error, cur });
+  }
+
+  // ---------------------------------------------------------------- staleKind
+  check('staleKind empty -> reset', staleKind({ startedAt: 1000 }, {}) === 'reset');
+  check('staleKind newer startedAt -> reset', staleKind({ startedAt: 1000 }, { startedAt: 5000, totalEarned: 0 }) === 'reset');
+  check('staleKind same/older startedAt -> sync', staleKind({ startedAt: 5000 }, { startedAt: 5000, totalEarned: 9 }) === 'sync' && staleKind({ startedAt: 5000 }, { startedAt: 4000, totalEarned: 9 }) === 'sync');
+
+  // ---------------------------------------------------------------- TabGate: alone writer
+  {
+    const st = memStorage();
+    const docA = { hidden: false, addEventListener: () => {} };
+    const docB = { hidden: false, addEventListener: () => {} };
+    const A = new TabGate({ storage: st, doc: docA, win: null, id: 'A' });
+    check('first tab is writer', A.isWriter() && A.canPush(false));
+    const B = new TabGate({ storage: st, doc: docB, win: null, id: 'B' }); // claims on construct if visible
+    check('second visible tab becomes writer', B.isWriter() && !A.isWriter());
+    check('background (non-writer) cannot push', !A.canPush(false));
+    check('writer can push; final flush from writer even if we only check canPush(true) with visible', B.canPush(true));
+    docB.hidden = true;
+    check('hidden writer cannot push (non-final)', !B.canPush(false) && B.canPush(true), 'final flush ok');
+    A.claim();
+    check('A claims again -> writer', A.isWriter() && !B.isWriter());
+    const broken = { getItem: () => { throw new Error('x'); }, setItem: () => { throw new Error('x'); }, removeItem: () => {} };
+    check('no storage -> every tab writes', new TabGate({ storage: broken, doc: docA, win: null }).isWriter() === true);
+    check('WRITER_KEY constant', WRITER_KEY === 'kodhane_tab_writer_v1');
+  }
+
 
   console.log('\n' + pass + '/' + (pass + fail) + ' passed');
   process.exit(fail ? 1 : 0);

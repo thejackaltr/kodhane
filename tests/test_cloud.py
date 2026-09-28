@@ -240,10 +240,17 @@ class FakeSupabase:
             if method == 'POST':
                 body = json.loads(req.post_data or '{}')
                 items = body if isinstance(body, list) else [body]
+                out = None
                 for it in items:
                     st, eb = self.saves.write(uid, it)
                     if st != 201:
                         return self.reply(route, st, eb)
+                    out = eb
+                # v4.2: Prefer return=representation + select=revision -> sunucunun sakladığı revision
+                prefer = (req.headers.get('prefer') or '')
+                sel = (q.get('select') or [''])[0]
+                if 'return=representation' in prefer and 'revision' in sel and out and 'revision' in out:
+                    return self.reply(route, 201, [out])  # PostgREST: representation always an array; maybeSingle unwraps
                 return route.fulfill(status=201, headers=CORS, body='')
             if method == 'DELETE':
                 # v2.2: istemci DELETE'i yasak (delete policy ve DELETE yetkisi kaldırıldı)

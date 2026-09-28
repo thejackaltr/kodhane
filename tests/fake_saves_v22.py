@@ -87,7 +87,7 @@ class SaveStore:
             self.rows[uid] = {'data': it['data'], 'save_version': it.get('save_version'), 'updated_at': upd, 'revision': rev,
                               'strict_revision': rev > 0, 'best_score': max(score(it['data']), prev),
                               'best_stage': max(stage_checked(it['data']), prev_st)}
-            return 201, None
+            return 201, {'revision': rev}
         orev = int(old.get('revision') or 0)
         rev = orev if sent is None else int(sent)
         detail = 'sent revision %s, server revision %s' % (rev, orev)
@@ -104,7 +104,7 @@ class SaveStore:
         self.rows[uid] = {'data': it['data'], 'save_version': it.get('save_version'), 'updated_at': upd, 'revision': rev,
                           'strict_revision': strict, 'best_score': max(float(old.get('best_score') or 0), score(it['data'])),
                           'best_stage': max(int(old.get('best_stage') or 0), stage_checked(it['data']))}
-        return 201, None
+        return 201, {'revision': rev}
 
     def _backup(self, uid, row, reason):
         b = {'id': str(uuid.uuid4()), 'user_id': uid, 'game': 'kodhane', 'revision': int(row.get('revision') or 0), 'payload': row.get('data'),

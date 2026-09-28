@@ -12,21 +12,22 @@
  * tasarım gereğidir. Veri erişimi veritabanındaki RLS kurallarıyla (auth.uid() = user_id) korunur.
  *
  * ---------------------------------------------------------------------------------------------------
- * v4.2 SUNUCU SÖZLEŞMESİ (Backend v2.2: acik-ofis v2.2-backend dalı, 1392c49,
- *   supabase/migrations/20260928160000_v2_2_save_safety.sql + docs/v2.2-backend-client-notes.md)
+ * v4.2 SUNUCU SÖZLEŞMESİ (Backend v2.2: acik-ofis-v2.2-backend 682f68d,
+ *   docs/v2.2-backend-client-notes.md + supabase/migrations/20260928160000_v2_2_kodhane_save_safety.sql)
  * BU İSTEMCİ O MIGRATION İLE BİRLİKTE YAYINLANMALI: migration'dan önce 'revision' sütunu ve RPC'ler yok (yazma/sıfırlama
  * hata verir); migration'dan sonra eski istemcinin DELETE'i 403 alır ve sıfırlama fiilen geri alınır.
  *
- *  Tablo kodhane_saves: revision bigint (iyimser eşzamanlılık sayacı), best_score (yalnızca artar; sıralama puanı,
- *  sıfırlamada kalır), strict_revision (sunucu yönetir). İstemci best_score/strict_revision yazamaz; DELETE yasak (42501).
- *  Yazma (upsert): gövdede revision = son görülen + 1; başarılıysa son görülen = gönderilen.
+ *  Tablo kodhane_saves: revision bigint, best_score / best_stage (yalnız artar; sıralama; sıfırlamada kalır),
+ *  strict_revision (sunucu). İstemci best_score/best_stage/strict_revision yazamaz; DELETE yasak (42501).
+ *  Yazma (upsert): Prefer return=representation + select=revision; gövdede revision = L + 1.
+ *  Başarıda L = sunucunun DÖNDÜRDÜĞÜ revision (gönderilen değil): lenient satırda pull→push arasına eski istemci
+ *  yazarsa eşit revision kabul edilir (eski+1), satır lenient kalır; döneni almazsak bir geride takılırız.
  *    revision < sunucu                       -> HTTP 409 {code:'PT409', message:'stale_revision', details, hint}
  *    revision = sunucu (strict satır/mod)    -> HTTP 409 {code:'PT409', message:'stale_revision'}
  *    revision = sunucu (lenient, eski istemci) ve totalEarned düşüyor -> HTTP 409 {code:'PT409', message:'stale_write'}
- *    409 alınca: körlemesine tekrar yok; reconcile (çek -> revision kuralı -> gerekirse yeniden gönder).
+ *    409 alınca: kaydı bir kez yükle, hold (gerçek oyuncu girdisine kadar push yok); ping-pong yok.
+ *  Tek yazan sekme (TabGate): yalnız görünür/odaklı/son etkileşimli sekme yazar (yerel + bulut).
  *  RPC adları tek yerde: aşağıdaki RPC sabiti (kodhane_reset_save / kodhane_restore_save / kodhane_list_save_backups).
- *  Kaynak: Backend v2.2 Kodhane göçü (20260928160000_v2_2_kodhane_save_safety.sql, henüz commit edilmemiş taslak);
- *  istemci notları (docs/v2.2-backend-client-notes.md) hâlâ genel reset_save/restore_save'i anlatıyor.
  *  Kodhane'ye özel yedek tablosu: kodhane_save_backups; ayarlar: kodhane_game_config. Yanıtlarda 'game' alanı YOK.
  *  rpc kodhane_reset_save()                 -> {revision, backup_id, best_score, best_stage}
  *    Satır silinmez: mevcut satır yedeklenir (reason 'reset'), data sıfırlanmış yükle değişir (resetAt dahil),
@@ -148,7 +149,7 @@
           db.rows[k] = { data: row.data, save_version: row.save_version, updated_at: row.updated_at || iso(now()), revision: rev0,
             strict_revision: rev0 > 0, best_score: Math.max(score(row.data), prev), best_stage: Math.max(stageChecked(row.data), prevSt) };
           store(db);
-          return res(null, 201);
+          return res({ revision: rev0 }, 201);
         }
         var rev = sent === null ? old.revision : sent, strict;
         if (rev < old.revision) return stale(rev, old.revision);
@@ -161,7 +162,7 @@
           strict_revision: strict, best_score: Math.max(old.best_score || 0, score(row.data)),
           best_stage: Math.max(old.best_stage || 0, stageChecked(row.data)) };
         store(db);
-        return res(null, 201);
+        return res({ revision: rev }, 201);
       },
       // DELETE /rest/v1/kodhane_saves: v2.2'de istemciye kapalı
       remove: function (uid, game) { return fail(403, '42501', 'permission denied for table ' + TABLES[game || 'kodhane']); },
@@ -223,8 +224,72 @@
     };
     return api;
   }
+
+  // v4.2: yalnız BİR sekme yazar (yerel + bulut). Son gösterilen/odaklanan/dokunulan sekme WRITER_KEY'i tutar;
+  // diğerleri duraklar. Yazıcı olunca önceki yazıcının bıraktığı kaydı alır (onClaim).
+  var WRITER_KEY = 'kodhane_tab_writer_v1';
+  function rid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
+  function TabGate(opts) {
+    opts = opts || {};
+    this.storage = opts.storage || (typeof localStorage !== 'undefined' ? localStorage : null);
+    this.doc = opts.doc !== undefined ? opts.doc : (typeof document !== 'undefined' ? document : null);
+    this.win = opts.win !== undefined ? opts.win : (typeof window !== 'undefined' ? window : null);
+    this.id = opts.id || rid();
+    this.now = opts.now || function () { return Date.now(); };
+    this.claimListeners = [];
+    var self = this;
+    if (this.win && this.win.addEventListener) {
+      var shown = function () { if (self.visible()) self.claim(); };
+      this.win.addEventListener('focus', function () { self.claim(); });
+      this.win.addEventListener('pageshow', shown);
+      if (this.doc && this.doc.addEventListener) this.doc.addEventListener('visibilitychange', shown);
+      ['pointerdown', 'keydown'].forEach(function (ev) {
+        self.win.addEventListener(ev, function (e) { if (!e || e.isTrusted !== false) self.claim(); }, { capture: true, passive: true });
+      });
+    }
+    if (this.visible()) this.claim();
+  }
+  TabGate.prototype.onClaim = function (fn) {
+    this.claimListeners.push(fn);
+    var self = this;
+    return function () { self.claimListeners = self.claimListeners.filter(function (f) { return f !== fn; }); };
+  };
+  TabGate.prototype.visible = function () { return !this.doc || !this.doc.hidden; };
+  TabGate.prototype.read = function () {
+    if (!this.storage) return undefined;
+    try { var v = JSON.parse(this.storage.getItem(WRITER_KEY) || 'null'); return v && typeof v === 'object' ? v : null; } catch (e) { return undefined; }
+  };
+  TabGate.prototype.claim = function () {
+    var cur = this.read();
+    if (cur === undefined) return false;
+    if (cur && cur.id === this.id) return false;
+    try { this.storage.setItem(WRITER_KEY, JSON.stringify({ id: this.id, at: this.now() })); } catch (e) { return false; }
+    for (var i = 0; i < this.claimListeners.length; i++) { try { this.claimListeners[i](); } catch (e) {} }
+    return true;
+  };
+  TabGate.prototype.isWriter = function () {
+    var cur = this.read();
+    if (cur === undefined) return true;
+    if (!cur || !cur.id) { if (this.visible()) { this.claim(); return true; } return false; }
+    return cur.id === this.id;
+  };
+  TabGate.prototype.canPush = function (final) { return this.isWriter() && (final || this.visible()); };
+  TabGate.prototype.release = function () {
+    var cur = this.read();
+    if (cur && cur.id === this.id) { try { this.storage.removeItem(WRITER_KEY); } catch (e) {} }
+  };
+  // 409 sonrası: yüklenen kayıt sıfırlama mı, yoksa eşzamanlı oyun mu? (startedAt daha yeni / boş = reset)
+  function staleKind(mine, data) {
+    if (!data || typeof data !== 'object' || !Object.keys(data).length) return 'reset';
+    var a = +data.startedAt || 0, b = +(mine && mine.startedAt) || 0;
+    return a > b + 1000 ? 'reset' : 'sync';
+  }
   root.KodhaneSaveMock = createSaveMock;
-  if (typeof module !== 'undefined' && module.exports && typeof document === 'undefined') { module.exports = { createSaveMock: createSaveMock, RPC: RPC }; return; }
+  root.KodhaneTabGate = TabGate;
+  if (typeof module !== 'undefined' && module.exports && typeof document === 'undefined') {
+    module.exports = { createSaveMock: createSaveMock, RPC: RPC, TabGate: TabGate, WRITER_KEY: WRITER_KEY, staleKind: staleKind };
+    return;
+  }
 
   var K = root.Kodhane;
   if (!K || typeof document === 'undefined') return;
@@ -265,7 +330,25 @@
   CFG.rpc = Object.assign({}, RPC, CFG.rpc || {});        // RPC adları (tek yer: dosya başındaki RPC); test geçersiz kılabilir
   if (CFG.transport !== 'mock') CFG.transport = 'supabase'; // 'supabase' (varsayılan) | 'mock' (yalnızca test/geliştirme)
   var REV_KEY = 'kodhane_cloud_rev_v1';  // {uid, rev}: bu cihazın bu hesap için son gördüğü sunucu revision'ı
-  C.rev = 0; C.revUid = null; C.staleAt = []; C.mock = null;
+  C.rev = 0; C.revUid = null; C.staleAt = []; C.mock = null; C.held = false;
+  var gate = new TabGate();
+  K.tabGate = gate;
+  function hold() { C.held = true; clearPushTimer(); }
+  function releaseHold() { if (!C.held) return; C.held = false; schedulePush(); }
+  if (typeof window !== 'undefined') {
+    ['pointerdown', 'keydown', 'touchstart'].forEach(function (ev) {
+      window.addEventListener(ev, function (e) { if (e && e.isTrusted) releaseHold(); }, { capture: true, passive: true });
+    });
+  }
+  gate.onClaim(function () {
+    // Yazıcı olunca önceki yazıcının bıraktığı yerel kaydı al; bulut imzasını sıfırla ki bir sonraki push güncel olsun.
+    try {
+      var raw = lsGet((K.SAVE_KEY) || 'kodhane_ajans_save_v2');
+      if (raw && raw !== K.lastWritten && K.applySave) {   // bu sekmenin kendi yazdığıysa devralınacak bir şey yok
+        var d = JSON.parse(raw); if (d && typeof d === 'object') { K.applySave(d); C.lastPushSig = ''; }
+      }
+    } catch (e) {}
+  });
 
   // ---------------------------------------------------------------- yardımcılar
   function num(x) { return typeof x === 'number' && isFinite(x) ? x : 0; }
@@ -420,8 +503,9 @@
       return C.client.from(CFG.table).select('data, save_version, updated_at, revision, best_score, best_stage').eq('user_id', C.user.id).maybeSingle();
     },
     upsert: function (row) {
+      // return=representation + select=revision: L = sunucunun sakladığı revision (lenient eşit yazmada eski+1 olabilir)
       if (useMock()) return mock().upsert(C.user.id, row);
-      return C.client.from(CFG.table).upsert(row, { onConflict: 'user_id' });
+      return C.client.from(CFG.table).upsert(row, { onConflict: 'user_id' }).select('revision').maybeSingle();
     },
     rpc: function (name, args) {
       if (useMock()) return mock().rpc(C.user.id, name, args);
@@ -501,14 +585,19 @@
       // yazma) bulut kazanır; bu cihazdaki eski kayıt buluta yazılamaz (sunucu da 409 ile reddeder).
       if (known !== null && rRev > known) {
         setRev(uid, rRev);
-        var otherReset = num(cloud.resetAt) > num(local.resetAt);
         cloud = Object.assign({}, cloud, { newsSeen: seen });
         backedUp = needsBackup(local, localTime, cloud, cloudTime);
         if (backedUp) backup(local);
         C.lastPushSig = '';
         C.reconciled = true;
-        C.lastRevWin = otherReset ? 'otherDevice' : 'cloud';
-        if (otherReset && typeof K.adoptSave === 'function') { K.adoptSave(cloud, 'otherDevice'); return; }
+        // sıfırlama mı yoksa eşzamanlı oyun mu? (staleKind: startedAt / boş kayıt)
+        var kind = staleKind(local, cloud);
+        C.lastRevWin = kind;
+        if (typeof K.adoptSave === 'function') {
+          K.adoptSave(cloud, kind);
+          C.lastPushSig = sig(saveData());   // yüklenen = bulut kopyası: aynısını geri yazma
+          return;
+        }
         res = K.applySave(cloud);
         toast('☁️ Buluttaki kaydın yüklendi' + (backedUp ? ' (bu cihazdaki kayıt yedeklendi).' : '.'), 4500);
         return;
@@ -547,7 +636,7 @@
 
   function clearPushTimer() { if (C.pushTimer) { clearTimeout(C.pushTimer); C.pushTimer = null; } }
   function schedulePush() {
-    if (!C.user || !C.reconciled || C.pushTimer) return;
+    if (!C.user || !C.reconciled || C.pushTimer || C.held) return;
     C.pushTimer = setTimeout(function () { C.pushTimer = null; push(false); }, CFG.pushDelayMs);
   }
   // Buluta yaz (upsert). force=false iken değişiklik yoksa atlanır. v4.2: her yazma revision = son görülen + 1 taşır;
@@ -556,6 +645,8 @@
   function push(force, o) {
     o = o || {};
     if (!C.client || !C.user || !C.reconciled) return Promise.resolve(false);
+    if (C.held && !o.duringReset) return Promise.resolve(false);
+    if (!o.duringReset && !(C.keepalive && C.finalWriter) && !gate.canPush(false)) return Promise.resolve(false);
     if (!o.duringReset && K.isResetting && K.isResetting()) return Promise.resolve(false);
     if (C.pushing) return C.pushing.then(function () { return push(force, o); });
     var state = saveData();
@@ -569,7 +660,9 @@
     setStatus('syncing', 'Buluta kaydediliyor…');
     C.pushing = T.upsert(row).then(function (r) {
       if (r.error) throw rpcError(r);
-      if (C.user && C.user.id === uid) setRev(uid, rev);
+      // L = sunucunun döndürdüğü revision (gönderilen değil; lenient eşit yazmada sunucu eski+1 yazar)
+      var got = (r.data && typeof r.data.revision === 'number') ? r.data.revision : rev;
+      if (C.user && C.user.id === uid) setRev(uid, got);
       C.lastPushSig = s; C.lastPushAt = now.getTime();
       setStatus('saved', '');
       return true;
@@ -587,6 +680,8 @@
   // 409: bu cihaz eski revision'da. Güncel kaydı çek; revision kuralı bulutu seçer (başka cihazda sıfırlandıysa
   // otherDevice metni gösterilir). Döngüye girmemek için 30 sn'de 3'ten fazla 409 olursa durulur.
   function handleStale() {
+    // 409: güncel kaydı bir kez yükle; gerçek oyuncu girdisine kadar (hold) yeniden yazma — iki cihaz/sekme ping-pong yapmasın.
+    hold();
     var t = Date.now();
     C.staleAt = C.staleAt.filter(function (x) { return t - x < 30000; });
     C.staleAt.push(t);
@@ -598,6 +693,7 @@
   function flush() {
     if (!C.user || !C.reconciled) return;
     clearPushTimer();
+    C.finalWriter = gate.isWriter();   // son yazma: sekme kapanırken yazıcı bırakılsa da bu push geçer
     C.keepalive = true;
     push(false).then(function () { C.keepalive = false; }, function () { C.keepalive = false; });
   }
@@ -830,7 +926,8 @@
     getClient: getClient, online: online,
     resetSave: function () { return K.beforeReset() || Promise.reject(new Error('not-signed-in')); },
     restoreSave: restoreSave, latestBackup: latestBackup, handleStale: handleStale, mock: function () { return useMock() ? mock() : null; },
-    BACKUP_KEY: BACKUP_KEY, REV_KEY: REV_KEY, isConfigured: function () { return configured; }
+    hold: hold, release: releaseHold, gate: gate, staleKind: staleKind,
+    BACKUP_KEY: BACKUP_KEY, REV_KEY: REV_KEY, WRITER_KEY: WRITER_KEY, isConfigured: function () { return configured; }
   };
 
   function start() {
@@ -864,7 +961,7 @@
     });
     el.accSignOut.addEventListener('click', function () { signOut(); });
     document.addEventListener('visibilitychange', function () { if (document.hidden) { K.save(); flush(); } });
-    root.addEventListener('pagehide', function () { K.save(); flush(); });
+    root.addEventListener('pagehide', function () { K.save(); flush(); try { gate.release(); } catch (e) {} });  // son yazmadan SONRA bırak
     root.addEventListener('online', function () {
       if (C.user && !C.reconciled) reconcile();
       else if (!C.client && configured && (hasStoredSession() || urlHasAuth())) boot();

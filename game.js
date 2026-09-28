@@ -113,7 +113,9 @@
     // Aşağıdaki iki metin copy dosyasında YOK (metin yazarının onayı bekleniyor):
     // girişli oyuncuda kodhane_reset_save RPC'si başarısız olursa (sıfırlama yapılmaz) / yedekten geri yükleme başarısız olursa
     "reset.cloudFailed": "Bulut kaydın şu an sıfırlanamıyor. İnternet bağlantını kontrol edip tekrar dene.",
-    "reset.restoreFailed": "Yedek geri yüklenemedi. Bağlantını kontrol edip tekrar dene."
+    "reset.restoreFailed": "Yedek geri yüklenemedi. Bağlantını kontrol edip tekrar dene.",
+    // copy dosyasında YOK — eşzamanlı oyun 409'u (sıfırlama değil); Açık Ofis reset.otherDeviceSync ile aynı anlam
+    "reset.otherDeviceSync": "Oyuna başka bir cihazda ya da sekmede devam ettin. Güncel kayıt yüklendi."
   };
   // Yalnızca girişli oyunculara gösterilen metinler (misafir asla görmez)
   var RESET_SIGNED_ONLY = ['reset.backup', 'reset.restoreTitle', 'reset.restoreBody', 'reset.restoreBtn', 'reset.restoreDone', 'reset.restoreFailed', 'reset.cloudFailed'];
@@ -126,7 +128,8 @@
     return t.replace(/\{(s|d)\}/g, function (m, k) { return String(v[k]); });
   }
   // "Başka cihazda sıfırlandı" metni: yedek/geri yükleme cümlesi yalnızca girişli oyuncuya gösterilir.
-  function otherDeviceText(signedIn) {
+  function otherDeviceText(signedIn, kind) {
+    if (kind === 'sync') return resetText('reset.otherDeviceSync');
     var t = resetText('reset.otherDevice');
     if (signedIn) return t;
     return (t.match(/[^.]+\.?/g) || [t]).filter(function (x) { return !/yede|geri yükle/i.test(x); }).join('').trim();
@@ -1192,10 +1195,14 @@
 
   function save() {
     if (resetting) return;
+    // v4.2: yalnız yazıcı sekme yazar (arka plan sekmeleri duraklar; TabGate)
+    if (Core.tabGate && !Core.tabGate.isWriter()) return;
     if (staleLocal()) return; // başka sekmede sıfırlandı/geri yüklendi: bu sekmenin eski kaydı yazılmaz
     try {
       if (meta.epoch > readEpoch()) localStorage.setItem(EPOCH_KEY, String(meta.epoch));
-      localStorage.setItem(SAVE_KEY, serialize());
+      var str = serialize();
+      localStorage.setItem(SAVE_KEY, str);
+      Core.lastWritten = str;   // TabGate: yazıcı olunca yalnız BAŞKA sekmenin yazdığı kayıt devralınır
     } catch (e) { /* kota vb. */ }
     if (typeof Core.onSaved === 'function') { try { Core.onSaved(); } catch (e) { /* bulut kancası oyunu durdurmamalı */ } }
   }
@@ -1222,6 +1229,7 @@
     var raw = null, migrated = false;
     try {
       raw = localStorage.getItem(SAVE_KEY);
+      Core.lastWritten = raw;
       for (var i = 0; !raw && i < LEGACY_KEYS.length; i++) {
         raw = localStorage.getItem(LEGACY_KEYS[i]);
         if (raw) migrated = true;
@@ -1256,12 +1264,23 @@
   function num0(x) { return typeof x === 'number' && isFinite(x) ? x : 0; }
 
   // Bu sekme eski kuşaktaysa (başka sekmede sıfırlama/geri alma oldu): yerel kayda yazmaz, güncel kaydı yükler.
+  var stalePendingSince = 0;
   function staleLocal() {
     var floor = readEpoch();
-    if (floor <= meta.epoch) return false;
+    if (floor <= meta.epoch) { stalePendingSince = 0; return false; }
     var cur = null;
     try { cur = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch (e) { cur = null; }
-    if (!cur || typeof cur !== 'object' || !(num0(cur.epoch) >= floor)) cur = null; // diğer sekme henüz yazmadı: boş kayıt
+    if (!cur || typeof cur !== 'object' || !(num0(cur.epoch) >= floor)) {
+      // Diğer sekme yeni kuşağı duyurdu ama kaydını henüz yazmadı (depolama olayları sırasız gelebilir):
+      // kısa süre bekle (bu sekme yazmaz); ~2 sn içinde gelmezse (ör. sıfırlayan sekme kapandı) boş kayıtla devam et.
+      if (!stalePendingSince) stalePendingSince = Date.now();
+      if (Date.now() - stalePendingSince < 2000) {
+        setTimeout(function () { if (!resetting) staleLocal(); }, 400);
+        return true;
+      }
+      cur = null;
+    }
+    stalePendingSince = 0;
     var otherReset = !cur || num0(cur.resetAt) > meta.resetAt;
     if (!cur) { cur = saveDataOf(newState()); cur.epoch = floor; cur.resetAt = floor; }
     adoptSave(cur, otherReset ? 'otherDevice' : 'undoDone');
@@ -1275,10 +1294,16 @@
     if (undoState.marker) hideUndo(true); // bu sekmedeki geri alma artık geçersiz
     if (!el.modal.classList.contains('hidden')) closeModal();
     var d = JSON.parse(JSON.stringify(data));
-    if (kind === 'otherDevice' && !d.lastSaved) d.lastSaved = Date.now();
+    // kind 'otherDevice' | 'undoDone' | ya da doğrudan 'reset'/'sync' (staleKind)
+    var sk = (kind === 'otherDevice' || kind === 'reset' || kind === 'sync')
+      ? ((kind === 'reset' || kind === 'sync') ? kind
+        : (Core.cloud && Core.cloud.staleKind ? Core.cloud.staleKind(S, d) : 'reset'))
+      : null;
+    if ((sk === 'reset' || sk === 'sync') && !d.lastSaved) d.lastSaved = Date.now();
     applySave(d);
-    Core.lastAdopt = kind;
-    if (kind === 'otherDevice') toast('🔄 ' + otherDeviceText(signedIn()), 7000);
+    Core.lastAdopt = sk ? 'otherDevice' : kind;   // uyumluluk: 409/başka sekme = 'otherDevice'
+    Core.lastAdoptKind = sk || null;               // 'reset' | 'sync' (staleKind)
+    if (sk === 'reset' || sk === 'sync') toast('🔄 ' + otherDeviceText(signedIn(), sk), 7000);
     else if (kind === 'undoDone') toast('↩️ ' + resetText('reset.undoDone'), 4500);
     refreshRestoreBox();
   }
@@ -2236,7 +2261,8 @@
     el.restoreBtn.textContent = resetText('reset.restoreBtn');
     // Başka sekmede sıfırlama/geri alma: kuşak anahtarı değişince hemen kaydetmeyi dene (bayatsa yazma reddedilir,
     // güncel kayıt yüklenir).
-    window.addEventListener('storage', function (e) { if (e.key === EPOCH_KEY && !resetting) save(); });
+    // Başka sekme sıfırladı/geri aldı: yazmadan (arka plan sekmesi de) güncel kaydı yükle
+    window.addEventListener('storage', function (e) { if ((e.key === EPOCH_KEY || e.key === SAVE_KEY) && !resetting) staleLocal(); });
     el.prestigeBtn.addEventListener('click', function () {
       var g = sharesGain();
       if (g < 1) return;

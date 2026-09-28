@@ -33,6 +33,7 @@ SAVE_KEY = 'kodhane_ajans_save_v2'
 AUTH_KEY = 'kodhane_auth_v1'
 SS = os.path.join(ROOT, 'screenshots') + os.sep
 COPY = json.load(open(os.path.join(ROOT, 'tests', 'fixtures', 'kodhane-reset-copy.json'), encoding='utf-8'))
+TEXT_SYNC = 'Oyuna başka bir cihazda ya da sekmede devam ettin. Güncel kayıt yüklendi.'  # geçici (copy dosyasında yok)
 CLOUD_JS = open(os.path.join(ROOT, 'cloud.js'), encoding='utf-8').read()
 SDK_URL = re.search(r"sdk: '([^']+)'", CLOUD_JS).group(1)
 CACHE = os.path.join(ROOT, 'tests', '.cache')
@@ -100,6 +101,7 @@ class FakeSB:
         self.saves.rows = self.rows
         self.log = []
         self.stale = []   # 409 yanıtları: (uid, message)
+        self.last_post = None  # (Prefer, select) of the last save POST
 
     def reply(self, route, status, body=None):
         route.fulfill(status=status, headers=dict(CORS, **{'content-type': 'application/json'}), body='' if body is None else json.dumps(body))
@@ -138,12 +140,20 @@ class FakeSB:
                 return self.reply(route, 200, rows)
             if req.method == 'POST':
                 body = json.loads(req.post_data or '{}')
+                q = urllib.parse.parse_qs(u.query)
+                out = None
                 for it in (body if isinstance(body, list) else [body]):
                     st, eb = self.saves.write(uid, it)
                     if st != 201:
                         if st == 409:
                             self.stale.append((uid, eb['message']))
                         return self.reply(route, st, eb)
+                    out = eb
+                prefer = (req.headers.get('prefer') or '')
+                sel = (q.get('select') or [''])[0]
+                self.last_post = (prefer, sel)
+                if 'return=representation' in prefer and 'revision' in sel and out and 'revision' in out:
+                    return self.reply(route, 201, [out])  # PostgREST: representation always an array; maybeSingle unwraps
                 return route.fulfill(status=201, headers=CORS, body='')
             if req.method == 'DELETE':
                 return self.reply(route, 403, {'code': '42501', 'message': 'permission denied for table kodhane_saves'})
@@ -335,6 +345,14 @@ with sync_playwright() as p:
           ev(B, 'Kodhane.lastAdopt'))
     check('tab B shows guest otherDevice text (no restore sentence)', any(GUEST_OTHER in t and RESTORE_SENTENCE not in t for t in toasts(B)), toasts(B))
     check('reset not overwritten by tab B (no pre-reset data in storage)', json.loads(ev(A, "localStorage.getItem('%s')" % SAVE_KEY))['totalEarned'] < 4000)
+    # v4.2 tek yazan sekme: son etkileşilen (A) yazar, B duraklar; B gerçek girdiyle yazıcı olur ve A'nın kaydını devralır
+    check('single writer: last-interacted tab A writes, B paused', ev(A, 'Kodhane.tabGate.isWriter()') is True and ev(B, 'Kodhane.tabGate.isWriter()') is False)
+    ev(B, 'Kodhane.earn(1e6); Kodhane.save()')
+    check('background tab B does not write localStorage', json.loads(ev(A, "localStorage.getItem('%s')" % SAVE_KEY))['totalEarned'] < 4000)
+    B.mouse.click(3, 3)
+    wait_js(B, 'Kodhane.tabGate.isWriter()', 3000)
+    check('B becomes writer on real input and takes over the stored save (unsaved background progress dropped)',
+          ev(B, 'Kodhane.tabGate.isWriter()') is True and ev(A, 'Kodhane.tabGate.isWriter()') is False and ev(B, 'Kodhane.state.totalEarned') < 4000)
     # tersi: B sıfırlar, A bayat
     ev(A, 'Kodhane.state.clicks = 7; Kodhane.save()'); ev(B, 'Kodhane.state.clicks = 7; Kodhane.save()')
     ev(A, "Kodhane.earn(5000); Kodhane.save()")
@@ -354,6 +372,11 @@ with sync_playwright() as p:
     ctx = new_ctx(fake, save=seed_save(clicks=30, total=3000.0), signed=True)
     pg = open_page(ctx)
     check('signed in: reconciled, first write carries revision 1', wait_js(pg, 'Kodhane.cloud.state.reconciled && Kodhane.cloud.state.lastPushAt > 0') and fake.rows[UID]['revision'] == 1)
+    check('push uses Prefer return=representation + select=revision; local revision = server returned',
+          fake.last_post is not None and 'return=representation' in fake.last_post[0] and fake.last_post[1] == 'revision'
+          and ev(pg, 'Kodhane.cloud.state.rev') == fake.rows[UID]['revision'], [fake.last_post, ev(pg, 'Kodhane.cloud.state.rev')])
+    ev(pg, "Kodhane.selectTab('stats')"); pg.wait_for_timeout(500)
+    check('signed in, no backup yet: restore row hidden (list RPC called)', pg.is_hidden('#restoreBox') and any(n == RPC['listBackups'] for n, _ in fake.saves.rpc_log))
     open_dialog(pg)
     txt = pg.inner_text('#modal')
     check('signed-in dialog shows backup text with {d} from config (30)', COPY['reset.backup'].replace('{d}', '30') in txt, txt)
@@ -420,9 +443,17 @@ with sync_playwright() as p:
     check('device B loads current (reset) save', ev(B, 'Kodhane.state.clicks') == 0 and ev(B, 'Kodhane.state.achievements') == [])
     B.wait_for_timeout(300)
     check('device B shows otherDevice with restore sentence (signed in)', any(COPY['reset.otherDevice'] in t for t in toasts(B)), toasts(B))
+    check('reset-caused 409 -> kind reset (startedAt newer)', ev(B, 'Kodhane.lastAdoptKind') == 'reset', ev(B, 'Kodhane.lastAdoptKind'))
     check('server row not overwritten by B', fake.rows[UID]['data']['clicks'] == 0)
+    # 409 -> kayıt bir kez yüklendi, gerçek girdiye kadar push yok
+    check('after 409: B held (loaded once, no push until real input)', ev(B, 'Kodhane.cloud.state.held') is True)
+    n_post = sum(1 for m, pth in fake.log if m == 'POST' and pth == '/rest/v1/kodhane_saves')
+    r = ev(B, 'Kodhane.state.clicks = 3; Kodhane.cloud.push(true)')
+    check('held: push refused, no request sent', r is False and sum(1 for m, pth in fake.log if m == 'POST' and pth == '/rest/v1/kodhane_saves') == n_post)
+    B.mouse.click(3, 3)
+    check('real input releases the hold', ev(B, 'Kodhane.cloud.state.held') is False)
     ev(B, 'Kodhane.state.clicks = 3'); ok = ev(B, 'Kodhane.cloud.push(true)')
-    check('device B writes again after reconcile', ok is True and fake.rows[UID]['data']['clicks'] == 3)
+    check('device B writes again after reconcile + input', ok is True and fake.rows[UID]['data']['clicks'] == 3)
     # tersi
     A.wait_for_timeout(200)
     open_dialog(B); hold_reset(B)
@@ -433,12 +464,24 @@ with sync_playwright() as p:
     A.wait_for_timeout(300)
     check('reverse: device A stale -> current save + otherDevice', ev(A, 'Kodhane.state.clicks') == 0 and any(COPY['reset.otherDevice'] in t for t in toasts(A))
           and fake.rows[UID]['data']['clicks'] == 0, toasts(A))
+    # eşzamanlı oyun (sıfırlama yok): A ilerleme yazar, B bayat -> genel senkron metni (geçici otherDeviceSync)
+    A.mouse.click(3, 3)
+    ev(A, 'Kodhane.state.clicks = 11'); ok = ev(A, 'Kodhane.cloud.push(true)')
+    check('A (current after reload of the row) writes progress', ok is True and fake.rows[UID]['data']['clicks'] == 11)
+    B.evaluate("() => { window.__toasts = []; }")
+    ev(B, 'Kodhane.state.clicks = 12; Kodhane.cloud.push(true)')
+    wait_js(B, "Kodhane.lastAdoptKind === 'sync'", 8000)
+    B.wait_for_timeout(300)
+    check('concurrent-play 409 -> generic sync text (not the reset text)', ev(B, 'Kodhane.lastAdoptKind') == 'sync' and ev(B, 'Kodhane.state.clicks') == 11
+          and any(TEXT_SYNC in t for t in toasts(B)) and not any(COPY['reset.otherDevice'] in t for t in toasts(B)), [ev(B, 'Kodhane.lastAdoptKind'), toasts(B)])
+    check('server kept A progress (no overwrite by stale B)', fake.rows[UID]['data']['clicks'] == 11)
+    check('best_score never decreased on the server across resets / stale loads', fake.rows[UID]['best_score'] >= 5000, fake.rows[UID].get('best_score'))
     check('two devices: no page errors', not A.errs and not B.errs, A.errs + B.errs)
     ctxA.close(); ctxB.close()
 
     # ================================================================ 7) iki sekme, girişli, sahte sunucu taşıyıcısı (transport 'mock')
     fake = FakeSB()
-    ctx = new_ctx(fake, save=seed_save(clicks=60, total=6000.0), signed=True, transport='mock')
+    ctx = new_ctx(fake, save=seed_save(clicks=60, total=6000.0), signed=True, transport='mock', undo=30)  # yük altında 10 sn yetmeyebilir
     A = open_page(ctx)
     wait_js(A, 'Kodhane.cloud.state.reconciled && Kodhane.cloud.state.lastPushAt > 0')
     B = open_page(ctx)
