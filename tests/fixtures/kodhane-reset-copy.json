@@ -4,7 +4,7 @@
   "reset.deleteTitle": "Silinecekler",
   "reset.deleteList": ["Para ve kazanç", "Çalışanlar", "Geliştirmeler", "Başarımlar", "Yatırım turu hisseleri ve yatırım turu sayısı", "Halka Arz, Borsa Payları ve ağaç", "Aşama ilerlemesi", "Haberler", "İtibar ve günlük seri"],
   "reset.keepTitle": "Kalacaklar",
-  "reset.keepList": ["Tüm Zamanlar puanın ve sıradaki yerin", "Takma adın", "Kodhane hesabın", "Ses ve titreşim ayarların"],
+  "reset.keepList": ["Tüm Zamanlar puanın ve sıradaki yerin", "Takma adın", "Kodhane hesabın", "Ses, titreşim ve gizlilik ayarların"],
   "reset.prestigeHint": "Başarımlarını, itibarını ve günlük serini korumak istiyorsan sıfırlamak yerine yatırım turuna çık. Yatırım turunda bunlar korunur, üstüne kalıcı bonus kazanırsın.",
   "reset.prestigeBtn": "Yatırım turuna git",
   "reset.backup": "Silinen kayıt {d} gün boyunca yedekte kalır. Bu süre içinde geri yükleyebilirsin.",

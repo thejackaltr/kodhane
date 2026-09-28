@@ -78,7 +78,8 @@ def seed(save):
 with sync_playwright() as p:
     b = p.chromium.launch()
 
-    def ctx_for(mobile=False, quiet=False, cloud=True, init=None):
+    # v4.3: tel='on' = isimsiz sayaç bildirimi "Tamam" ile yanıtlanmış (haber penceresi ve anonim sayaç izne bağlı)
+    def ctx_for(mobile=False, quiet=False, cloud=True, init=None, tel=None):
         opts = dict(locale='tr-TR', service_workers='block')
         if mobile:
             opts.update(viewport={'width': 390, 'height': 844}, device_scale_factor=3, is_mobile=True, has_touch=True)
@@ -89,6 +90,8 @@ with sync_playwright() as p:
         c.add_init_script('window.KODHANE_CLOUD_CONFIG = %s;%s' % (json.dumps(cfg), ' window.KODHANE_QUIET = true;' if quiet else ''))
         # Web Share yok: paylaşım panoya/bildirime düşer, metni Kodhane.lastShare üzerinden okuruz
         c.add_init_script("try { Object.defineProperty(navigator, 'share', { value: undefined, configurable: true }); } catch (e) {}")
+        if tel:
+            c.add_init_script("localStorage.setItem('kodhane_tel_notice', '1'); localStorage.setItem('kodhane_tel', %s);" % json.dumps(tel))
         if init:
             c.add_init_script(init)
         c.route(FAKE + '/**', fake)
@@ -202,9 +205,28 @@ with sync_playwright() as p:
     check('no page errors (IPO)', not pg.errs, '; '.join(pg.errs))
     c.close()
 
-    # ------------------------------------------------------------ 3) haberler: yeni oyuncu, tek sefer, sayaç
+    # ------------------------------------------------------------ 3a) v4.3: haber + isimsiz sayaç izni
+    # Bildirim yanıtlanmadan haber penceresi açılmaz (bandın üstüne binmez); "Kapat" sonrası haber gelir ama anonim
+    # sayaç (kodhane_count_event) hiçbir istek yapmaz.
     events.clear()
     c = ctx_for()
+    pg = open_page(c)
+    ev = pg.evaluate
+    pg.wait_for_selector('[data-test=tel-banner]')
+    pg.wait_for_timeout(5500)
+    check('[consent] news waits while the notice band is unanswered', modal_title(pg) is None and ev('Kodhane.newsSession.shown') == 0 and not events, str(modal_title(pg)))
+    pg.click('[data-test=tel-off]')
+    pg.wait_for_function("!document.getElementById('modal').classList.contains('hidden')", timeout=3000)
+    check('[consent] after "Kapat" the news shows (band gone)', modal_title(pg) == 'Yeni: Sıralama!' and pg.query_selector('[data-test=tel-banner]') is None, str(modal_title(pg)))
+    pg.click('#modalActions button:has-text("Sıralamaya bak")')
+    pg.wait_for_timeout(500)
+    check('[consent] after "Kapat": news shown/click NOT counted (0 counter RPCs)', events == [], events)
+    check('[consent] no page errors', not pg.errs, '; '.join(pg.errs))
+    c.close()
+
+    # ------------------------------------------------------------ 3) haberler: yeni oyuncu, tek sefer, sayaç
+    events.clear()
+    c = ctx_for(tel='on')
     pg = open_page(c)
     ev = pg.evaluate
     check('news waits a few seconds', modal_title(pg) is None)
@@ -239,7 +261,7 @@ with sync_playwright() as p:
 
     # Global Holding oyuncusu (oyun v3 kaydı): önce yeni aşama haberi, aynı oturumda ikinci haber yok, sonra Sıralama
     events.clear()
-    c = ctx_for(init=seed(v3_save()))
+    c = ctx_for(init=seed(v3_save()), tel='on')
     pg = open_page(c)
     ev = pg.evaluate
     pg.wait_for_function("!document.getElementById('modal').classList.contains('hidden')", timeout=9000)
@@ -269,7 +291,7 @@ with sync_playwright() as p:
     c.close()
 
     # Mobil: haber düğmesi Sıralama görünümünü açar
-    c = ctx_for(mobile=True)
+    c = ctx_for(mobile=True, tel='on')
     pg = open_page(c)
     pg.wait_for_function("!document.getElementById('modal').classList.contains('hidden')", timeout=9000)
     pg.tap('#modalActions button:has-text("Sıralamaya bak")')
@@ -279,7 +301,7 @@ with sync_playwright() as p:
 
     # Sıralama kullanılamıyorsa (bulut yapılandırılmamış) haber gösterilmez, sayaç çağrılmaz
     events.clear()
-    c = ctx_for(cloud=False)
+    c = ctx_for(cloud=False, tel='on')
     pg = open_page(c)
     pg.wait_for_timeout(5500)
     check('no leaderboard configured: no Sıralama news (Açık Ofis instead), no counter call', modal_title(pg) == 'Kodhane ailesine yeni oyun: Açık Ofis!' and not events, str(modal_title(pg)))

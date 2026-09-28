@@ -385,7 +385,10 @@
 
   // Anonim sayaç (haber gösterimi/tıklaması): yalnızca olay adı gider; kullanıcı kimliği, IP vb. saklanmaz.
   var COUNT_RPC = 'kodhane_count_event';
+  // v4.3: izin (game.js GATE_SUPABASE_COUNTER + isimsiz sayaç izni) yoksa istek hiç yapılmaz. Yalnızca bu sayaç;
+  // giriş, bulut kaydı ve sıralama izinden bağımsız çalışır.
   function countEvent(name) {
+    if (typeof K.counterAllowed !== 'function' || !K.counterAllowed()) return;
     if (!configured() || !isOnline()) return;
     var cfg = cloud().config;
     try {

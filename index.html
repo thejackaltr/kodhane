@@ -108,6 +108,13 @@
           <button id="soundBtn" class="btn ghost" aria-pressed="false">🔇 Ses: Kapalı</button>
           <button id="vibBtn" class="btn ghost" aria-pressed="true">📳 Titreşim: Açık</button>
         </div>
+        <section class="privacy-box" id="privacyBox" aria-labelledby="telTitle">
+          <h4 id="telTitle"></h4>
+          <div class="stat-actions">
+            <button id="telBtn" type="button" class="btn ghost" aria-pressed="false" data-test="tel-toggle"></button>
+          </div>
+          <p class="save-note"><span id="telHint"></span> <button id="telDetailsBtn" type="button" class="nb-link" data-test="settings-tel-details"></button></p>
+        </section>
         <div class="stat-actions">
           <button id="saveBtn" class="btn ghost">Şimdi kaydet</button>
           <button id="resetBtn" class="btn danger">Kaydı sıfırla</button>
@@ -273,8 +280,6 @@
   <script src="game.js"></script>
   <script src="cloud.js"></script>
   <script src="leaderboard.js"></script>
-  <!-- Umami (analiz.teserix.com): çerezsiz, yalnızca olay adları; localhost sayılmaz. Yüklenemezse oyun etkilenmez.
-       defer değil async: oyun DOMContentLoaded ile açılır, defer betik yavaş/erişilemez sunucuda açılışı bekletirdi. -->
-  <script async src="https://analiz.teserix.com/script.js" data-website-id="6a036eb3-5974-482f-bcce-dbdf0a383f36" data-domains="kodhane.teserix.com,thejackaltr.github.io"></script>
+  <!-- Umami (analiz.teserix.com) burada YOK: game.js onu yalnızca isimsiz sayaç izni verildikten sonra ekler (v4.3). -->
 </body>
 </html>

@@ -1,9 +1,9 @@
-/* Kodhane servis çalışanı: çevrimdışı oynanış + sürüm güncelleme.
+/* Kodhane servis çalışanı (v4.3): çevrimdışı oynanış + sürüm güncelleme.
  * BUILD değeri yayın sırasında (GitHub Actions) commit kimliğiyle değiştirilir;
  * böylece her yayında yeni bir önbellek oluşur ve oyuncuya "Yeni sürüm hazır" bildirimi gider.
  */
 var BUILD = '__BUILD__';
-var CACHE_VERSION = 'v4.2';
+var CACHE_VERSION = 'v4.3';
 var CACHE = 'kodhane-' + CACHE_VERSION + '-' + BUILD;
 var ASSETS = ['./', './index.html', './style.css', './game.js', './cloud.js', './leaderboard.js', './manifest.webmanifest',
   './icon.svg', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];

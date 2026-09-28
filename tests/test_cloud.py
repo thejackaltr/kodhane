@@ -277,8 +277,10 @@ def local_save(total, started, clicks=10, money=100.0, last_saved=None):
             'buffs': [], 'achievements': [], 'reputation': 0}
 
 
-def seed_script(save=None, session=None):
+def seed_script(save=None, session=None, tel=None):
     parts = ["(() => { if (sessionStorage.getItem('kh_seeded')) return; sessionStorage.setItem('kh_seeded','1');"]
+    if tel is not None:   # v4.3: isimsiz sayaç izni (anonim sayaç ve haber penceresi buna bağlı)
+        parts.append("localStorage.setItem('kodhane_tel_notice', '1'); localStorage.setItem('kodhane_tel', %s);" % json.dumps(tel))
     if save is not None:
         parts.append("localStorage.setItem(%s, %s);" % (json.dumps(SAVE_KEY), json.dumps(json.dumps(save))))
     if session is not None:
@@ -514,7 +516,7 @@ with sync_playwright() as p:
     cloud_save = local_save(1e7, started - 5 * 86400000, clicks=9999, money=12345.0)
     cloud_save['gens']['senior'] = 7
     fake.rows[UID_B] = {'data': cloud_save, 'save_version': 2, 'updated_at': '2026-09-27T08:00:00Z'}
-    ctx = new_ctx(fake, init=seed_script(save=local_save(5000, started, clicks=42), session=session_obj(UID_B, EMAIL_B)))
+    ctx = new_ctx(fake, init=seed_script(save=local_save(5000, started, clicks=42), session=session_obj(UID_B, EMAIL_B), tel='off'))
     page, errs, perrs = open_page(ctx)
     ok = wait_until(page, 'Kodhane.cloud.state.reconciled && Kodhane.cloud.state.lastPushAt > 0', 10000)
     st = page.evaluate('Kodhane.state')
@@ -524,13 +526,15 @@ with sync_playwright() as p:
     check('conflict (cloud ahead): local save backed up', bk.get('clicks') == 42 and abs(bk.get('totalEarned', 0) - 5000) < 5, json.dumps(bk)[:120])
     check('conflict (cloud ahead): local storage now has cloud save', json.loads(page.evaluate("localStorage.getItem('%s')" % SAVE_KEY))['clicks'] == 9999)
     check('conflict (cloud ahead): UI re-rendered', page.evaluate("document.querySelector('[data-gen=\"senior\"] .gen-owned').textContent.trim()") == '7')
+    pref = page.evaluate("[localStorage.getItem('kodhane_tel_notice'), localStorage.getItem('kodhane_tel'), !!document.querySelector('[data-test=tel-banner]')]")
+    check('[prefs] conflict (cloud ahead): cloud load keeps the counter choice (off), no band', pref == ['1', 'off', False], pref)
     check('conflict (cloud ahead): no errors', not perrs and not errs, '; '.join(perrs + errs))
     ctx.close()
 
     # ------------------------------------------------------------ 5) çakışma: yerel önde -> yerel kalır, bulut yedeklenir ve güncellenir
     fake = FakeSupabase()
     fake.rows[UID_B] = {'data': local_save(100, started - 9 * 86400000, clicks=3), 'save_version': 2, 'updated_at': '2026-09-27T20:00:00Z'}
-    ctx = new_ctx(fake, init=seed_script(save=local_save(1e6, started, clicks=500), session=session_obj(UID_B, EMAIL_B)))
+    ctx = new_ctx(fake, init=seed_script(save=local_save(1e6, started, clicks=500), session=session_obj(UID_B, EMAIL_B), tel='on'))
     page, errs, perrs = open_page(ctx)
     ok = wait_until(page, 'Kodhane.cloud.state.reconciled && Kodhane.cloud.state.lastPushAt > 0', 10000)
     st = page.evaluate('Kodhane.state')
@@ -538,6 +542,8 @@ with sync_playwright() as p:
     check('conflict (local ahead): local kept', ok and st['clicks'] == 500)
     check('conflict (local ahead): cloud save backed up', bk.get('clicks') == 3 and bk.get('totalEarned') == 100, json.dumps(bk)[:120])
     check('conflict (local ahead): cloud overwritten with local', fake.rows[UID_B]['data']['clicks'] == 500)
+    pref = page.evaluate("[localStorage.getItem('kodhane_tel_notice'), localStorage.getItem('kodhane_tel'), !!document.querySelector('[data-test=tel-banner]')]")
+    check('[prefs] conflict (local ahead): merge/cloud write keeps the counter choice (on), no band', pref == ['1', 'on', False], pref)
     ctx.close()
 
     # ------------------------------------------------------------ 6) eşit kazanç -> daha yeni updated_at kazanır
@@ -565,7 +571,7 @@ with sync_playwright() as p:
 
     # ------------------------------------------------------------ 7) gecikmeli yükleme, sekme gizlenince hemen yükleme, çıkış
     fake = FakeSupabase()
-    ctx = new_ctx(fake, extra_cfg={'pushDelayMs': 1500}, init=seed_script(save=local_save(2000, started, clicks=20), session=session_obj(UID_A, EMAIL_A)))
+    ctx = new_ctx(fake, extra_cfg={'pushDelayMs': 1500}, init=seed_script(save=local_save(2000, started, clicks=20), session=session_obj(UID_A, EMAIL_A), tel='off'))
     page, errs, perrs = open_page(ctx)
     ev = page.evaluate
     wait_until(page, 'Kodhane.cloud.state.reconciled && Kodhane.cloud.state.lastPushAt > 0', 10000)
@@ -606,6 +612,8 @@ with sync_playwright() as p:
     page.wait_for_timeout(800)
     check('sign-out: local progress kept, no more cloud writes', ev('Kodhane.state.clicks') == 27 and fake.count('POST', SAVES_PATH) == posts1
           and json.loads(ev("localStorage.getItem('%s')" % SAVE_KEY))['clicks'] == 27)
+    pref = page.evaluate("[localStorage.getItem('kodhane_tel_notice'), localStorage.getItem('kodhane_tel'), !!document.querySelector('[data-test=tel-banner]')]")
+    check('[prefs] sign-out keeps the counter choice (off), no band', pref == ['1', 'off', False], pref)
     check('sign-out: no page/console errors', not perrs and not errs, '; '.join(perrs + errs))
     ctx.close()
 
@@ -654,7 +662,7 @@ with sync_playwright() as p:
     wait_until(page, '!!navigator.serviceWorker.controller', 5000)
     keys = page.evaluate("caches.keys()")
     cached = page.evaluate("caches.keys().then(ks => Promise.all(ks.map(k => caches.open(k).then(c => c.keys())))).then(a => a.flat().map(r => r.url))")
-    check('sw: cache version bumped (v4.2)', any(re.match(r'kodhane-v4\.2-', k) for k in keys), str(keys))
+    check('sw: cache version bumped (v4.3)', any(re.match(r'kodhane-v4\.3-', k) for k in keys), str(keys))
     check('sw: cloud.js cached for offline', any(u.endswith('/cloud.js') for u in cached))
     check('sw: never caches Supabase/CDN', not any(('supabase' in u) or ('jsdelivr' in u) for u in cached), str([u for u in cached if 'http' in u and BASE not in u]))
     ctx.set_offline(True)
@@ -871,7 +879,7 @@ with sync_playwright() as p:
     fake = FakeSupabase()
     cs = local_save(7777, started - 86400000, clicks=77); cs['newsSeen'] = ['siralama', 'acik_ofis']
     fake.rows[UID_N] = {'data': cs, 'save_version': 3, 'updated_at': '2099-01-01T00:00:00Z'}
-    ctx = new_ctx(fake, quiet=False, init=seed_script(save=local_save(5000, started, clicks=42), session=session_obj(UID_N, 'news@example.com')))
+    ctx = new_ctx(fake, quiet=False, init=seed_script(save=local_save(5000, started, clicks=42), session=session_obj(UID_N, 'news@example.com'), tel='on'))
     page, errs, perrs = open_page(ctx)
     ok = wait_until(page, 'Kodhane.cloud.state.reconciled', 8000)
     page.wait_for_timeout(5500)
@@ -882,7 +890,7 @@ with sync_playwright() as p:
     fake = FakeSupabase()
     fake.rows[UID_N] = {'data': local_save(7777, started - 86400000, clicks=77), 'save_version': 2, 'updated_at': '2099-01-01T00:00:00Z'}
     ls = local_save(5000, started, clicks=42); ls['newsSeen'] = ['siralama', 'acik_ofis']
-    ctx = new_ctx(fake, quiet=False, init=seed_script(save=ls, session=session_obj(UID_N, 'news@example.com')))
+    ctx = new_ctx(fake, quiet=False, init=seed_script(save=ls, session=session_obj(UID_N, 'news@example.com'), tel='on'))
     page, errs, perrs = open_page(ctx)
     ok = wait_until(page, 'Kodhane.cloud.state.reconciled && Kodhane.cloud.state.lastPushAt > 0', 8000)
     page.wait_for_timeout(5500)
@@ -894,7 +902,7 @@ with sync_playwright() as p:
     fake = FakeSupabase()
     cs = local_save(100, started - 9 * 86400000, clicks=3); cs['newsSeen'] = ['siralama', 'acik_ofis']
     fake.rows[UID_N] = {'data': cs, 'save_version': 3, 'updated_at': '2026-09-27T20:00:00Z'}
-    ctx = new_ctx(fake, quiet=False, init=seed_script(save=local_save(1e6, started, clicks=500), session=session_obj(UID_N, 'news@example.com')))
+    ctx = new_ctx(fake, quiet=False, init=seed_script(save=local_save(1e6, started, clicks=500), session=session_obj(UID_N, 'news@example.com'), tel='on'))
     page, errs, perrs = open_page(ctx)
     ok = wait_until(page, 'Kodhane.cloud.state.reconciled && Kodhane.cloud.state.lastPushAt > 0', 8000)
     page.wait_for_timeout(5500)
@@ -903,7 +911,7 @@ with sync_playwright() as p:
     ctx.close()
     # d) girişli oyuncu: haber bir kez, sayaç kullanıcı jetonu olmadan (anonim), bayrak buluta gider
     fake = FakeSupabase()
-    ctx = new_ctx(fake, quiet=False, init=seed_script(save=local_save(5000, started, clicks=42), session=session_obj(UID_N, 'news@example.com')))
+    ctx = new_ctx(fake, quiet=False, init=seed_script(save=local_save(5000, started, clicks=42), session=session_obj(UID_N, 'news@example.com'), tel='on'))
     page, errs, perrs = open_page(ctx)
     ok = wait_until(page, "!document.getElementById('modal').classList.contains('hidden') && document.getElementById('modalTitle').textContent === 'Yeni: Sıralama!'", 10000)
     page.click('#modalActions button:has-text("Sıralamaya bak")')

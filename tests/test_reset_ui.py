@@ -181,7 +181,7 @@ UID, EMAIL = str(uuid.uuid5(uuid.NAMESPACE_DNS, 'reset@example.com')), 'reset@ex
 with sync_playwright() as p:
     b = p.chromium.launch()
 
-    def new_ctx(fake=None, save=None, signed=False, transport=None, undo=None, mobile=False):
+    def new_ctx(fake=None, save=None, signed=False, transport=None, undo=None, mobile=False, tel=None):
         opts = dict(locale='tr-TR', service_workers='block')
         opts.update(dict(viewport={'width': 390, 'height': 844}, device_scale_factor=2, is_mobile=True, has_touch=True) if mobile
                     else dict(viewport={'width': 1280, 'height': 800}))
@@ -197,6 +197,8 @@ with sync_playwright() as p:
             seed.append('localStorage.setItem(%s, %s);' % (json.dumps(SAVE_KEY), json.dumps(json.dumps(save))))
         if signed:
             seed.append('localStorage.setItem(%s, %s);' % (json.dumps(AUTH_KEY), json.dumps(json.dumps(session_obj(UID, EMAIL)))))
+        if tel is not None:  # v4.3: isimsiz sayaç bildirimi yanıtlanmış (tel = 'on' | 'off')
+            seed.append("localStorage.setItem('kodhane_tel_notice', '1'); localStorage.setItem('kodhane_tel', %s);" % json.dumps(tel))
         seed.append('})();')
         ctx.add_init_script(init + ''.join(seed))
         f = fake or FakeSB()
@@ -232,6 +234,13 @@ with sync_playwright() as p:
         except Exception:
             return False
 
+    def tel_pref(pg):
+        return ev(pg, "[localStorage.getItem('kodhane_tel_notice'), localStorage.getItem('kodhane_tel'), !!document.querySelector('[data-test=tel-banner]')]")
+
+    def check_pref(name, pg, want):
+        got = tel_pref(pg)
+        check('[prefs] ' + name, got == ['1', want, False], got)
+
     def open_dialog(pg):
         if ev(pg, "document.getElementById('tab-stats').classList.contains('hidden')"):
             ev(pg, "Kodhane.selectTab('stats')")
@@ -257,7 +266,7 @@ with sync_playwright() as p:
                            .observe(document.getElementById('toast'), { childList: true }); }""")
 
     # ================================================================ 1) misafir: pencere, metinler, basılı tutma
-    ctx = new_ctx(save=seed_save())
+    ctx = new_ctx(save=seed_save(), tel='off')
     pg = open_page(ctx)
     open_dialog(pg)
     txt = pg.inner_text('#modal')
@@ -305,6 +314,7 @@ with sync_playwright() as p:
     pg.wait_for_selector('#clickBtn')
     st = ev(pg, 'Kodhane.state')
     check('keyboard (Space) hold resets the save', st['clicks'] == 0 and st['achievements'] == [] and st['reputation'] == 0 and st['daily']['streak'] == 0 and st['shares'] == 0)
+    check_pref('guest reset keeps the counter choice (off) and no band', pg, 'off')
     check('settings kept after reset (separate key)', ev(pg, "localStorage.getItem('kodhane_ayarlar_v1') === null || typeof JSON.parse(localStorage.getItem('kodhane_ayarlar_v1')).sound === 'boolean'"))
     # misafir Geri al (sayfa yeniden açıldı; yerel kopyadan)
     check('guest: undo bar after reload with done text and countdown from config',
@@ -323,6 +333,7 @@ with sync_playwright() as p:
           and ev(pg, "Number(localStorage.getItem('kodhane_save_epoch'))") == ev(pg, 'Kodhane.meta.epoch'))
     pg.reload(); pg.wait_for_selector('#clickBtn')
     check('guest undo survives reload; no second undo bar', ev(pg, 'Kodhane.state.clicks') == 40 and pg.is_hidden('#undoBar'))
+    check_pref('guest undo keeps the counter choice (off)', pg, 'off')
     check('guest: no page errors', not pg.errs, pg.errs)
     ctx.close()
 
@@ -374,7 +385,7 @@ with sync_playwright() as p:
 
     # ================================================================ 4) girişli (gerçek Supabase taşıyıcısı + v2.2 sahte sunucu)
     fake = FakeSB()
-    ctx = new_ctx(fake, save=seed_save(clicks=30, total=3000.0), signed=True)
+    ctx = new_ctx(fake, save=seed_save(clicks=30, total=3000.0), signed=True, tel='on')
     pg = open_page(ctx)
     check('signed in: reconciled, first write carries revision 1', wait_js(pg, 'Kodhane.cloud.state.reconciled && Kodhane.cloud.state.lastPushAt > 0') and fake.rows[UID]['revision'] == 1)
     check('push uses Prefer return=representation + select=revision; local revision = server returned',
@@ -391,6 +402,7 @@ with sync_playwright() as p:
     row = fake.rows[UID]
     check('signed-in reset: row kept (fresh data, revision advanced, best_score kept, backup on server)',
           row['data']['clicks'] == 0 and row['revision'] >= 3 and row['best_score'] >= 3000 and fake.saves.backups[0]['reason'] == 'reset', json.dumps({k: row[k] for k in ('revision', 'best_score')}))
+    check_pref('signed-in reset keeps the counter choice (on)', pg, 'on')
     check('signed-in: undo bar visible', not pg.is_hidden('#undoBar') and pg.inner_text('#undoText') == COPY['reset.done'])
     pg.click('#undoBtn')
     wait_js(pg, "Kodhane.lastUndo", 8000)
@@ -399,6 +411,7 @@ with sync_playwright() as p:
     check('signed-in undo restores the save (achievements, reputation, streak back)', st['clicks'] == 30 and PRE_ACH <= set(st['achievements']) and st['reputation'] == 12 and st['daily']['streak'] == 4,
           json.dumps({k: st[k] for k in ('clicks', 'reputation', 'achievements')} | {'streak': st['daily']['streak']}))
     check('signed-in undo: server row = restored payload', fake.rows[UID]['data']['clicks'] == 30)
+    check_pref('signed-in undo (cloud restore RPC) keeps the counter choice (on)', pg, 'on')
     pg.wait_for_timeout(300)
     check('signed-in undo: toast undoDone', any(COPY['reset.undoDone'] in t for t in toasts(pg)), toasts(pg))
     ev(pg, 'Kodhane.state.clicks += 1'); ok = ev(pg, 'Kodhane.cloud.push(true)')
@@ -410,7 +423,7 @@ with sync_playwright() as p:
 
     # ================================================================ 5) girişli: Geri al süresi dolar -> Yedekten geri yükle
     fake = FakeSB()
-    ctx = new_ctx(fake, save=seed_save(clicks=25, total=2500.0), signed=True, undo=2)
+    ctx = new_ctx(fake, save=seed_save(clicks=25, total=2500.0), signed=True, undo=2, tel='off')
     pg = open_page(ctx)
     wait_js(pg, 'Kodhane.cloud.state.reconciled && Kodhane.cloud.state.lastPushAt > 0')
     # sıfırlama RPC'si başarısız -> sıfırlama yok, yalnız onaylı reset.cloudFailed metni
@@ -444,6 +457,7 @@ with sync_playwright() as p:
     wait_js(pg, 'Kodhane.state.clicks === 25', 8000)
     pg.wait_for_timeout(300)
     check('restore from backup: state back + toast restoreDone', ev(pg, 'Kodhane.state.clicks') == 25 and any(COPY['reset.restoreDone'] in t for t in toasts(pg)), toasts(pg))
+    check_pref('restore from backup keeps the counter choice (off)', pg, 'off')
     ctx.close()
 
     # ================================================================ 6) iki cihaz (ayrı depolama, aynı sunucu): bayat yazma 409 -> güncel kayıt + otherDevice
@@ -451,7 +465,7 @@ with sync_playwright() as p:
     ctxA = new_ctx(fake, save=seed_save(clicks=50, total=5000.0), signed=True)
     A = open_page(ctxA)
     wait_js(A, 'Kodhane.cloud.state.reconciled && Kodhane.cloud.state.lastPushAt > 0')
-    ctxB = new_ctx(fake, signed=True)
+    ctxB = new_ctx(fake, signed=True, tel='off')
     B = open_page(ctxB)
     wait_js(B, 'Kodhane.cloud.state.reconciled && Kodhane.state.clicks === 50')
     check('device B loaded the cloud save', ev(B, 'Kodhane.state.clicks') == 50)
@@ -466,6 +480,7 @@ with sync_playwright() as p:
     check('device B shows otherDevice with restore sentence (signed in), not the sync text', any(COPY['reset.otherDevice'] in t for t in toasts(B)) and not any(TEXT_SYNC in t for t in toasts(B)), toasts(B))
     check('reset-caused 409 -> kind reset (startedAt newer)', ev(B, 'Kodhane.lastAdoptKind') == 'reset', ev(B, 'Kodhane.lastAdoptKind'))
     check('server row not overwritten by B', fake.rows[UID]['data']['clicks'] == 0)
+    check_pref('device B: cloud load after another device reset keeps the counter choice (off)', B, 'off')
     # 409 -> kayıt bir kez yüklendi, gerçek girdiye kadar push yok
     check('after 409: B held (loaded once, no push until real input)', ev(B, 'Kodhane.cloud.state.held') is True)
     n_post = sum(1 for m, pth in fake.log if m == 'POST' and pth == '/rest/v1/kodhane_saves')

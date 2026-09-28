@@ -1,4 +1,4 @@
-/* Kodhane: Ajans Tycoon — v4.2 (güvenli kayıt sıfırlama + yeni aşamalar + Halka Arz + Borsa Payı Ağacı + müşteri sektörleri)
+/* Kodhane: Ajans Tycoon — v4.3 (isimsiz sayaç izni + gizlilik ayarı + güvenli kayıt sıfırlama + yeni aşamalar + Halka Arz + Borsa Payı Ağacı + müşteri sektörleri)
  * Vanilla JS, derleme adımı yok. Tüm oyun metinleri Türkçe.
  * v1 kayıtları ('kodhane_ajans_save_v1') ilk açılışta otomatik olarak taşınır; v2/v3/v4 kayıtları kayıpsız yeni alanları alır.
  * Denge sayıları CFG (ayarlar) ve tablolarda durur; açıklama metinleri sayıları bu ayarlardan okur.
@@ -10,7 +10,7 @@
   // ------------------------------------------------------------------
   // Tanımlar (denge değerleri)
   // ------------------------------------------------------------------
-  var VERSION = '4.1.1';
+  var VERSION = '4.3.0';
   var SAVE_VERSION = 4; // kayıt biçimi (v4.1 oyun sürümü; 3 = v4)
   var SAVE_KEY = 'kodhane_ajans_save_v2';
   var LEGACY_KEYS = ['kodhane_ajans_save_v1'];
@@ -95,7 +95,7 @@
     "reset.deleteTitle": "Silinecekler",
     "reset.deleteList": ["Para ve kazanç", "Çalışanlar", "Geliştirmeler", "Başarımlar", "Yatırım turu hisseleri ve yatırım turu sayısı", "Halka Arz, Borsa Payları ve ağaç", "Aşama ilerlemesi", "Haberler", "İtibar ve günlük seri"],
     "reset.keepTitle": "Kalacaklar",
-    "reset.keepList": ["Tüm Zamanlar puanın ve sıradaki yerin", "Takma adın", "Kodhane hesabın", "Ses ve titreşim ayarların"],
+    "reset.keepList": ["Tüm Zamanlar puanın ve sıradaki yerin", "Takma adın", "Kodhane hesabın", "Ses, titreşim ve gizlilik ayarların"],
     "reset.prestigeHint": "Başarımlarını, itibarını ve günlük serini korumak istiyorsan sıfırlamak yerine yatırım turuna çık. Yatırım turunda bunlar korunur, üstüne kalıcı bonus kazanırsın.",
     "reset.prestigeBtn": "Yatırım turuna git",
     "reset.backup": "Silinen kayıt {d} gün boyunca yedekte kalır. Bu süre içinde geri yükleyebilirsin.",
@@ -126,6 +126,30 @@
     if (vars) for (var vk in vars) v[vk] = vars[vk];
     return t.replace(/\{(s|d)\}/g, function (m, k) { return String(v[k]); });
   }
+
+  // v4.3: İsimsiz sayaç (Umami + anonim Supabase sayacı) izin metinleri. [TASLAK] ile başlayanlar yer tutucudur; gerçek
+  // metin Growth/metin yazarından gelecek. Düğme adları ("Tamam", "Kapat", "Ayrıntılar") ve "Gizlilik" başlığı kesindir.
+  var TEL_TEXT = {
+    "telemetry.title": "İsimsiz sayaç",
+    "telemetry.body": "[TASLAK] Oyunu geliştirmek için isimsiz sayım yapıyoruz. Seni tanıtan bilgi gönderilmez.",
+    "telemetry.ok": "Tamam",
+    "telemetry.off": "Kapat",
+    "telemetry.detailsLink": "Ayrıntılar",
+    "telemetry.detailsTitle": "[TASLAK] İsimsiz sayaç hakkında",
+    "telemetry.details": [
+      "[TASLAK] Hangi özelliklerin kullanıldığını isimsiz olarak sayıyoruz.",
+      "[TASLAK] Adın, e-postan ya da oyun kaydın gönderilmez.",
+      "[TASLAK] İstediğin zaman İstatistik sekmesindeki Gizlilik bölümünden kapatabilirsin."
+    ],
+    "telemetry.detailsClose": "Kapat",
+    "telemetry.offToast": "[TASLAK] İsimsiz sayaç kapatıldı.",
+    "telemetry.onToast": "[TASLAK] İsimsiz sayaç açıldı.",
+    "settings.privacy": "Gizlilik",
+    "settings.telemetryOn": "📊 İsimsiz sayaç: Açık",
+    "settings.telemetryOff": "📊 İsimsiz sayaç: Kapalı",
+    "settings.telemetryHint": "[TASLAK] Seni tanıtan hiçbir bilgi gönderilmez."
+  };
+  function telText(key) { var t = TEL_TEXT[key]; return Array.isArray(t) ? t.slice() : (typeof t === 'string' ? t : ''); }
   // "Başka cihazda sıfırlandı" metni: yedek/geri yükleme cümlesi yalnızca girişli oyuncuya gösterilir.
   function otherDeviceText(signedIn, kind) {
     if (kind === 'sync') return resetText('reset.otherDeviceSync');
@@ -1090,7 +1114,7 @@
     eventPool: eventPool, pickEvent: pickEvent, resolveEvent: resolveEvent, checkAchievements: checkAchievements,
     checkDaily: checkDaily, makeTasks: makeTasks, taskProgress: taskProgress, taskLabel: taskLabel, today: today, shiftDay: shiftDay,
     streakBonus: streakBonus, setToday: function (s) { Core.fakeToday = s || null; },
-    RESET_TEXT: RESET_TEXT, RESET_SIGNED_ONLY: RESET_SIGNED_ONLY, resetText: resetText, otherDeviceText: otherDeviceText, saveData: saveData,
+    RESET_TEXT: RESET_TEXT, RESET_SIGNED_ONLY: RESET_SIGNED_ONLY, TEL_TEXT: TEL_TEXT, telText: telText, resetText: resetText, otherDeviceText: otherDeviceText, saveData: saveData,
     meta: meta,
     rng: Math.random, lastCrit: false, fakeToday: null, loadedVersion: null,
     CRIT_CHANCE: CRIT_CHANCE, CRIT_MULT: CRIT_MULT
@@ -1933,7 +1957,8 @@
     var w = window.innerWidth, h = window.innerHeight;
     var bw = Math.min(290, w - 24);
     el.clientOffer.style.left = Math.round(12 + Math.random() * Math.max(0, w - bw - 24)) + 'px';
-    el.clientOffer.style.top = Math.round(80 + Math.random() * Math.max(0, h - (isMobile() ? 300 : 200))) + 'px';
+    var nb = nbSpace();                // v4.3: izin bandı görünürken teklif onun üstünde kalır
+    el.clientOffer.style.top = Math.round(80 + Math.random() * Math.max(0, h - (isMobile() ? 300 : 200) - nb)) + 'px';
     el.clientOffer.classList.remove('hidden');
     sfx('offer');
   }
@@ -2069,6 +2094,7 @@
   var news = { t0: Date.now(), shown: 0 };
   function maybeShowNews(now) {
     if (quiet() || news.shown >= CFG.newsPerSession || now - news.t0 < CFG.newsDelaySec * 1000) return;
+    if (noticeBand()) return;          // v4.3: yanıtlanmamış izin bandının üstüne haber penceresi açılmaz (bant yanıtlanınca gelir)
     if (!el.modal.classList.contains('hidden') || !el.stageUp.classList.contains('hidden') || evs.visible || offer.visible) return;
     var acc = $('accountPanel');
     if (acc && !acc.classList.contains('hidden')) return;
@@ -2092,27 +2118,189 @@
     el.modalText.textContent = n.text();
     Core.lastNews = n.id;
   }
-  function countEvent(name) { if (typeof Core.countEvent === 'function') { try { Core.countEvent(name); } catch (e) {} } }
-  // Umami (analiz.teserix.com): yalnızca olay adı gider (e-posta, takma ad vb. asla). Betik async yüklenir; hazır olmadan
-  // gelen olaylar (game_start) bellekte küçük bir kuyrukta bekler ve betik yüklenince gönderilir. Betik yüklenmezse /
-  // engellenirse hiçbir şey gönderilmez; oyun Umami olmadan da aynen çalışır. Son olaylar test için Core.tracked'de.
-  var UMAMI_SRC = 'https://analiz.teserix.com/script.js', umamiQueue = [], umamiHooked = false;
+  // v4.3: anonim Supabase sayacı izne bağlı (GATE_SUPABASE_COUNTER); izin yoksa istek hiç yapılmaz
+  function countEvent(name) { if (!tel.counterAllowed()) return; if (typeof Core.countEvent === 'function') { try { Core.countEvent(name); } catch (e) {} } }
+  // ------------------------------------------------------------------
+  // v4.3: İsimsiz sayaç izni (KVKK). Fenomen src/analytics.js + src/ui/privacy.js örneği.
+  //   kodhane_tel_notice  herhangi bir değer = bildirim yanıtlandı ("Tamam" ya da "Kapat")
+  //   kodhane_tel         'on' | 'off'     = "Tamam"/"Kapat" ya da İstatistik > Gizlilik düğmesi
+  // Bu anahtarlar kayıttan (SAVE_KEY) ve kodhane_ayarlar_v1'den ayrıdır: sıfırlama, yatırım turu, halka arz, bulut
+  // yükleme/çıkış ve yedekten geri yükleme onlara hiç dokunmaz (testler: tests/test_consent.js, tests/test_privacy.py).
+  // Umami betiği index.html'de YOK. Yalnızca izin varken (bildirim "Tamam" ile yanıtlanmış ve kapatılmamış), izinli bir
+  // alan adında (UMAMI_DOMAINS; localhost/127.0.0.1/file: asla) çalışırken sayfaya eklenir. İzinden önce gelen olaylar
+  // (game_start dahil) ATILIR, sonradan gönderilmez. İzin verildikten sonra betik yüklenene kadar küçük bir bellek içi
+  // kuyruk tutulur; betik gelince izin hâlâ açıksa gönderilir.
+  // Kapatınca hemen durur: track() izni her çağrıda yeniden okur; betiğe data-before-send kancası verilir (Umami her
+  // istekten, otomatik sayfa görüntülemesi dahil, önce onu çağırır; izin yoksa istek düşer); betiğin kendi kapatma
+  // anahtarı localStorage 'umami.disabled' kapalıyken konur, açılınca kaldırılır.
+  // Gizlilik: çerezsiz Umami, Do Not Track'e uyulur (data-do-not-track), sorgu dizesi ve # asla gönderilmez
+  // (data-exclude-search / data-exclude-hash). Yalnızca olay adı gider (e-posta, takma ad, kimlik asla).
+  // ------------------------------------------------------------------
+  var TEL_KEYS = { pref: 'kodhane_tel', notice: 'kodhane_tel_notice', umamiOff: 'umami.disabled' };
+  var UMAMI_SRC = 'https://analiz.teserix.com/script.js';
+  var UMAMI_WEBSITE_ID = '6a036eb3-5974-482f-bcce-dbdf0a383f36';
+  var UMAMI_DOMAINS = 'kodhane.teserix.com,thejackaltr.github.io';
+  var UMAMI_BEFORE_SEND = '__kodhaneUmamiBeforeSend';
+  // Anonim Supabase sayacı (kodhane_count_event: haber gösterimi/tıklaması) da AYNI izne bağlı. Yönetici kararı
+  // değişirse yalnızca bu bayrak false yapılır. Giriş, bulut kaydı ve sıralama izinden bağımsızdır (oyun özellikleri).
+  var GATE_SUPABASE_COUNTER = true;
+  var LOCAL_HOST = /^(localhost|127\.\d+\.\d+\.\d+|\[?::1\]?|0\.0\.0\.0)$/i;
+  function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function lsDel(k) { try { localStorage.removeItem(k); } catch (e) {} }
+  var tel = {
+    noticeNeeded: function () { return !lsGet(TEL_KEYS.notice); },
+    consent: function () { return !!lsGet(TEL_KEYS.notice) && lsGet(TEL_KEYS.pref) !== 'off'; },
+    hostOk: function () {
+      try {
+        var l = root.location;
+        if (!l || !/^https?:$/.test(l.protocol) || LOCAL_HOST.test(l.hostname)) return false;
+        return UMAMI_DOMAINS.split(',').indexOf(l.hostname) !== -1;
+      } catch (e) { return false; }
+    },
+    allowed: function () { return tel.consent() && tel.hostOk(); },
+    // bildirim yanıtı: "Tamam" (true) ya da "Kapat" (false)
+    answer: function (ok) { lsSet(TEL_KEYS.notice, '1'); lsSet(TEL_KEYS.pref, ok ? 'on' : 'off'); return tel.sync(); },
+    // Gizlilik düğmesi. Bildirim henüz yanıtlanmadıysa düğme onu da yanıtlar (bant kalkar).
+    setEnabled: function (on) { lsSet(TEL_KEYS.notice, '1'); lsSet(TEL_KEYS.pref, on ? 'on' : 'off'); return tel.sync(); },
+    // İzin değişince, her track()'te ve başka sekmeden gelen 'storage' olayında çağrılır. Umami şu an çalışabilir mi?
+    sync: function () {
+      if (!tel.allowed()) {
+        if (lsGet(TEL_KEYS.pref) === 'off') lsSet(TEL_KEYS.umamiOff, '1');
+        umamiQueue.length = 0;
+        return false;
+      }
+      if (lsGet(TEL_KEYS.umamiOff)) lsDel(TEL_KEYS.umamiOff);
+      umamiLoad();
+      return true;
+    },
+    counterAllowed: function () { return !GATE_SUPABASE_COUNTER || tel.consent(); }
+  };
+  var umamiScript = null, umamiQueue = [], umamiFailed = false;  // umamiFailed: betik yüklenemedi (engelli/çevrimdışı), bu oturumda olaylar atılır
   function umamiReady() { try { var u = root.umami; return u && typeof u.track === 'function' ? u : null; } catch (e) { return null; } }
   function umamiSend(u, name) { try { u.track(name); } catch (e) {} }
-  function umamiFlush() { var u = umamiReady(); if (!u) return; while (umamiQueue.length) umamiSend(u, umamiQueue.shift()); }
-  function track(name) {
-    Core.tracked.push(name); if (Core.tracked.length > 50) Core.tracked.shift();
-    var u = umamiReady();
-    if (u) { umamiFlush(); umamiSend(u, name); return; }
-    if (umamiQueue.length < 20) umamiQueue.push(name);
-    if (!umamiHooked) {
-      umamiHooked = true;
-      var tag = document.querySelector('script[src="' + UMAMI_SRC + '"]');
-      if (tag) tag.addEventListener('load', umamiFlush);
-      root.addEventListener('load', umamiFlush);
-    }
+  function umamiLoad() {
+    if (umamiScript || !tel.allowed()) return umamiScript;
+    root[UMAMI_BEFORE_SEND] = function (type, payload) { return tel.allowed() ? payload : null; };
+    var s = document.createElement('script');
+    s.async = true;                      // async: yavaş/erişilemeyen sunucu oyunu bekletmez
+    s.src = UMAMI_SRC;
+    s.setAttribute('data-website-id', UMAMI_WEBSITE_ID);
+    s.setAttribute('data-domains', UMAMI_DOMAINS);
+    s.setAttribute('data-before-send', UMAMI_BEFORE_SEND);
+    s.setAttribute('data-do-not-track', 'true');
+    s.setAttribute('data-exclude-search', 'true');
+    s.setAttribute('data-exclude-hash', 'true');
+    s.setAttribute('data-test', 'umami-script');
+    s.addEventListener('load', function () {
+      var q = umamiQueue.splice(0), u = umamiReady();
+      if (u && tel.allowed()) q.forEach(function (n) { umamiSend(u, n); });
+    });
+    s.addEventListener('error', function () { umamiFailed = true; umamiQueue.length = 0; });
+    (document.head || document.body || document.documentElement).appendChild(s);
+    umamiScript = s;
+    return s;
   }
-  Core.tracked = []; Core.track = track; Core.umamiQueue = function () { return umamiQueue.slice(); };
+  // Olay adı gönderir. İzin yoksa hiçbir şey yapmaz ve atar (kuyruğa almaz). Asla hata fırlatmaz.
+  function track(name) {
+    var st;
+    try {
+      if (!tel.sync()) st = 'off';
+      else {
+        var u = umamiReady();
+        if (u) { umamiSend(u, name); st = 'sent'; }
+        else if (umamiFailed) st = 'dropped';
+        else if (umamiQueue.length < 20) { umamiQueue.push(name); st = 'queued'; }
+        else st = 'dropped';
+      }
+    } catch (e) { st = 'off'; }
+    if (st !== 'off') { Core.tracked.push(name); if (Core.tracked.length > 50) Core.tracked.shift(); }
+    Core.trackLog.push([name, st]); if (Core.trackLog.length > 100) Core.trackLog.shift();
+    return st;
+  }
+  // tracked: izinle kabul edilen olaylar; trackLog: her çağrı ve sonucu ('off' = atıldı) — yalnızca bellekte, testler için
+  Core.tracked = []; Core.trackLog = []; Core.track = track; Core.umamiQueue = function () { return umamiQueue.slice(); };
+  Core.tel = tel; Core.TEL_KEYS = TEL_KEYS; Core.GATE_SUPABASE_COUNTER = GATE_SUPABASE_COUNTER;
+  Core.UMAMI = { src: UMAMI_SRC, websiteId: UMAMI_WEBSITE_ID, domains: UMAMI_DOMAINS, beforeSend: UMAMI_BEFORE_SEND };
+  Core.counterAllowed = function () { return tel.counterAllowed(); };
+
+  // ---- Bildirim bandı + ayrıntılar + Gizlilik düğmesi
+  var NB_SPACE = '--nb-space';
+  // Bant görünürken <html> üzerinde --nb-space'i (bandın üst kenarından ekranın altına + 8 px) tutar; style.css her
+  // eylemi bunun üstünde tutar (gövde boşluğu, olay kartı, geri al çubuğu, masaüstü bildirimleri, müşteri teklifi).
+  function reserveSpace(band) {
+    var rootEl = document.documentElement, last = '', raf = 0;
+    var fit = function () {
+      if (!band.isConnected) return;
+      var r = band.getBoundingClientRect();
+      var v = Math.ceil(Math.max(0, window.innerHeight - r.top) + 8) + 'px';
+      if (v !== last) { last = v; rootEl.style.setProperty(NB_SPACE, v); }
+    };
+    var soon = function () { if (!raf) raf = requestAnimationFrame(function () { raf = 0; fit(); }); };
+    var ro = typeof ResizeObserver === 'function' ? new ResizeObserver(fit) : null;
+    if (ro) ro.observe(band);
+    window.addEventListener('resize', soon);
+    fit();
+    return function () {
+      if (ro) ro.disconnect(); if (raf) cancelAnimationFrame(raf);
+      window.removeEventListener('resize', soon); rootEl.style.removeProperty(NB_SPACE);
+    };
+  }
+  function nbSpace() { var v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(NB_SPACE)); return isFinite(v) ? v : 0; }
+  function noticeBand() { return document.querySelector('[data-test=tel-banner]'); }
+  function dismissNoticeBand() { var b = noticeBand(); if (!b) return; if (b.__release) b.__release(); b.remove(); }
+  function mk(tag, attrs, text) {
+    var e = document.createElement(tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  // Ayrıntılar: bildirimi YANITLAMAZ (yalnızca okur); banttan ve Gizlilik bölümünden açılır
+  function showTelDetails() {
+    var box = mk('div', { 'class': 'tel-details', 'data-test': 'tel-details-body' });
+    telText('telemetry.details').filter(function (p) { return String(p).trim(); }).forEach(function (p) { box.appendChild(mk('p', {}, p)); });
+    modal({ emoji: '📊', title: telText('telemetry.detailsTitle'), html: '', extra: box, cardClass: 'tel-card',
+      buttons: [{ label: telText('telemetry.detailsClose'), cls: 'primary' }] });
+    var btn = el.modalActions.querySelector('button'); if (btn) btn.setAttribute('data-test', 'tel-details-close');
+  }
+  function showNoticeBand() {
+    if (!tel.noticeNeeded() || noticeBand()) return null;
+    var answer = function (ok) {
+      tel.answer(ok);                  // "Tamam": sync() betiği şimdi yükler; "Kapat": kapalı kalır, hiçbir istek yok
+      dismissNoticeBand(); renderTelSetting();
+      if (!ok) toast(telText('telemetry.offToast'), 3500);
+    };
+    var band = mk('div', { 'class': 'notice-band', role: 'region', 'aria-label': telText('telemetry.title'), 'data-test': 'tel-banner' });
+    var p = mk('p', { 'class': 'nb-text' });
+    p.appendChild(mk('b', {}, telText('telemetry.title'))); p.appendChild(document.createTextNode(' ' + telText('telemetry.body')));
+    var row = mk('div', { 'class': 'nb-row' });
+    // KVKK: "Tamam" ve "Kapat" aynı sınıf = aynı görsel ağırlık
+    var ok = mk('button', { type: 'button', 'class': 'btn nb-btn', 'data-test': 'tel-ok' }, telText('telemetry.ok'));
+    var off = mk('button', { type: 'button', 'class': 'btn nb-btn', 'data-test': 'tel-off' }, telText('telemetry.off'));
+    var det = mk('button', { type: 'button', 'class': 'nb-link', 'data-test': 'tel-details' }, telText('telemetry.detailsLink'));
+    ok.addEventListener('click', function () { answer(true); });
+    off.addEventListener('click', function () { answer(false); });
+    det.addEventListener('click', showTelDetails);
+    row.appendChild(ok); row.appendChild(off); row.appendChild(det);
+    band.appendChild(p); band.appendChild(row);
+    document.body.appendChild(band);
+    band.__release = reserveSpace(band);
+    return band;
+  }
+  function renderTelSetting() {
+    if (!el.telBtn) return;
+    var on = tel.consent();
+    el.telBtn.textContent = telText(on ? 'settings.telemetryOn' : 'settings.telemetryOff');
+    el.telBtn.setAttribute('aria-pressed', String(on));
+  }
+  function toggleTel() {
+    var on = !tel.consent();
+    tel.setEnabled(on);                // kapalı: hemen durur (umami.disabled + before-send); açık: betik yoksa yüklenir
+    dismissNoticeBand(); renderTelSetting();
+    toast(telText(on ? 'telemetry.onToast' : 'telemetry.offToast'), 3500);
+  }
+  Core.showNoticeBand = showNoticeBand; Core.dismissNoticeBand = dismissNoticeBand; Core.showTelDetails = showTelDetails;
+  Core.toggleTel = toggleTel; Core.nbSpace = nbSpace;
 
   function showWelcomeBack(res) {
     if (!res || res.elapsed < 60 || res.gain <= 0) return;
@@ -2197,7 +2385,8 @@
       'modal', 'modalEmoji', 'modalTitle', 'modalText', 'modalActions', 'panelKod', 'panelEkip', 'panelSide', 'bottomNav',
       'prPer', 'ipoSection', 'ipoLock', 'ipoBody', 'ipoShares', 'ipoGain', 'ipoCount', 'ipoBonus', 'ipoHint', 'ipoBtn', 'treeGrid',
       'stageUp', 'suIcon', 'suTitle', 'suMsg', 'suBonus', 'suShare', 'suClose',
-      'modalCard', 'modalExtra', 'undoBar', 'undoText', 'undoBtn', 'restoreBox', 'restoreTitle', 'restoreBody', 'restoreNote', 'restoreBtn'
+      'modalCard', 'modalExtra', 'undoBar', 'undoText', 'undoBtn', 'restoreBox', 'restoreTitle', 'restoreBody', 'restoreNote', 'restoreBtn',
+      'telBtn', 'telTitle', 'telHint', 'telDetailsBtn'
     ].forEach(function (id) { el[id] = $(id); });
 
     var offlineRes = load();
@@ -2276,6 +2465,16 @@
       if (settings.vibrate) vibrate(15);
     });
     el.resetBtn.addEventListener('click', openResetDialog);
+    // v4.3: İstatistik > Gizlilik
+    el.telTitle.textContent = telText('settings.privacy');
+    el.telHint.textContent = telText('settings.telemetryHint');
+    el.telDetailsBtn.textContent = telText('telemetry.detailsLink');
+    el.telBtn.addEventListener('click', toggleTel);
+    el.telDetailsBtn.addEventListener('click', showTelDetails);
+    // başka sekmede izin değişti: bu sekme de hemen uyar (kapalıysa durur, bant kalkar)
+    window.addEventListener('storage', function (e) {
+      if (e.key === null || e.key === TEL_KEYS.pref || e.key === TEL_KEYS.notice) { tel.sync(); if (!tel.noticeNeeded()) dismissNoticeBand(); renderTelSetting(); }
+    });
     el.undoBtn.addEventListener('click', doUndo);
     el.restoreBtn.addEventListener('click', openRestoreDialog);
     el.restoreTitle.textContent = resetText('reset.restoreTitle');
@@ -2360,7 +2559,10 @@
     setView('kod');
     selectTab('upgrades', true);
     renderSettings();
+    renderTelSetting();
     renderAll();
+    showNoticeBand();                  // v4.3: ilk açılışta (yanıtlanana kadar her açılışta) izin bandı
+    tel.sync();                        // izin zaten açıksa betik şimdi yüklenir; değilse hiçbir istek yok
     showWelcomeBack(offlineRes);
     if (offlineRes && offlineRes.migrated) toast('📦 Kaydın yeni sürüme taşındı. Hoş geldin, Kodhane v2!', 4500);
     if (retro.length) toast('🏅 ' + retro.length + ' başarım açıldı! Her biri kalıcı +%1 üretim.', 4500);
