@@ -265,6 +265,14 @@ button { font: inherit; color: inherit; cursor: pointer; }
   border-radius: 12px; padding: 8px 10px 8px 14px; box-shadow: 0 10px 30px #0009; font-weight: 700;
 }
 .update-bar .btn { flex: none; background: var(--accent); border-color: transparent; color: #fff; min-height: 40px; }
+/* v4.3.1: aynı bant daha yeni sürümün kaydı için de kullanılır (game.js renderUpdateBar). Ekrana sığar; uzun metin tek
+   satıra sığmazsa kısa metin (ub-short), o da sığmazsa satır kırılır. Üstte, izin bandı altta: çakışmazlar. */
+.update-bar { width: max-content; max-width: calc(100vw - 16px - var(--sal) - var(--sar)); box-sizing: border-box; }
+.update-bar > span { min-width: 0; white-space: nowrap; overflow: hidden; }
+.update-bar.ub-short > span { white-space: normal; overflow-wrap: anywhere; line-height: 1.3; }
+.update-bar.newer-save { border-color: var(--gold); }
+.update-bar.ub-flash { animation: ubFlash .6s ease-out 1; }
+@keyframes ubFlash { 0% { box-shadow: 0 0 0 0 #ffd16680, 0 10px 30px #0009; } 100% { box-shadow: 0 0 0 14px #ffd16600, 0 10px 30px #0009; } }
 
 /* Modal */
 .modal { position: fixed; inset: 0; z-index: 50; background: #0009; display: grid; place-items: center; padding: calc(16px + var(--sat)) calc(16px + var(--sar)) calc(16px + var(--sab)) calc(16px + var(--sal)); backdrop-filter: blur(3px); }
@@ -507,6 +515,9 @@ body:has(.notice-band) .event-card { bottom: var(--nb-space, 160px); }
 body:has(.notice-band) .undo-bar { bottom: calc(var(--nb-space, 160px) + 8px); }
 body:has(.notice-band) .toasts { bottom: var(--nb-space, 160px); }
 body:has(.notice-band) .upg-list, body:has(.notice-band) .ach-grid, body:has(.notice-band) .lb-list { scroll-padding-bottom: 8px; }
+/* v4.3.1: aynı ayrılmış boşluk html.nb-open ile de (game.js reserveSpace; :has() desteklemeyen tarayıcılar). */
+html.nb-open { scroll-padding-bottom: var(--nb-space, 0px); }
+html.nb-open body { padding-bottom: calc(var(--nb-space, 160px) + 8px); }
 .privacy-box { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 10px; }
 .privacy-box h4 { margin: 0; }
 .privacy-box .save-note .nb-link { min-height: 32px; font-size: .8rem; padding: 0 2px; }
@@ -529,4 +540,13 @@ body:has(.notice-band) .upg-list, body:has(.notice-band) .ach-grid, body:has(.no
   .nb-row { flex-wrap: nowrap; gap: 6px; }
   .notice-band .nb-btn { flex: 0 0 5.4em; min-height: 36px; padding: 4px 8px; }
   .notice-band .nb-link { min-height: 36px; }
+  /* v4.3.1: yatay kısa ekranda bant açıkken "Kod yaz" düğmesi + ipucu satırı bandın üstündeki alana birlikte sığsın:
+     üst çubuk bu sürede sabit değil (sayfayla kayar), düğme boşluğa göre küçülür (en fazla 210 px, eskisi gibi). */
+  html.nb-open .topbar { position: static; }
+  html.nb-open .click-btn { width: min(210px, 60vw, max(96px, calc(100vh - var(--nb-space, 160px) - 52px))); gap: 2px; }
+  html.nb-open .click-emoji { font-size: clamp(1.4rem, calc((100vh - var(--nb-space, 160px)) / 7), 2.6rem); line-height: 1.1; }
+  html.nb-open .click-text { font-size: clamp(1rem, calc((100vh - var(--nb-space, 160px)) / 11), 1.4rem); }
+  html.nb-open .click-value { font-size: .85rem; }
+  /* olay kartı bandın üstündeki alana sığmazsa kendi içinde kayar ("Sonra" ve seçimler ulaşılabilir kalır) */
+  html.nb-open .event-card { max-height: calc(100vh - var(--nb-space, 160px) - 8px); overflow-y: auto; overscroll-behavior: contain; padding: 10px 12px; }
 }

@@ -1,4 +1,4 @@
-/* Kodhane: Ajans Tycoon — v4.3 (isimsiz sayaç izni + gizlilik ayarı + güvenli kayıt sıfırlama + yeni aşamalar + Halka Arz + Borsa Payı Ağacı + müşteri sektörleri)
+/* Kodhane: Ajans Tycoon — v4.3.1 (isimsiz sayaç izni + gizlilik ayarı + güvenli kayıt sıfırlama + yeni aşamalar + Halka Arz + Borsa Payı Ağacı + müşteri sektörleri)
  * Vanilla JS, derleme adımı yok. Tüm oyun metinleri Türkçe.
  * v1 kayıtları ('kodhane_ajans_save_v1') ilk açılışta otomatik olarak taşınır; v2/v3/v4 kayıtları kayıpsız yeni alanları alır.
  * Denge sayıları CFG (ayarlar) ve tablolarda durur; açıklama metinleri sayıları bu ayarlardan okur.
@@ -10,8 +10,8 @@
   // ------------------------------------------------------------------
   // Tanımlar (denge değerleri)
   // ------------------------------------------------------------------
-  var VERSION = '4.3.0';
-  var SAVE_VERSION = 4; // kayıt biçimi (v4.1 oyun sürümü; 3 = v4)
+  var VERSION = '4.3.1';
+  var SAVE_VERSION = 4; // kayıt biçimi (v4.1 oyun sürümü; 3 = v4). Kayda 'version' ve (v4.3.1) 'saveVersion' olarak yazılır.
   var SAVE_KEY = 'kodhane_ajans_save_v2';
   var LEGACY_KEYS = ['kodhane_ajans_save_v1'];
   var SETTINGS_KEY = 'kodhane_ayarlar_v1';
@@ -96,7 +96,7 @@
     "reset.deleteList": ["Para ve kazanç", "Çalışanlar", "Geliştirmeler", "Başarımlar", "Yatırım turu hisseleri ve yatırım turu sayısı", "Halka Arz, Borsa Payları ve ağaç", "Aşama ilerlemesi", "Haberler", "İtibar ve günlük seri"],
     "reset.keepTitle": "Kalacaklar",
     "reset.keepList": ["Tüm Zamanlar puanın ve sıradaki yerin", "Takma adın", "Kodhane hesabın", "Ses, titreşim ve gizlilik ayarların"],
-    "reset.prestigeHint": "Başarımlarını, itibarını ve günlük serini korumak istiyorsan sıfırlamak yerine yatırım turuna çık. Yatırım turunda bunlar korunur, üstüne kalıcı bonus kazanırsın.",
+    "reset.prestigeHint": "Başarımlarını, itibarını ve günlük serini korumak istiyorsan sıfırlamak yerine yatırım turuna çık. Yatırım turunda bunlar korunur, üstüne Halka Arz'a kadar geçerli bir üretim bonusu kazanırsın.",
     "reset.prestigeBtn": "Yatırım turuna git",
     "reset.backup": "Silinen kayıt {d} gün boyunca yedekte kalır. Bu süre içinde geri yükleyebilirsin.",
     "reset.hold": "Sıfırlamak için basılı tut",
@@ -125,6 +125,22 @@
     var v = { s: CFG.reset.undoSeconds, d: CFG.reset.backupDays };
     if (vars) for (var vk in vars) v[vk] = vars[vk];
     return t.replace(/\{(s|d)\}/g, function (m, k) { return String(v[k]); });
+  }
+
+  // v4.3.1: Yatırım Turu / Halka Arz onay metinleri ve yeni sürüm (daha yeni kayıt) bandı. Onaylı kesin metin.
+  // Yer tutucular uiText() ile doldurulur: {g} kazanılacak hisse, {b} bu turun hisselerinin bonusu, {x} şu anki
+  // yatırımcı bonusu, {n} kazanılacak Borsa Payı, {u} harcanmamış pay başına üretim (hepsi biçimlenmiş metin).
+  var UI_TEXT = {
+    "prestige.confirm": "Yatırımcılar şirketine <b>{g} hisse</b> karşılığında yatırım yapacak. Paran, çalışanların ve geliştirmelerin sıfırlanır; karşılığında Halka Arz'a kadar tüm kazançlara <b>+%{b}</b> bonus alırsın. Başarımların, itibarın ve günlük serin korunur.",
+    "ipo.confirm": "Kasa, çalışanlar, geliştirmeler ve yatırımcı hisselerin sıfırlanacak. Borsa Payı Ağacı, başarımların ve sıralamadaki puanın olduğu gibi kalır.<br>Şu anki +%{x} yatırımcı bonusun sıfırlanır, karşılığında <b>{n} Borsa Payı</b> kazanırsın.<br><small>Harcamadığın her Borsa Payı +%{u} üretim verir. İstersen payları hemen Borsa Payı Ağacı'nda kalıcı bonuslara harcayabilirsin.</small>",
+    "update.newerSave.text": "✨ Yeni sürüm hazır, ilerlemen korunuyor. Devam etmek için yenile.",
+    "update.newerSave.textShort": "✨ Yeni sürüm hazır, ilerlemen korunuyor.",
+    "update.newerSave.btn": "Yenile"
+  };
+  function uiText(key, vars) {
+    var t = UI_TEXT[key];
+    if (typeof t !== 'string') return '';
+    return t.replace(/\{([a-z]+)\}/g, function (m, k) { return vars && vars[k] !== undefined ? String(vars[k]) : m; });
   }
 
   // v4.3: İsimsiz sayaç (Umami + anonim Supabase sayacı) izin metinleri. Onaylı kesin metin; olduğu gibi kullanılır
@@ -335,6 +351,8 @@
   }
   function pct(x) { return Math.round(x * 100); }
   function num(x) { return fixedTR(x, 2); } // ayar sayılarını metne yazar: 1.5 -> "1,5"
+  // v4.3.1: bonus oranını yüzde metnine çevirir (0,125 -> "12,5"; büyük değerler kısaltmalı: 1250 -> "1,25 Bin")
+  function pctText(frac) { var x = frac * 100; return x < 1000 ? num(x) : fmt(x); }
   // Türkçe ek uyumu (sayılar için): %1'ini, %15'ten, %14'e ...
   function numWord(n) {
     n = Math.abs(Math.round(n));
@@ -385,6 +403,9 @@
   function costGrowth() { return hasNode('ekip_3') ? CFG.tree.costGrowth : COST_GROWTH; }
   function offlineCapSec() { return 3600 * (hasNode('yatirim_3') ? CFG.tree.offlineHours2 : hasNode('yatirim_1') ? CFG.tree.offlineHours1 : CFG.offlineCapHours); }
   function shareBonus() { return SHARE_BONUS * (1 + (hasNode('yatirim_2') ? CFG.tree.shareBoost : 0)); }
+  // v4.3.1: n Yatırımcı Hissesinin tüm kazançlara eklediği bonus (oran; 0,3 = +%30). Üretim (globalMult, tıklama) ve
+  // metinler (Yatırım sekmesi, Yatırım Turu / Halka Arz onayları) aynı işlevi kullanır: Yatırımcı Güveni dahil.
+  function investorBonus(n) { return shareBonus() * (n === undefined ? S.shares : n); }
   function offerSec() { return hasNode('musteri_2') ? CFG.tree.offerSec : CFG.offerSec; }
   function offerFreq() { return hasNode('musteri_1') ? 1 / (1 + CFG.tree.offerMore) : 1; } // teklif aralığı çarpanı
   function offerPayMult() { return hasNode('musteri_3') ? CFG.tree.offerPayMult : 1; }
@@ -400,7 +421,7 @@
   function achMult() { return 1 + ACH_BONUS * S.achievements.length; }
   function globalMult() {
     var m = 1 + STAGE_BONUS * stageIndex(S.runEarned);
-    m *= 1 + shareBonus() * S.shares;
+    m *= 1 + investorBonus(S.shares);
     m *= achMult();
     if (hasNode('ekip_1')) m *= CFG.tree.genMult;
     m *= unspentMult();
@@ -438,7 +459,7 @@
     });
     if (hasNode('kod_1')) mult *= CFG.tree.clickMult;
     if (hasNode('kod_3')) p += CFG.tree.clickPct;
-    var stageShare = (1 + STAGE_BONUS * stageIndex(S.runEarned)) * (1 + shareBonus() * S.shares);
+    var stageShare = (1 + STAGE_BONUS * stageIndex(S.runEarned)) * (1 + investorBonus(S.shares));
     return BASE_CLICK * mult * stageShare + p * baseTps();
   }
   function clickValue() { return clickBase() * boostMult() * buffMult('click'); }
@@ -983,7 +1004,32 @@
   //    kazanınca başka cihazdaki sıfırlama buradan anlaşılır.
   //  Bulut revizyonu (kodhane_saves.revision) kaydın içinde değil, cloud.js'te tutulur.
   var meta = { epoch: 0, resetAt: 0 };
-  function saveData() { var o = {}; for (var k in S) o[k] = S[k]; o.epoch = meta.epoch; o.resetAt = meta.resetAt; return o; }
+  function saveData() { var o = {}; for (var k in S) o[k] = S[k]; o.saveVersion = SAVE_VERSION; o.epoch = meta.epoch; o.resetAt = meta.resetAt; return o; }
+
+  // v4.3.1: İleri sürüm koruması. Kayıt biçimi sürümü kayıtta 'saveVersion' (v4.3.1'den beri) ve 'version' (eski ad, aynı
+  // değer) alanlarında, bulutta ayrıca kodhane_saves.save_version sütunundadır. Alan(lar) yoksa kayıt eski biçimdir ve
+  // eskisi gibi yüklenir (deserialize taşır). Okunan bir kayıt (bu cihaz, başka sekme, bulut) bu istemcinin bildiğinden
+  // (SAVE_VERSION) YENİYSE futureSave dolar ve bu sayfa oturumunda hiçbir kayıt yazılmaz. Tek bayrak: writesBlocked().
+  // Bakan yerler: save() (otomatik/aralıklı, beforeunload/pagehide/visibilitychange, elle, Yatırım Turu/Halka Arz/ağaç
+  // sonrası), applySave/adoptSave (bulut, başka sekme, geri yükleme), sıfırlama, Geri al, yedekten geri yükleme ve
+  // cloud.js'in tüm bulut yazmaları (push/flush/reconcile/yedek/sıfırlama ve geri yükleme RPC'leri).
+  var futureSave = null;
+  function saveVersionOf(d, rowVersion) {
+    var v = 0, o = d && typeof d === 'object' ? d : {};
+    [o.saveVersion, o.version, rowVersion].forEach(function (x) { if (typeof x === 'number' && isFinite(x) && x > v) v = x; });
+    return v;
+  }
+  function guardFuture(d, source, rowVersion) {
+    if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { d = null; } }
+    var v = saveVersionOf(d, rowVersion);
+    if (!(v > SAVE_VERSION)) return false;
+    if (!futureSave) {
+      futureSave = { version: v, source: source || '' };
+      if (typeof Core.onFutureSave === 'function') { try { Core.onFutureSave(futureSave); } catch (e) {} }
+    }
+    return true;
+  }
+  function writesBlocked() { return !!futureSave; }
   function serialize() { S.lastSaved = Date.now(); return JSON.stringify(saveData()); }
   function isNum(x) { return typeof x === 'number' && isFinite(x); }
   function deserialize(str) {
@@ -1102,7 +1148,7 @@
   var Core = {
     VERSION: VERSION, SAVE_VERSION: SAVE_VERSION, CFG: CFG, TREE: TREE, NEWS: NEWS, STAGE_TINTS: STAGE_TINTS,
     hasNode: hasNode, nodeState: nodeState, nodeCost: nodeCost, buyNode: buyNode, ipoUnlocked: ipoUnlocked, ipoGain: ipoGain, doIpo: doIpo,
-    costGrowth: costGrowth, offlineCapSec: offlineCapSec, shareBonus: shareBonus, offerSec: offerSec, offerFreq: offerFreq, offerPayMult: offerPayMult,
+    costGrowth: costGrowth, offlineCapSec: offlineCapSec, shareBonus: shareBonus, investorBonus: investorBonus, pctText: pctText, offerSec: offerSec, offerFreq: offerFreq, offerPayMult: offerPayMult,
     genUnlocked: genUnlocked, unspentMult: unspentMult, ipoPayStage: ipoPayStage, globalMult: globalMult,
     SECTORS: SECTORS, sectorOpen: sectorOpen, sectorWeight: sectorWeight, sectorPool: sectorPool, pickSector: pickSector, cardAvailable: cardAvailable,
     settlePending: settlePending, EVENT_BY_ID: EVENT_BY_ID, nextNews: nextNews, markNewsSeen: markNewsSeen, sfxAcc3: sfxAcc3, sfxAbl: sfxAbl, sfxDat: sfxDat, GENERATORS: GENERATORS, UPGRADES: UPGRADES, STAGES: STAGES, EVENTS: EVENTS, ACHIEVEMENTS: ACHIEVEMENTS,
@@ -1116,7 +1162,7 @@
     eventPool: eventPool, pickEvent: pickEvent, resolveEvent: resolveEvent, checkAchievements: checkAchievements,
     checkDaily: checkDaily, makeTasks: makeTasks, taskProgress: taskProgress, taskLabel: taskLabel, today: today, shiftDay: shiftDay,
     streakBonus: streakBonus, setToday: function (s) { Core.fakeToday = s || null; },
-    RESET_TEXT: RESET_TEXT, RESET_SIGNED_ONLY: RESET_SIGNED_ONLY, TEL_TEXT: TEL_TEXT, telText: telText, resetText: resetText, otherDeviceText: otherDeviceText, saveData: saveData,
+    UI_TEXT: UI_TEXT, uiText: uiText, guardFuture: guardFuture, writesBlocked: writesBlocked, saveVersionOf: saveVersionOf, get futureSave() { return futureSave; }, RESET_TEXT: RESET_TEXT, RESET_SIGNED_ONLY: RESET_SIGNED_ONLY, TEL_TEXT: TEL_TEXT, telText: telText, resetText: resetText, otherDeviceText: otherDeviceText, saveData: saveData,
     meta: meta,
     rng: Math.random, lastCrit: false, fakeToday: null, loadedVersion: null,
     CRIT_CHANCE: CRIT_CHANCE, CRIT_MULT: CRIT_MULT
@@ -1219,11 +1265,15 @@
   function closeModal() { el.modal.classList.add('hidden'); }
 
   function save() {
+    if (writesBlocked()) return;       // v4.3.1: daha yeni sürümün kaydı okundu: hiçbir yere yazılmaz
     if (resetting) return;
     // v4.2: yalnız yazıcı sekme yazar (arka plan sekmeleri duraklar; TabGate)
     if (Core.tabGate && !Core.tabGate.isWriter()) return;
     if (staleLocal()) return; // başka sekmede sıfırlandı/geri yüklendi: bu sekmenin eski kaydı yazılmaz
     try {
+      // v4.3.1: bu arada başka bir sekme (daha yeni sürüm) kendi kaydını yazdıysa üstüne yazma
+      var cur = localStorage.getItem(SAVE_KEY);
+      if (cur && cur !== Core.lastWritten && guardFuture(cur, 'local')) return;
       if (meta.epoch > readEpoch()) localStorage.setItem(EPOCH_KEY, String(meta.epoch));
       var str = serialize();
       localStorage.setItem(SAVE_KEY, str);
@@ -1233,6 +1283,7 @@
   }
   // Buluttan (veya başka bir kaynaktan) gelen kaydı uygula: yerel kaydı değiştirir ve arayüzü yeniler.
   function applySave(data) {
+    if (guardFuture(data, 'apply')) return null;   // v4.3.1: daha yeni sürümün kaydı uygulanmaz (ve geri yazılmaz)
     deserialize(typeof data === 'string' ? data : JSON.stringify(data));
     meta.epoch = Math.max(meta.epoch, readEpoch()); // uygulanan kayıt (bulut/geri yükleme) bu tarayıcıda güncel kuşaktır
     var res = applyOffline(Date.now());
@@ -1263,6 +1314,8 @@
     var floor = readEpoch();
     var fresh = function () { S = newState(); meta.epoch = floor; meta.resetAt = floor; return null; };
     if (!raw) return fresh();
+    // v4.3.1: daha yeni sürümün kaydı: gösterim için okunur (bilinen alanlar), ama bu oturumda hiç yazılmaz
+    guardFuture(raw, 'local');
     try { deserialize(raw); } catch (e) { return fresh(); }
     // Sıfırlamadan sonra kalmış eski kuşaktan kayıt (ör. eski sürümlü bir sekme yazdıysa) yüklenmez.
     if (meta.epoch < floor) return fresh();
@@ -1316,6 +1369,7 @@
   // Başka sekmede/cihazda yapılmış değişikliğin sonucunu uygula. kind: 'otherDevice' (orada sıfırlandı),
   // 'undoDone' (orada sıfırlama geri alındı), 'silent' (mesajı çağıran gösterir).
   function adoptSave(data, kind) {
+    if (guardFuture(data, 'adopt')) return;
     if (undoState.marker) hideUndo(true); // bu sekmedeki geri alma artık geçersiz
     if (!el.modal.classList.contains('hidden')) closeModal();
     var d = JSON.parse(JSON.stringify(data));
@@ -1337,6 +1391,7 @@
 
   // Geri alınan / yedekten gelen kaydı yeni kuşakla uygula (eski sekmeler üstüne yazamasın).
   function applyRestored(data) {
+    if (writesBlocked() || guardFuture(data, 'restore')) return;
     var d = JSON.parse(JSON.stringify(data));
     d.epoch = newEpoch();
     d.lastSaved = Date.now(); // yedekte geçen süre için çevrimdışı kazanç verilmez
@@ -1417,6 +1472,7 @@
   }
 
   function openResetDialog() {
+    if (blockedAction()) return;       // v4.3.1: daha yeni kayıt okunduysa sıfırlama yok (yenile bandı)
     var signed = signedIn();
     var extra = document.createElement('div'); extra.className = 'reset-extra';
     var cols = document.createElement('div'); cols.className = 'reset-cols';
@@ -1452,6 +1508,7 @@
   // kopyası bu sekmede tutulur (Geri al), yeni kuşak yazılır, kayıt silinir, sayfa yeniden açılır.
   // Başarımlar/itibar/seri dahil kaydın tamamı silinir (v4.1.1 ile aynı; Yatırım Turu bunları korur).
   function performReset() {
+    if (blockedAction()) return;
     if (resetBusy) return;
     save();
     if (readEpoch() > meta.epoch) return; // bu sekme bayatmış; güncel kayıt yüklendi, sıfırlama yapılmadı
@@ -1511,6 +1568,7 @@
     undoState.timer = setInterval(paint, 250);
   }
   function doUndo() {
+    if (blockedAction()) return;
     var m = undoState.marker;
     if (!m || Date.now() >= m.expiresAt) { hideUndo(true); return; }
     el.undoBtn.disabled = true;
@@ -1551,6 +1609,7 @@
     if (s !== restoreSigned) { restoreSigned = s; refreshRestoreBox(); }
   }
   function openRestoreDialog() {
+    if (blockedAction()) return;
     var b = el.restoreBox && el.restoreBox._backup;
     if (!b || !signedIn()) return;
     modal({ emoji: '🗂️', title: resetText('reset.restoreTitle'), html: esc(resetText('reset.restoreBody')),
@@ -1776,8 +1835,8 @@
   }
   function renderPrestige() {
     el.prShares.textContent = fmt(S.shares);
-    el.prBonus.textContent = '+%' + fmt(S.shares * shareBonus() * 100);
-    el.prPer.textContent = '+%' + num(shareBonus() * 100);
+    el.prBonus.textContent = '+%' + pctText(investorBonus(S.shares));
+    el.prPer.textContent = '+%' + pctText(shareBonus());
     var g = sharesGain();
     el.prGain.textContent = fmt(g) + ' hisse';
     el.prNext.textContent = tl(nextShareAt()) + ' tur kazancı';
@@ -2236,18 +2295,38 @@
       if (!band.isConnected) return;
       var r = band.getBoundingClientRect();
       var v = Math.ceil(Math.max(0, window.innerHeight - r.top) + 8) + 'px';
-      if (v !== last) { last = v; rootEl.style.setProperty(NB_SPACE, v); }
+      if (v !== last) { last = v; rootEl.style.setProperty(NB_SPACE, v); placeUpdateBar(); }
     };
     var soon = function () { if (!raf) raf = requestAnimationFrame(function () { raf = 0; fit(); }); };
     var ro = typeof ResizeObserver === 'function' ? new ResizeObserver(fit) : null;
     if (ro) ro.observe(band);
     window.addEventListener('resize', soon);
+    rootEl.classList.add('nb-open');   // v4.3.1: :has() desteklemeyen tarayıcılar için de aynı boşluk (style.css)
     fit();
     return function () {
       if (ro) ro.disconnect(); if (raf) cancelAnimationFrame(raf);
-      window.removeEventListener('resize', soon); rootEl.style.removeProperty(NB_SPACE);
+      window.removeEventListener('resize', soon); rootEl.style.removeProperty(NB_SPACE); rootEl.classList.remove('nb-open');
+      placeUpdateBar();
     };
   }
+  // v4.3.1: kısa ekranda "Kod yaz" düğmesi ve altındaki ipucu satırı (.click-hint) bandın altında kalmasın. Bant açıkken
+  // Kod görünümü açılınca (ilk açılış, alt çubukta Kod) sayfa, düğme ile ipucu birlikte bandın üstünde görünecek kadar
+  // (en az kaydırma) kaydırılır; düğmenin üstü sabit üst çubuğun altına girmez. Bant yoksa ya da blok zaten görünüyorsa
+  // hiçbir şey değişmez (uzun ekran ve masaüstü yerleşimi aynı).
+  function keepKodClear() {
+    if (!noticeBand() || !el.clickBtn || !el.panelKod || el.panelKod.classList.contains('mhide') && isMobile()) return 0;
+    var hint = el.panelKod.querySelector('.click-hint');
+    if (!hint) return 0;
+    var limit = window.innerHeight - nbSpace();              // bandın üst kenarı - 8 px
+    var tb = document.querySelector('.topbar'), pos = tb ? getComputedStyle(tb).position : '';
+    var head = (pos === 'sticky' || pos === 'fixed') ? tb.getBoundingClientRect().height : 0;
+    var btnTop = el.clickBtn.getBoundingClientRect().top, bottom = hint.getBoundingClientRect().bottom;
+    if (bottom <= limit) return 0;
+    var dy = Math.min(bottom - limit, Math.max(0, btnTop - head - 8));
+    if (dy > 0) window.scrollBy(0, dy);
+    return dy;
+  }
+  Core.keepKodClear = keepKodClear;
   function nbSpace() { var v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(NB_SPACE)); return isFinite(v) ? v : 0; }
   function noticeBand() { return document.querySelector('[data-test=tel-banner]'); }
   function dismissNoticeBand() { var b = noticeBand(); if (!b) return; if (b.__release) b.__release(); b.remove(); }
@@ -2287,6 +2366,7 @@
     band.appendChild(p); band.appendChild(row);
     document.body.appendChild(band);
     band.__release = reserveSpace(band);
+    keepKodClear();
     return band;
   }
   function renderTelSetting() {
@@ -2347,17 +2427,77 @@
     if (side) selectTab(v, true);
     navActive();
     if (isMobile()) window.scrollTo(0, 0);
+    if (v === 'kod') keepKodClear();   // v4.3.1: bant açıkken "Kod yaz" + ipucu bandın üstünde
   }
 
-  // PWA: servis çalışanı ve güncelleme bildirimi
-  function showUpdate(worker) {
-    el.updateBar.classList.remove('hidden');
-    el.updateBtn.onclick = function () {
+  // PWA: servis çalışanı ve güncelleme bildirimi.
+  // v4.3.1: tek bant (#updateBar) iki durumu gösterir: servis çalışanı güncellemesi ("✨ Yeni sürüm hazır.", index.html) ve
+  // daha yeni sürümün kaydı (update.newerSave.*). İkisi aynı anda asla ayrı bant olmaz: newerSave önceliklidir, metni
+  // güncelleme metninin yerine geçer. Bant üstte (sabit üst çubuğun altında), izin bandı altta: çakışmazlar; çok kısa
+  // ekranda izin bandının üstünde kalacak şekilde yukarı kayar.
+  var swWaiting = null, swUpdateText = '';
+  function showUpdate(worker) { swWaiting = worker; renderUpdateBar(); }
+  function reloadForNewer() {
+    // Yazma zaten kapalı (save() hiçbir şey yazmaz). Bekleyen/yeni servis çalışanı varsa önce o etkinleşir ki yenilenen
+    // sayfa önbellekteki eski sürümle açılmasın; yoksa hemen yenilenir.
+    var go = function () { location.reload(); };
+    var reg = Core.swRegistration;
+    if (!reg || typeof reg.update !== 'function') return go();
+    var kick = function () { if (reg.waiting) { updateRequested = true; reg.waiting.postMessage('skipWaiting'); setTimeout(go, 3000); return true; } return false; };
+    if (kick()) return;
+    reg.update().then(function () {
+      if (kick()) return;
+      var w = reg.installing;
+      if (!w) return go();
+      w.addEventListener('statechange', function () { if (w.state === 'installed' && !kick()) go(); if (w.state === 'redundant') go(); });
+      setTimeout(go, 6000);
+    }, go);
+  }
+  function renderUpdateBar() {
+    if (!el.updateBar || !el.updateText) return;
+    var newer = writesBlocked();
+    if (!newer && !swWaiting) { el.updateBar.classList.add('hidden'); return; }
+    var bar = el.updateBar, txt = el.updateText;
+    bar.classList.remove('hidden');
+    bar.classList.toggle('newer-save', newer);
+    bar.setAttribute('data-test', newer ? 'newer-save-band' : 'update-band');
+    bar.classList.remove('ub-short');
+    txt.textContent = newer ? uiText('update.newerSave.text') : swUpdateText;
+    el.updateBtn.textContent = newer ? uiText('update.newerSave.btn') : 'Yenile';
+    // Dar ekran: uzun metin bantta tek satıra sığmıyorsa kısa metin
+    if (newer && txt.scrollWidth > txt.clientWidth + 1) { txt.textContent = uiText('update.newerSave.textShort'); bar.classList.add('ub-short'); }
+    el.updateBtn.onclick = newer ? reloadForNewer : function () {
       updateRequested = true; save();
-      worker.postMessage('skipWaiting');
+      swWaiting.postMessage('skipWaiting');
       setTimeout(function () { location.reload(); }, 3000);
     };
+    placeUpdateBar();
   }
+  function placeUpdateBar() {
+    var bar = el.updateBar;
+    if (!bar || bar.classList.contains('hidden')) return;
+    var tb = document.querySelector('.topbar'), pos = tb ? getComputedStyle(tb).position : '';
+    var top = (pos === 'sticky' || pos === 'fixed') ? Math.max(0, tb.getBoundingClientRect().bottom) + 8 : 0;
+    bar.style.top = top ? top + 'px' : '';
+    // izin bandı açıksa onun üstünde bitsin (ikisi de tümüyle görünür ve tıklanabilir kalır)
+    var nb = noticeBand();
+    if (nb) {
+      var limit = nb.getBoundingClientRect().top - 8, r = bar.getBoundingClientRect();
+      if (r.bottom > limit) bar.style.top = Math.max(4, limit - r.height) + 'px';
+    }
+  }
+  // Yazma kapalıyken sıfırlama, Yatırım Turu, Halka Arz, Geri al ve geri yükleme hiçbir şey yapmaz; bant öne çıkar.
+  function blockedAction() {
+    if (!writesBlocked()) return false;
+    renderUpdateBar();
+    if (el.updateBar) { el.updateBar.classList.remove('ub-flash'); void el.updateBar.offsetWidth; el.updateBar.classList.add('ub-flash'); }
+    return true;
+  }
+  Core.onFutureSave = function () {
+    if (Core.cloud && Core.cloud.state) { var c = Core.cloud.state; if (c.pushTimer) { clearTimeout(c.pushTimer); c.pushTimer = null; } }
+    renderUpdateBar();
+  };
+  Core.renderUpdateBar = renderUpdateBar; Core.blockedAction = blockedAction; Core.showUpdate = showUpdate;
   function initServiceWorker() {
     if (!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) return;
     navigator.serviceWorker.addEventListener('controllerchange', function () {
@@ -2383,7 +2523,7 @@
       'repChip', 'achChip', 'streakChip', 'boostBar', 'falBar', 'clickBtn', 'clickValue', 'floaters', 'genList', 'upgList',
       'upgBadge', 'navUpgBadge', 'statsList', 'saveBtn', 'resetBtn', 'saveNote', 'soundBtn', 'vibBtn', 'prShares', 'prBonus',
       'prGain', 'prNext', 'prestigeBtn', 'streakBox', 'taskList', 'achHead', 'achGrid', 'clientOffer', 'coText', 'coTimerFill',
-      'eventCard', 'evIcon', 'evTitle', 'evText', 'evChoices', 'evLater', 'evTimerFill', 'toast', 'updateBar', 'updateBtn',
+      'eventCard', 'evIcon', 'evTitle', 'evText', 'evChoices', 'evLater', 'evTimerFill', 'toast', 'updateBar', 'updateBtn', 'updateText',
       'modal', 'modalEmoji', 'modalTitle', 'modalText', 'modalActions', 'panelKod', 'panelEkip', 'panelSide', 'bottomNav',
       'prPer', 'ipoSection', 'ipoLock', 'ipoBody', 'ipoShares', 'ipoGain', 'ipoCount', 'ipoBonus', 'ipoHint', 'ipoBtn', 'treeGrid',
       'stageUp', 'suIcon', 'suTitle', 'suMsg', 'suBonus', 'suShare', 'suClose',
@@ -2486,16 +2626,22 @@
     // Başka sekmede sıfırlama/geri alma: kuşak anahtarı değişince hemen kaydetmeyi dene (bayatsa yazma reddedilir,
     // güncel kayıt yüklenir).
     // Başka sekme sıfırladı/geri aldı: yazmadan (arka plan sekmesi de) güncel kaydı yükle
-    window.addEventListener('storage', function (e) { if ((e.key === EPOCH_KEY || e.key === SAVE_KEY) && !resetting) staleLocal(); });
+    window.addEventListener('storage', function (e) {
+      if (e.key === SAVE_KEY && e.newValue && guardFuture(e.newValue, 'tab')) return;   // v4.3.1: yeni sürüm başka sekmede yazdı
+      if ((e.key === EPOCH_KEY || e.key === SAVE_KEY) && !resetting) staleLocal();
+    });
     el.prestigeBtn.addEventListener('click', function () {
+      if (blockedAction()) return;     // v4.3.1: yazma kapalıyken Yatırım Turu yapılmaz
       var g = sharesGain();
       if (g < 1) return;
       modal({
         emoji: '💰', title: 'Yatırım turuna çık?',
-        html: 'Yatırımcılar şirketine <b>' + fmt(g) + ' hisse</b> karşılığında yatırım yapacak. Paran, çalışanların ve geliştirmelerin sıfırlanır; karşılığında tüm kazançlara kalıcı <b>+%' + fmt(g * SHARE_BONUS * 100) + '</b> bonus alırsın. Başarımların, itibarın ve günlük serin korunur.',
+        // {b}: bu turda kazanılacak g hissenin eklediği bonus (Yatırımcı Güveni dahil, üretimle aynı investorBonus())
+        html: uiText('prestige.confirm', { g: fmt(g), b: pctText(investorBonus(g)) }),
         buttons: [
           { label: 'Vazgeç', cls: 'ghost' },
           { label: 'Anlaştık!', cls: 'primary', onClick: function () {
+            if (blockedAction()) return;
             doPrestige(); lastStageShown = 0; upgSig = ''; save(); renderAll();
             track('reset_or_prestige');
             toast('🚀 Yatırım turu tamamlandı! Yeni bir başlangıç.'); sfx('stage');
@@ -2505,15 +2651,17 @@
     });
 
     el.ipoBtn.addEventListener('click', function () {
+      if (blockedAction()) return;     // v4.3.1: yazma kapalıyken Halka Arz yapılmaz
       var g = ipoGain();
       if (!ipoUnlocked() || g < 1) return;
       modal({
         emoji: '🔔', title: 'Halka arz et?',
-        html: 'Kasa, çalışanlar, geliştirmeler ve yatırımcı hisselerin sıfırlanacak. Karşılığında kalıcı Borsa Payı kazanacaksın. Borsa Payı Ağacı, başarımların ve sıralamadaki puanın olduğu gibi kalır.' +
-          '<br><small>Kazanacağın: <b>' + fmt(g) + ' Borsa Payı</b>. Harcamadığın her Borsa Payı +%' + num(CFG.halkaArz.unspentBonus * 100) + ' üretim verir.</small>',
+        // {x}: şu anki yatırımcı bonusu (tüm hisseler, Yatırımcı Güveni dahil; üretimle aynı investorBonus())
+        html: uiText('ipo.confirm', { x: pctText(investorBonus(S.shares)), n: fmt(g), u: num(CFG.halkaArz.unspentBonus * 100) }),
         buttons: [
           { label: 'Vazgeç', cls: 'ghost' },
           { label: 'Halka arz et', cls: 'primary', onClick: function () {
+            if (blockedAction()) return;
             doIpo(); lastStageShown = 0; upgSig = ''; treeSig = ''; checkAchievements(); save(); renderAll();
             track('reset_or_prestige');
             sfx('stage'); vibrate([20, 60, 20]);
@@ -2564,6 +2712,9 @@
     renderTelSetting();
     renderAll();
     showNoticeBand();                  // v4.3: ilk açılışta (yanıtlanana kadar her açılışta) izin bandı
+    swUpdateText = el.updateText.textContent;
+    renderUpdateBar();                 // v4.3.1: yüklenen kayıt daha yeni sürümdense "yenile" bandı
+    window.addEventListener('resize', function () { if (!el.updateBar.classList.contains('hidden')) renderUpdateBar(); });
     tel.sync();                        // izin zaten açıksa betik şimdi yüklenir; değilse hiçbir istek yok
     showWelcomeBack(offlineRes);
     if (offlineRes && offlineRes.migrated) toast('📦 Kaydın yeni sürüme taşındı. Hoş geldin, Kodhane v2!', 4500);

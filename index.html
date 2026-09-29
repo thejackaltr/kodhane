@@ -129,10 +129,10 @@
       </div>
       <div class="tab hidden" id="tab-prestige">
         <div class="prestige">
-          <p>Şirketini yatırımcılara sun, her şeyi sıfırla ama <b>kalıcı üretim bonusu</b> kazan. Her <b>Yatırımcı Hissesi</b> tüm kazançlara <b id="prPer">+%10</b> ekler. Başarımların, itibarın ve günlük serin korunur.</p>
+          <p>Şirketini yatırımcılara sun: paran, çalışanların ve geliştirmelerin sıfırlanır, karşılığında Halka Arz'a kadar geçerli <b>üretim bonusu</b> kazanırsın. Her <b>Yatırımcı Hissesi</b> tüm kazançlara <b id="prPer">+%10</b> ekler. Başarımların, itibarın ve günlük serin korunur.</p>
           <dl class="stats">
             <div><dt>Mevcut hisseler</dt><dd id="prShares">0</dd></div>
-            <div><dt>Kalıcı bonus</dt><dd id="prBonus">+%0</dd></div>
+            <div><dt>Yatırımcı bonusu</dt><dd id="prBonus">+%0</dd></div>
             <div><dt>Bu turda kazanılacak</dt><dd id="prGain">0</dd></div>
             <div><dt>Bir sonraki hisse için</dt><dd id="prNext">-</dd></div>
           </dl>
@@ -212,8 +212,8 @@
     <button id="undoBtn" type="button" class="btn"></button>
   </div>
 
-  <div id="updateBar" class="update-bar hidden">
-    <span>✨ Yeni sürüm hazır.</span>
+  <div id="updateBar" class="update-bar hidden" role="status" aria-live="polite">
+    <span id="updateText">✨ Yeni sürüm hazır.</span>
     <button id="updateBtn" class="btn">Yenile</button>
   </div>
 

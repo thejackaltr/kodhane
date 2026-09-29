@@ -352,6 +352,9 @@
 
   // ---------------------------------------------------------------- yardımcılar
   function num(x) { return typeof x === 'number' && isFinite(x) ? x : 0; }
+  // v4.3.1 ileri sürüm koruması (game.js writesBlocked): bu istemciden daha yeni biçimde bir kayıt okunduysa hiçbir bulut
+  // yazması (upsert, sıfırlama/geri yükleme RPC'si) ve kayıt yedeği yapılmaz.
+  function blocked() { return !!(K.writesBlocked && K.writesBlocked()); }
   function pad(n) { return (n < 10 ? '0' : '') + n; }
   function hhmm(t) { var d = new Date(t); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
   function sig(s) {
@@ -541,7 +544,7 @@
   }
   function saveData() { return K.saveData ? K.saveData() : K.state; }
   function backup(data) {
-    if (!data) return;
+    if (!data || blocked()) return;
     lsSet(BACKUP_KEY, typeof data === 'string' ? data : JSON.stringify(data));
   }
   // Kaybeden kayıt, kazananın aynı oyunun daha eski bir kopyasıysa (aynı başlangıç, daha az kazanç,
@@ -561,13 +564,17 @@
   }
 
   function reconcile() {
-    if (!C.user || C.reconciling) return Promise.resolve();
+    if (!C.user || C.reconciling || blocked()) return Promise.resolve();
     C.reconciling = true;
     setStatus('syncing', 'Bulut kaydı kontrol ediliyor…');
     var uid = C.user.id;
     return remoteRow().then(function (row) {
       if (!C.user || C.user.id !== uid) return;
       if (K.isResetting && K.isResetting()) return;
+      // v4.3.1: buluttaki kayıt bu istemciden yeni (kodhane_saves.save_version ya da kayıttaki sürüm alanı): uygulanmaz,
+      // üstüne yazılmaz; oyun "yenile" bandını gösterir (game.js guardFuture).
+      if (row && K.guardFuture && K.guardFuture(row.data, 'cloud', row.save_version)) { clearPushTimer(); C.reconciled = false; return; }
+      if (blocked()) return;
       K.save();
       var local = JSON.parse(JSON.stringify(saveData()));
       var localTime = num(local.lastSaved);
@@ -640,7 +647,7 @@
 
   function clearPushTimer() { if (C.pushTimer) { clearTimeout(C.pushTimer); C.pushTimer = null; } }
   function schedulePush() {
-    if (!C.user || !C.reconciled || C.pushTimer || C.held) return;
+    if (!C.user || !C.reconciled || C.pushTimer || C.held || blocked()) return;
     C.pushTimer = setTimeout(function () { C.pushTimer = null; push(false); }, CFG.pushDelayMs);
   }
   // Buluta yaz (upsert). force=false iken değişiklik yoksa atlanır. v4.2: her yazma revision = son görülen + 1 taşır;
@@ -648,6 +655,7 @@
   // o.duringReset: sıfırlamadan hemen önceki son yazma (yedeğe en güncel ilerleme girsin); o.quiet: 409'da reconcile yok.
   function push(force, o) {
     o = o || {};
+    if (blocked()) return Promise.resolve(false);
     if (!C.client || !C.user || !C.reconciled) return Promise.resolve(false);
     if (C.held && !o.duringReset) return Promise.resolve(false);
     if (!o.duringReset && !(C.keepalive && C.finalWriter) && !gate.canPush(false)) return Promise.resolve(false);
@@ -659,7 +667,7 @@
     var now = new Date();
     var uid = C.user.id;
     var rev = num(knownRev(uid)) + 1;
-    var row = { user_id: uid, data: state, save_version: num(state.version) || 2, updated_at: now.toISOString(), revision: rev };
+    var row = { user_id: uid, data: state, save_version: num(state.saveVersion) || num(state.version) || 2, updated_at: now.toISOString(), revision: rev };
     var staleErr = null;
     setStatus('syncing', 'Buluta kaydediliyor…');
     C.pushing = T.upsert(row).then(function (r) {
@@ -697,7 +705,7 @@
     reconcile();
   }
   function flush() {
-    if (!C.user || !C.reconciled) return;
+    if (!C.user || !C.reconciled || blocked()) return;
     clearPushTimer();
     C.finalWriter = gate.isWriter();   // son yazma: sekme kapanırken yazıcı bırakılsa da bu push geçer
     C.keepalive = true;
@@ -868,6 +876,7 @@
   // Önce bekleyen yazma bitirilir ve en güncel ilerleme yazılır ki yedeğe girsin. Hata olursa Promise reddedilir
   // (game.js sıfırlamayı yapmaz). Girişli değilse null.
   K.beforeReset = function () {
+    if (blocked()) return Promise.reject(new Error('newer-save'));
     if (!C.client || !C.user) return null;
     clearPushTimer();
     var uid = C.user.id;
@@ -897,6 +906,7 @@
   // Geri al / yedekten geri yükle: geri yükleme RPC'si (CFG.rpc.restore) veri döndürmez; ardından satır çekilir.
   function restoreSave(p) {
     var id = p && (p.backupId || p.resetId);
+    if (blocked()) return Promise.reject(new Error('newer-save'));
     if (!id) return Promise.reject(new Error('no-backup'));
     return whenReady(8000).then(function (uid) {
       return T.rpc(CFG.rpc.restore, { p_backup_id: id }).then(function (r) {

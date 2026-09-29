@@ -168,8 +168,10 @@ with sync_playwright() as p:
     total0 = ev('Kodhane.state.totalEarned')
     pg.click('#ipoBtn')
     check('confirm modal copy', modal_title(pg) == 'Halka arz et?' and
-          'Kasa, çalışanlar, geliştirmeler ve yatırımcı hisselerin sıfırlanacak. Karşılığında kalıcı Borsa Payı kazanacaksın. Borsa Payı Ağacı, başarımların ve sıralamadaki puanın olduğu gibi kalır.' in pg.inner_text('#modalText') and
-          'Kazanacağın: 2 Borsa Payı. Harcamadığın her Borsa Payı +%1 üretim verir.' in pg.inner_text('#modalText'), pg.inner_text('#modalText'))
+          'Kasa, çalışanlar, geliştirmeler ve yatırımcı hisselerin sıfırlanacak. Borsa Payı Ağacı, başarımların ve sıralamadaki puanın olduğu gibi kalır.' in pg.inner_text('#modalText') and
+          'Şu anki +%0 yatırımcı bonusun sıfırlanır, karşılığında 2 Borsa Payı kazanırsın.' in pg.inner_text('#modalText') and
+          'Harcamadığın her Borsa Payı +%1 üretim verir.' in pg.inner_text('#modalText') and
+          'Kazanacağın' not in pg.inner_text('#modalText') and 'Karşılığında kalıcı Borsa Payı' not in pg.inner_text('#modalText'), pg.inner_text('#modalText'))
     pg.click('#modalActions button:has-text("Vazgeç")')
     check('cancel keeps everything', ev('Kodhane.state.ipoCount') == 0 and ev('Kodhane.state.cycleRounds') == 3)
     pg.click('#ipoBtn'); pg.click('#modalActions button:has-text("Halka arz et")')
@@ -360,7 +362,7 @@ with sync_playwright() as p:
     check('screenshot v4.1: Halka Arz with unspent bonus (mobile)', os.path.getsize(SS + 'v41-halka-arz-mobile.png') > 20000 and pg.inner_text('#ipoBonus') == '+%4 üretim')
     pg.tap('#ipoBtn'); pg.wait_for_timeout(300)
     pg.screenshot(path=SS + 'v41-halka-arz-onay-mobile.png')
-    check('screenshot v4.1: IPO confirm (mobile)', 'Kazanacağın: 5 Borsa Payı' in pg.inner_text('#modalText'), pg.inner_text('#modalText'))
+    check('screenshot v4.1: IPO confirm (mobile)', 'karşılığında 5 Borsa Payı kazanırsın' in pg.inner_text('#modalText'), pg.inner_text('#modalText'))
     pg.click('#modalActions button:has-text("Vazgeç")')
     pg.tap('#bottomNav [data-view="kod"]')
     ev("(() => { const S = Kodhane.state; Object.assign(S.gens, {stajyer: 150, junior: 120, senior: 100, tasarimci: 80, pm: 60, ai: 45, sunucu: 30, ofis: 12}); S.money = 8.4e11; Kodhane.renderAll(); Kodhane.spawnEvent('eticaret_sunucu'); })()")

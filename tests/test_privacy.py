@@ -155,6 +155,8 @@ VIEWPORTS = [
     ('1280x800', dict(viewport={'width': 1280, 'height': 800})),
     ('375x667', dict(viewport={'width': 375, 'height': 667}, device_scale_factor=2, is_mobile=True, has_touch=True)),
     ('390x844', dict(viewport={'width': 390, 'height': 844}, device_scale_factor=2, is_mobile=True, has_touch=True)),
+    ('360x640', dict(viewport={'width': 360, 'height': 640}, device_scale_factor=2, is_mobile=True, has_touch=True)),   # v4.3.1
+    ('568x320', dict(viewport={'width': 568, 'height': 320}, device_scale_factor=2, is_mobile=True, has_touch=True)),   # v4.3.1
     ('667x375', dict(viewport={'width': 667, 'height': 375}, device_scale_factor=2, is_mobile=True, has_touch=True)),
 ]
 
@@ -371,6 +373,9 @@ with sync_playwright() as p:
       return out;
     }"""
 
+    NOW_VIS = VIS.replace("if (pos !== 'fixed') el.scrollIntoView({ block: 'nearest', inline: 'nearest' });", '')  # kaydırmadan
+    assert NOW_VIS != VIS
+
     def vis(pg, sel):
         return pg.evaluate(VIS, sel)
 
@@ -400,6 +405,11 @@ with sync_playwright() as p:
             if view:
                 pg.click('#bottomNav button[data-view="%s"]' % view)
                 pg.wait_for_timeout(250)
+            if view in ('kod', None):
+                # v4.3.1: "Kod yaz" + altındaki ipucu satırı AYNI ANDA (ek kaydırma olmadan) bandın üstünde ve en üstte
+                both = pg.evaluate(NOW_VIS, '#clickBtn, .click-hint')
+                check(tagv + ' Kod yaz + hint line visible together above the band, on top (no extra scroll)', len(both) == 2 and not all_ok(both), both)
+                note('%s hint bottom=%d band top=%d (clickBtn %s)' % (tagv, both[1]['r'][3], round(pg.evaluate("document.querySelector('[data-test=tel-banner]').getBoundingClientRect().top")), both[0]['r']))
             rows = vis(pg, sel)
             checked += rows
             check(tagv + ' %s: %d targets fully visible, not under the band/nav' % (view or 'desktop', len(rows)), rows and not all_ok(rows), all_ok(rows) or len(rows))
