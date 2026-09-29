@@ -624,6 +624,10 @@ with sync_playwright() as p:
     pg = open_page(ctx)
     ev(pg, "Kodhane.setView('prestige'); Kodhane.selectTab('stats', true)")
     pg.click('#resetBtn'); pg.wait_for_selector('#resetHold')
+    # ekran görüntüsü açılış animasyonu (pop .25s) bittikten sonra: pencerenin animasyonları biter + 600 ms
+    pg.evaluate("() => Promise.all(Array.from(document.querySelectorAll('#modal, #modal *')).flatMap(e => e.getAnimations()).map(a => a.finished.catch(() => null)))")
+    pg.wait_for_timeout(600)
+    check('screenshot: reset dialog fully open (opacity 1, no running animation)', ev(pg, "(() => { const c = document.querySelector('#modal .modal-card'); return !!c && getComputedStyle(c).opacity === '1' && c.getAnimations().length === 0; })()"))
     pg.screenshot(path=SS + 'v42-reset-dialog-mobile.png')
     pg.locator('#resetHold').scroll_into_view_if_needed()
     bb = pg.locator('#resetHold').bounding_box()
