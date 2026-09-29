@@ -305,8 +305,8 @@ check('reset.prestigeHint (r3)', K.RESET_TEXT['reset.prestigeHint'] === "Başar�
   check('olderTab: markOlderTab blocks writes (same flag as newerSave), first detail kept', K2.writesBlocked() && K2.olderTab && K2.olderTab.detail === 'sent saveVersion 5, stored saveVersion 6', K2.olderTab);
   K2.state.runEarned = 4e10; const n = K2.state.eventLog.length; K2.doPrestige();
   check('olderTab: prestige / event log blocked', K2.state.eventLog.length === n);
-  const T = { title: 'Oyunun yeni sürümü var', text: 'Hesabına oyunun yeni sürümünden kayıt yapıldı, sayfayı yenileyince güncel kaydın yüklenecek.',
-    btn: 'Sayfayı yenile', textShort: 'Sayfayı yenile, güncel kaydın yüklenecek.' };
+  const T = { title: 'Oyunun yeni sürümü var', text: 'Hesabına oyunun yeni sürümünden kayıt yapıldı, bu sekmede oynadıkların artık kaydedilmiyor.',
+    btn: 'Sayfayı yenile', textShort: 'Bu sekmede oynadıkların kaydedilmiyor.' };
   check('olderTab texts verbatim (update.olderTab.title/text/btn/textShort)', Object.keys(T).every((k) => K2.UI_TEXT['update.olderTab.' + k] === T[k]));
   const keys = Object.keys(K2.UI_TEXT), i = keys.indexOf('update.newerSave.btn');
   check('olderTab keys placed right below update.newerSave.*', JSON.stringify(keys.slice(i + 1, i + 5)) === JSON.stringify(['update.olderTab.title', 'update.olderTab.text', 'update.olderTab.btn', 'update.olderTab.textShort']), keys.slice(i - 2, i + 5));

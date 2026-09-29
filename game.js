@@ -173,9 +173,9 @@
     // v4.4: eski sekme uyarısı (Yazı, kodhane-v4.4-eski-sekme-yazi-r1): bulut kaydı yazılırken sunucu 426 / PT426
     // save_version_too_old döndü (hesaptaki kayıt bu istemciden yeni sürümle yazılmış). Aynı bantta newerSave'den önceliklidir.
     "update.olderTab.title": "Oyunun yeni sürümü var",
-    "update.olderTab.text": "Hesabına oyunun yeni sürümünden kayıt yapıldı, sayfayı yenileyince güncel kaydın yüklenecek.",
+    "update.olderTab.text": "Hesabına oyunun yeni sürümünden kayıt yapıldı, bu sekmede oynadıkların artık kaydedilmiyor.",
     "update.olderTab.btn": "Sayfayı yenile",
-    "update.olderTab.textShort": "Sayfayı yenile, güncel kaydın yüklenecek."
+    "update.olderTab.textShort": "Bu sekmede oynadıkların kaydedilmiyor."
   };
   function uiText(key, vars) {
     var t = UI_TEXT[key];

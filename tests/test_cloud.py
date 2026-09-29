@@ -1127,8 +1127,8 @@ with sync_playwright() as p:
     posts0 = fake.count('POST', SAVES_PATH)
     r = page.evaluate('Kodhane.cloud.push(true)')
     page.wait_for_timeout(300)
-    TT = {'title': 'Oyunun yeni sürümü var', 'text': 'Hesabına oyunun yeni sürümünden kayıt yapıldı, sayfayı yenileyince güncel kaydın yüklenecek.',
-          'btn': 'Sayfayı yenile', 'textShort': 'Sayfayı yenile, güncel kaydın yüklenecek.'}
+    TT = {'title': 'Oyunun yeni sürümü var', 'text': 'Hesabına oyunun yeni sürümünden kayıt yapıldı, bu sekmede oynadıkların artık kaydedilmiyor.',
+          'btn': 'Sayfayı yenile', 'textShort': 'Bu sekmede oynadıkların kaydedilmiyor.'}
     check('426 texts: update.olderTab.* verbatim (Yazı eski-sekme r1)', all(page.evaluate("Kodhane.UI_TEXT['update.olderTab.%s']" % k) == v for k, v in TT.items())
           and page.evaluate("Object.keys(Kodhane.UI_TEXT).filter(k => /saveTooOld/.test(k)).length") == 0)
     check('426: push fails once (the 426 write), server row unchanged', r is False and fake.count('POST', SAVES_PATH) == posts0 + 1 and json.dumps(fake.rows[UID_O], sort_keys=True) == row_before,
