@@ -712,11 +712,54 @@
     push(false).then(function () { C.keepalive = false; }, function () { C.keepalive = false; });
   }
 
-  function friendlyError(e, fallback) {
+  // Giriş e-postası gönderim hataları (Yazı r1, "Kod gönderim hataları"). Resend kotası üç oyunda ortak.
+  var CLOUD_TEXT = {
+    'cloud.rateLimit': 'Çok fazla deneme oldu, birkaç dakika sonra tekrar dene.',
+    'cloud.quotaFull': 'Şu an giriş e-postası gönderemiyoruz. Giriş yapmadan oynamaya devam et, oyun bu cihazda kaydediliyor. Sonra tekrar dene.',
+    'cloud.sendError': 'Giriş e-postası şu an gönderilemedi. Biraz sonra tekrar dene.',
+    'cloud.sendFail': 'Bağlantı gönderilemedi. Adresi kontrol edip tekrar dene.'
+  };
+  var NET_TEXT = 'Bulut hizmetine şu an ulaşılamıyor. Oyun bu cihazda kaydedilmeye devam ediyor.';
+  // supabase-js AuthApiError: message (GoTrue msg/message), status (HTTP), code (GoTrue error_code ya da yeni API'de code)
+  function errParts(e) {
     var msg = (e && (e.message || e.error_description || e.msg)) || '';
-    var status = e && (e.status || e.code);
-    if (!online() || /Failed to fetch|NetworkError|offline|sdk-/i.test(msg)) return 'Bulut hizmetine şu an ulaşılamıyor. Oyun bu cihazda kaydedilmeye devam ediyor.';
-    if (status === 429 || /rate limit|too many|security purposes/i.test(msg)) return 'Çok fazla deneme yapıldı. Lütfen birkaç dakika sonra tekrar dene.';
+    var status = e && typeof e.status === 'number' ? e.status : (e && typeof e.code === 'number' ? e.code : 0);
+    var code = e && typeof e.code === 'string' ? e.code : (e && typeof e.error_code === 'string' ? e.error_code : '');
+    return { msg: String(msg), status: status, code: code };
+  }
+  function isNetErr(e) { return !online() || /Failed to fetch|NetworkError|offline|sdk-/i.test(errParts(e).msg); }
+  // Hız sınırı: HTTP 429, GoTrue over_email_send_rate_limit / over_request_rate_limit, "For security purposes..." mesajı
+  function isRateLimit(e) {
+    var x = errParts(e);
+    return x.status === 429 || x.code === 'over_email_send_rate_limit' || x.code === 'over_request_rate_limit'
+      || /rate limit|too many|security purposes/i.test(x.msg);
+  }
+  // Gönderim hatası anahtarı: 'network' | 'rateLimit' | 'quotaFull' | 'sendFail' | 'sendError'
+  //  quotaFull: SMTP/Resend gönderimi başarısız (kota dahil). GoTrue bunu HTTP 500 + unexpected_failure,
+  //             "Error sending magic link email" / "Error sending confirmation email" ile döner. supabase-js 2.117.2 her 5xx'i
+  //             AuthRetryableFetchError yapar (status kalır, error_code düşer), bu yüzden asıl eşleşme mesaj metnidir;
+  //             status 500 + code unexpected_failure kuralı yalnızca kodu taşıyan (ileriki) SDK sürümleri için.
+  //  sendFail:  yalnızca adres hatası: validation_failed / email_address_invalid ya da "invalid format" / "... is invalid".
+  //  sendError: diğer her şey (502/503/504, beklenmeyen gövde, otp_disabled, email_address_not_authorized ...).
+  function sendErrorKey(e) {
+    if (isNetErr(e)) return 'network';
+    if (isRateLimit(e)) return 'rateLimit';
+    var x = errParts(e);
+    if (/error sending .*(e-?mail|mail|link|otp)|smtp|gomail/i.test(x.msg) || (x.status === 500 && x.code === 'unexpected_failure')) return 'quotaFull';
+    if (x.code === 'email_address_invalid' || (x.code === 'validation_failed' && /e-?mail/i.test(x.msg))
+      || /unable to validate email|invalid format|email address .*is invalid/i.test(x.msg)) return 'sendFail';
+    return 'sendError';
+  }
+  function sendErrorText(e, resend) {
+    var k = sendErrorKey(e);
+    if (k === 'network') return NET_TEXT;
+    // tekrar gönderimde "diğer hata" metni eskisi gibi (Yazı: "aynı işi görüyor, kalabilir")
+    if (k === 'sendError' && resend) return 'Kod tekrar gönderilemedi. Biraz sonra yeniden dene.';
+    return CLOUD_TEXT['cloud.' + k];
+  }
+  function friendlyError(e, fallback) {
+    if (isNetErr(e)) return NET_TEXT;
+    if (isRateLimit(e)) return CLOUD_TEXT['cloud.rateLimit'];
     return fallback;
   }
 
@@ -811,7 +854,7 @@
         : '📧 Giriş e-postası gönderildi. (Gelmezse gereksiz klasörüne bak.)');
       setTimeout(function () { try { el.code.value = ''; el.code.focus(); } catch (e) {} }, 50);
     }).catch(function (e) {
-      setStatus('error', friendlyError(e, resend ? 'Kod tekrar gönderilemedi. Biraz sonra yeniden dene.' : 'Bağlantı gönderilemedi. Adresi kontrol edip tekrar dene.'));
+      setStatus('error', sendErrorText(e, resend));
     });
   }
   function verifyCode(ev) {
@@ -945,6 +988,7 @@
     resetSave: function () { return K.beforeReset() || Promise.reject(new Error('not-signed-in')); },
     restoreSave: restoreSave, latestBackup: latestBackup, handleStale: handleStale, mock: function () { return useMock() ? mock() : null; },
     hold: hold, release: releaseHold, gate: gate, staleKind: staleKind,
+    TEXT: CLOUD_TEXT, sendErrorKey: sendErrorKey,
     BACKUP_KEY: BACKUP_KEY, REV_KEY: REV_KEY, WRITER_KEY: WRITER_KEY, isConfigured: function () { return configured; }
   };
 

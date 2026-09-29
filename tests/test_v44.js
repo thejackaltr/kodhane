@@ -212,9 +212,9 @@ check('reset.prestigeHint (r3)', K.RESET_TEXT['reset.prestigeHint'] === "Başar�
 
 // ---------------------------------------------------------------- v4.4: kayıt içi olay listesi
 {
-  const LOGP = "Kaydın, son 20 önemli olayı da kendi içinde tutar: Halka Arz, Yatırım turu ve sıfırlama, ayrıca bu olaylardan önceki ve sonraki hisse ve Borsa Payı sayıların. Bu liste yalnızca kaydının içinde durur. Bulut kaydı kullanıyorsan kaydınla birlikte buluta gider, başka hiçbir yere gönderilmez. Bir destek talebinde neyin ne zaman olduğunu görmek için kullanılır.";
+  const LOGP = "Kaydın, son 20 önemli olayı da kendi içinde tutar: Halka Arz, Yatırım turu ve sıfırlama, ayrıca bu olaylardan önceki ve sonraki hisse ve Borsa Payı sayıların. Bu liste yalnızca kaydının içinde durur. Bulut kaydı kullanıyorsan kaydınla birlikte buluta gider, başka hiçbir yere gönderilmez. Bir destek talebinde neyin ne zaman olduğunu görmek için kullanılır. Kaydını sıfırlasan da bu liste kalır. Hesabın silinirse liste sunucudan silinir, bu cihazdaki kaydınla birlikte cihazında kalır.";
   const iLog = DET.indexOf(LOGP), iCtl = DET.findIndex((x) => x.startsWith('Bu bilgilerin veri sorumlusu'));
-  check('privacy: event-log paragraph (Yazı r1, cümle 1) right before the data-controller paragraph, no server-copies paragraph', iLog > 0 && iCtl === iLog + 1 && !DET.some((x) => x.includes('kopyaları')), [iLog, iCtl]);
+  check('privacy: event-log paragraph (Yazı r1 cümle 1 + reset/deletion sentences) right before the data-controller paragraph, no server-copies paragraph', iLog > 0 && iCtl === iLog + 1 && !DET.some((x) => x.includes('kopyaları')), [iLog, iCtl]);
   check('privacy: "çerez kullanmaz" sentence untouched (pending decision)', DET.some((x) => x.includes("Cloudflare'in açıklamasına göre bu araç çerez kullanmaz ve ziyaretçileri tanımaya çalışmaz.")));
   check('CFG.eventLog.max = 20 (matches "son 20" in the privacy text)', K.CFG.eventLog.max === 20 && LOGP.includes('son 20'));
   const KEYS = '["type","at","sharesBefore","sharesAfter","paysBefore","paysAfter"]';
@@ -256,6 +256,38 @@ check('reset.prestigeHint (r3)', K.RESET_TEXT['reset.prestigeHint'] === "Başar�
   check('Umami event field sets unchanged by the log', JSON.stringify(Object.keys(K.ipoEventData(0, 1))) === '["stage_id","pays","ipo_number"]' &&
     (() => { fresh(); K.state.startedAt = NOW - HOUR; return JSON.stringify(Object.keys(K.treeEventData(NOW))) === '["hours_since_start","ipo_number","started_v44"]'; })());
   check('no event-log field reaches track(): trackLog data never has log keys', (K.trackLog || []).every((x) => !x[2] || !('eventLog' in x[2]) && !('sharesBefore' in x[2])));
+  // Kaydı sıfırla: liste korunur + sıfırlama girdisi, tavan aşılmaz (20 girdi + sıfırlama -> 20, en eski düşer, son girdi reset)
+  {
+    fresh(); for (let i = 0; i < 20; i++) { K.state.shares = i; K.state.runEarned = 1e8; NOW += 1; K.doPrestige(); }
+    const first = K.state.eventLog[0], second = K.state.eventLog[1];
+    K.state.shares = 777; K.state.ipoShares = 9; NOW += 5;
+    const C2 = K.resetCarryLog(K.state), last = C2[C2.length - 1];
+    check('reset with 20 entries: still 20 (cap), oldest dropped, last is reset', K.state.eventLog.length === 20 && C2.length === 20 &&
+      JSON.stringify(C2[0]) === JSON.stringify(second) && !C2.some((x) => JSON.stringify(x) === JSON.stringify(first)) && last.type === 'reset', [C2.length, C2[0], last]);
+    check('reset entry: exact fields, time now, shares 777 -> 0, pays 9 -> 0', JSON.stringify(Object.keys(last)) === KEYS && last.at === NOW &&
+      last.sharesBefore === 777 && last.sharesAfter === 0 && last.paysBefore === 9 && last.paysAfter === 0, last);
+    check('reset carry does not modify the live log (built as a copy)', K.state.eventLog.length === 20 && K.state.eventLog[19].type === 'prestige');
+    fresh(); K.state.shares = 3;
+    const C1 = K.resetCarryLog(K.state);
+    check('reset with empty log: one reset entry', C1.length === 1 && C1[0].type === 'reset' && C1[0].sharesBefore === 3);
+    let big = []; for (let i = 0; i < 25; i++) big.push({ type: 'ipo', at: NOW - 100 + i, sharesBefore: i, sharesAfter: i, paysBefore: 0, paysAfter: 1 });
+    K.state.eventLog = big;
+    const C3 = K.resetCarryLog(K.state);
+    check('reset on an over-long (hand-edited) log: capped at 20, last is reset', C3.length === 20 && C3[19].type === 'reset' && C3[0].sharesBefore === 6, [C3.length, C3[0]]);
+  }
+  // Kaydı sıfırla = newState: startedVersion bu sürüm (tree_full'da started_v44 = yes), başlangıç zamanı yeni
+  {
+    fresh(); K.deserialize(JSON.stringify({ version: 4, saveVersion: 4, shares: 5, stage: 6, stageBest: 6, startedAt: NOW - 90 * 24 * HOUR }));
+    check('old save before reset: startedVersion "" -> started_v44 no', K.state.startedVersion === '' && K.treeEventData(NOW).started_v44 === 'no');
+    K.state = K.newState();
+    check('after Kaydı sıfırla (newState): startedVersion = ' + K.VERSION + ', started_v44 yes, startedAt now', K.state.startedVersion === K.VERSION &&
+      K.treeEventData(Date.now()).started_v44 === 'yes' && Math.abs(K.state.startedAt - Date.now()) < 5000, [K.state.startedVersion, K.state.startedAt]);
+  }
+  // Yazı r2: "Kaydı sıfırla" penceresi (liste korunur)
+  check('reset.body (Yazı r2) exact', K.RESET_TEXT['reset.body'] === 'Oyuna en baştan başlarsın. Kalacaklar dışında her şey silinir, silinecekleri seçemezsin.');
+  check('reset.keepList: "Son olayların listesi" between "Kodhane hesabın" and the settings line', JSON.stringify(K.RESET_TEXT['reset.keepList']) ===
+    JSON.stringify(['Tüm Zamanlar puanın ve sıradaki yerin', 'Takma adın', 'Kodhane hesabın', 'Son olayların listesi', 'Ses, titreşim ve gizlilik ayarların']));
+  check('no hidden placeholder key left (reset.keepEventLog)', !('reset.keepEventLog' in K.RESET_TEXT));
   // yazma kapalıyken girdi yok
   fresh(); K.state.runEarned = 4e10; K.guardFuture({ version: K.SAVE_VERSION + 1 }, 'test');
   const before = K.state.eventLog.length; K.doPrestige();

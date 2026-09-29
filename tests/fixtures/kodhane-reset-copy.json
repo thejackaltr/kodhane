@@ -1,10 +1,10 @@
 {
   "reset.title": "Kaydın sıfırlansın mı?",
-  "reset.body": "Oyuna en baştan başlarsın. Sıfırlama kaydının tamamını siler, bir kısmını seçip tutamazsın.",
+  "reset.body": "Oyuna en baştan başlarsın. Kalacaklar dışında her şey silinir, silinecekleri seçemezsin.",
   "reset.deleteTitle": "Silinecekler",
   "reset.deleteList": ["Para ve kazanç", "Çalışanlar", "Geliştirmeler", "Başarımlar", "Yatırım turu hisseleri ve yatırım turu sayısı", "Halka Arz, Borsa Payları ve ağaç", "Aşama ilerlemesi", "Haberler", "İtibar ve günlük seri"],
   "reset.keepTitle": "Kalacaklar",
-  "reset.keepList": ["Tüm Zamanlar puanın ve sıradaki yerin", "Takma adın", "Kodhane hesabın", "Ses, titreşim ve gizlilik ayarların"],
+  "reset.keepList": ["Tüm Zamanlar puanın ve sıradaki yerin", "Takma adın", "Kodhane hesabın", "Son olayların listesi", "Ses, titreşim ve gizlilik ayarların"],
   "reset.prestigeHint": "Başarımlarını, itibarını ve günlük serini korumak istiyorsan sıfırlamak yerine yatırım turuna çık. Yatırım turunda bunlar korunur, üstüne bir üretim bonusu kazanırsın. Bu bonus Halka Arz'da da silinmez.",
   "reset.prestigeBtn": "Yatırım turuna git",
   "reset.backup": "Silinen kayıt {d} gün boyunca yedekte kalır. Bu süre içinde geri yükleyebilirsin.",

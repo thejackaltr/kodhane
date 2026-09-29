@@ -103,6 +103,7 @@ class FakeSB:
         self.stale = []   # 409 yanıtları: (uid, message)
         self.last_post = None  # (Prefer, select) of the last save POST
         self.fail_rpcs = set()  # bu RPC'ler 503 döner (hata metni testleri)
+        self.deleted = False    # v4.4: hesap sunucuda silindi (kullanıcı ve satırı yok)
 
     def reply(self, route, status, body=None):
         route.fulfill(status=status, headers=dict(CORS, **{'content-type': 'application/json'}), body='' if body is None else json.dumps(body))
@@ -115,6 +116,11 @@ class FakeSB:
         self.log.append((req.method, u.path))
         c = claims_of(req.headers.get('authorization', ''))
         uid = c['sub'] if c else None
+        if self.deleted and uid:
+            if u.path == '/auth/v1/user':
+                return self.reply(route, 403, {'code': 'user_not_found', 'message': 'User from sub claim in JWT does not exist'})
+            if u.path == '/rest/v1/kodhane_saves' or u.path.startswith('/rest/v1/rpc/'):
+                return self.reply(route, 401, {'code': 'PGRST301', 'message': 'JWT invalid'})
         if u.path == '/auth/v1/user':
             return self.reply(route, 200, session_obj(uid, c.get('email'))['user']) if c else self.reply(route, 401, {'msg': 'invalid JWT'})
         if u.path in ('/auth/v1/logout', '/auth/v1/token'):
@@ -287,6 +293,10 @@ with sync_playwright() as p:
     txt = pg.inner_text('#modal')
     check('guest dialog: title/body/lists/hint from copy', COPY['reset.title'] in txt and COPY['reset.body'] in txt and COPY['reset.deleteTitle'] in txt
           and all(x in txt for x in COPY['reset.deleteList'] + COPY['reset.keepList']) and COPY['reset.prestigeHint'] in txt, txt)
+    kl = ev(pg, "Array.from(document.querySelectorAll('#modal .reset-col.keep li')).map(li => li.textContent)")
+    check('v4.4 dialog: keep list exactly as copy, incl. "Son olayların listesi" after "Kodhane hesabın" (Yazı r2)', kl == COPY['reset.keepList'] and
+          kl.index('Son olayların listesi') == kl.index('Kodhane hesabın') + 1 and len(kl) == 5, kl)
+    check('v4.4 dialog: reset.body (Yazı r2)', COPY['reset.body'] == 'Oyuna en baştan başlarsın. Kalacaklar dışında her şey silinir, silinecekleri seçemezsin.' and COPY['reset.body'] in txt)
     check('guest dialog: prestige button + cancel + hold button', pg.inner_text('#resetPrestige') == COPY['reset.prestigeBtn'] and
           COPY['reset.cancel'] in pg.inner_text('#modalActions') and pg.inner_text('#resetHold') == COPY['reset.hold'])
     check('guest dialog: no backup/restore texts', not any(x in txt for x in SIGNED_ONLY) and pg.is_hidden('#restoreBox'), txt)
@@ -331,6 +341,8 @@ with sync_playwright() as p:
     check('keyboard (Space) hold resets the save', st['clicks'] == 0 and st['achievements'] == [] and st['reputation'] == 0 and st['daily']['streak'] == 0 and st['shares'] == 0)
     check_pref('guest reset keeps the counter choice (off) and no band', pg, 'off')
     check('v4.4 guest reset keeps the event log and appends a reset entry (shares 3 -> 0, pays 0 -> 0, time)', reset_entry_ok(st.get('eventLog')), st.get('eventLog'))
+    check('v4.4 guest reset: startedVersion rewritten to this version (old save had none) -> started_v44 yes',
+          st.get('startedVersion') == ev(pg, 'Kodhane.VERSION') == '4.4.0' and ev(pg, 'Kodhane.treeEventData(Date.now()).started_v44') == 'yes', st.get('startedVersion'))
     ev(pg, 'Kodhane.save()')
     check('v4.4 guest reset: event log in the new local save', reset_entry_ok(json.loads(ev(pg, "localStorage.getItem('%s')" % SAVE_KEY)).get('eventLog')))
     check('settings kept after reset (separate key)', ev(pg, "localStorage.getItem('kodhane_ayarlar_v1') === null || typeof JSON.parse(localStorage.getItem('kodhane_ayarlar_v1')).sound === 'boolean'"))
@@ -424,6 +436,8 @@ with sync_playwright() as p:
     check_pref('signed-in reset keeps the counter choice (on)', pg, 'on')
     check('v4.4 signed-in reset: local event log kept + reset entry', reset_entry_ok(ev(pg, 'Kodhane.state.eventLog')), ev(pg, 'Kodhane.state.eventLog'))
     check('v4.4 signed-in reset: cloud row (after reconcile) carries the same log', reset_entry_ok(row['data'].get('eventLog')), row['data'].get('eventLog'))
+    check('v4.4 signed-in reset: startedVersion = 4.4.0 locally and in the cloud row', ev(pg, 'Kodhane.state.startedVersion') == '4.4.0' and row['data'].get('startedVersion') == '4.4.0',
+          [ev(pg, 'Kodhane.state.startedVersion'), row['data'].get('startedVersion')])
     check('signed-in: undo bar visible', not pg.is_hidden('#undoBar') and pg.inner_text('#undoText') == COPY['reset.done'])
     pg.click('#undoBtn')
     wait_js(pg, "Kodhane.lastUndo", 8000)
@@ -441,6 +455,47 @@ with sync_playwright() as p:
     ev(pg, "Kodhane.selectTab('stats')"); pg.wait_for_timeout(500)
     check('after undo no restore box (newest backup is the restore point)', pg.is_hidden('#restoreBox'))
     check('signed-in: no page errors', not pg.errs, pg.errs)
+    ctx.close()
+
+    # ================================================================ 4b) v4.4: 20 olay + sıfırlama -> hâlâ 20 (en eski düşer, son girdi sıfırlama)
+    LOG20 = [{'type': 'prestige', 'at': 1790000000000 + i * 1000, 'sharesBefore': i, 'sharesAfter': i + 1, 'paysBefore': 0, 'paysAfter': 0} for i in range(20)]
+    ctx = new_ctx(save=dict(seed_save(), eventLog=LOG20), tel='off')
+    pg = open_page(ctx)
+    check('v4.4 cap: 20 entries loaded', len(ev(pg, 'Kodhane.state.eventLog')) == 20)
+    open_dialog(pg); hold_reset(pg)
+    lg = ev(pg, 'Kodhane.state.eventLog')
+    check('v4.4 cap: after reset still 20, oldest dropped, the rest in order, last = reset (shares 3 -> 0)', len(lg) == 20 and lg[:19] == LOG20[1:] and lg[19]['type'] == 'reset'
+          and lg[19]['sharesBefore'] == 3 and lg[19]['sharesAfter'] == 0 and abs(lg[19]['at'] - time.time() * 1000) < 120000, [len(lg), lg[0], lg[-1]])
+    ev(pg, 'Kodhane.save()')
+    check('v4.4 cap: new local save holds the same 20', json.loads(ev(pg, "localStorage.getItem('%s')" % SAVE_KEY)).get('eventLog') == lg)
+    check('v4.4 cap: no page errors', not pg.errs, pg.errs)
+    ctx.close()
+
+    # ================================================================ 4c) v4.4: hesap sunucuda silinir -> bu cihazdaki olay listesi AYNEN kalır (Ürün kararı)
+    # Kodhane'de "Hesabımı sil" düğmesi yok (silme info@teserix.com ile, sunucuda). Burada sunucu tarafı taklit edilir:
+    # kullanıcı + satır gider, oturum geçersizleşir; istemci çıkış yapar, sayfa yeniden açılır. Yerel liste bayt bayt aynı kalmalı.
+    fake = FakeSB()
+    LOG3 = SEED_LOG + [{'type': 'reset', 'at': 1790000200000, 'sharesBefore': 3, 'sharesAfter': 0, 'paysBefore': 0, 'paysAfter': 0}]
+    ctx = new_ctx(fake, save=dict(seed_save(clicks=20, total=2000.0), eventLog=LOG3), signed=True, tel='off')
+    pg = open_page(ctx)
+    check('v4.4 account deletion: signed in, cloud row has the log', wait_js(pg, 'Kodhane.cloud.state.reconciled && Kodhane.cloud.state.lastPushAt > 0')
+          and fake.rows[UID]['data'].get('eventLog') == LOG3)
+    carry = json.dumps({'epoch': 1, 'log': LOG3})
+    ev(pg, "localStorage.setItem(Kodhane.LOG_CARRY_KEY, %s)" % json.dumps(carry))
+    ev(pg, 'Kodhane.save()')
+    before = json.dumps(json.loads(ev(pg, "localStorage.getItem('%s')" % SAVE_KEY))['eventLog'], sort_keys=False)
+    # sunucu: hesap ve satır silinir
+    fake.rows.pop(UID, None); fake.deleted = True
+    ev(pg, 'Kodhane.state.clicks += 1'); ev(pg, 'Kodhane.cloud.push(true).catch(() => {})'); pg.wait_for_timeout(600)
+    ev(pg, 'Kodhane.cloud.signOut()'); wait_js(pg, '!Kodhane.cloud.state.user', 8000)
+    mid = json.dumps(ev(pg, 'Kodhane.state.eventLog'))
+    pg.reload(); pg.wait_for_selector('#clickBtn'); pg.wait_for_timeout(500)
+    after = json.dumps(json.loads(ev(pg, "localStorage.getItem('%s')" % SAVE_KEY))['eventLog'], sort_keys=False)
+    check('v4.4 account deletion: local event log byte-equal (in memory after sign-out and in the save after reload)',
+          before == json.dumps(LOG3) and mid == before and after == before and json.dumps(ev(pg, 'Kodhane.state.eventLog')) == before, [before, mid, after])
+    check('v4.4 account deletion: kodhane_event_log_carry left as-is', ev(pg, 'localStorage.getItem(Kodhane.LOG_CARRY_KEY)') == carry)
+    check('v4.4 account deletion: no cloud row recreated after deletion', UID not in fake.rows)
+    check('v4.4 account deletion: guest afterwards, game keeps its local save', not ev(pg, '!!Kodhane.cloud.state.user') and ev(pg, 'Kodhane.state.clicks') >= 20)
     ctx.close()
 
     # ================================================================ 5) girişli: Geri al süresi dolar -> Yedekten geri yükle

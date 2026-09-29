@@ -116,6 +116,7 @@ class FakeSupabase:
         self.otp = []
         self.verify = []
         self.valid_code = '123456'
+        self.otp_fail = None  # v4.4: (status, body, extra headers) -> /otp hata yanıtı (gönderim hatası metinleri)
         self.down = False
         self.profiles = {}   # uid -> nickname
         self.others = []     # takma adlı diğer oyuncular: (nickname, score, stage)
@@ -175,6 +176,9 @@ class FakeSupabase:
         if u.path == '/auth/v1/otp':
             body = json.loads(req.post_data or '{}')
             self.otp.append({'email': body.get('email'), 'redirect_to': (q.get('redirect_to') or [None])[0], 'create_user': body.get('create_user')})
+            if self.otp_fail:
+                st, eb, hd = self.otp_fail
+                return self.reply(route, st, eb, hd)
             return self.reply(route, 200, {})
         if u.path == '/auth/v1/verify' and method == 'POST':
             body = json.loads(req.post_data or '{}')
@@ -497,6 +501,78 @@ with sync_playwright() as p:
     page.tap('#accChange'); page.wait_for_timeout(150)
     check('otp: change email -> back to email form, pending cleared', page.is_visible('#accEmail') and page.is_hidden('#accCodeForm')
           and page.evaluate("localStorage.getItem('kodhane_auth_pending')") is None)
+    ctx.close()
+
+    # ------------------------------------------------------------ 3e) v4.4: giriş e-postası gönderim hataları (Yazı r1 "Kod gönderim hataları"; /otp sahte yanıtları)
+    TXT = {'rateLimit': 'Çok fazla deneme oldu, birkaç dakika sonra tekrar dene.',
+           'quotaFull': 'Şu an giriş e-postası gönderemiyoruz. Giriş yapmadan oynamaya devam et, oyun bu cihazda kaydediliyor. Sonra tekrar dene.',
+           'sendError': 'Giriş e-postası şu an gönderilemedi. Biraz sonra tekrar dene.',
+           'sendFail': 'Bağlantı gönderilemedi. Adresi kontrol edip tekrar dene.'}
+    NET_T = 'Bulut hizmetine şu an ulaşılamıyor. Oyun bu cihazda kaydedilmeye devam ediyor.'
+    OFF_T = 'İnternet bağlantısı yok. Çevrimiçi olunca tekrar dene.'
+    RESEND_ERR = 'Kod tekrar gönderilemedi. Biraz sonra yeniden dene.'
+    NEWAPI = {'x-supabase-api-version': '2024-01-01'}
+    CASES = [
+        ('429 over_email_send_rate_limit (old body)', (429, {'code': 429, 'error_code': 'over_email_send_rate_limit', 'msg': 'email rate limit exceeded'}, None), 'rateLimit'),
+        ('429 over_request_rate_limit (new API body)', (429, {'code': 'over_request_rate_limit', 'message': 'Request rate limit reached'}, NEWAPI), 'rateLimit'),
+        ('429 "For security purposes" cooldown', (429, {'code': 429, 'error_code': 'over_email_send_rate_limit', 'msg': 'For security purposes, you can only request this after 41 seconds.'}, None), 'rateLimit'),
+        ('429 with no code/message', (429, {}, None), 'rateLimit'),
+        ('500 unexpected_failure "Error sending magic link email" (SMTP/Resend)', (500, {'code': 500, 'error_code': 'unexpected_failure', 'msg': 'Error sending magic link email'}, None), 'quotaFull'),
+        ('500 unexpected_failure "Error sending confirmation email" (new user)', (500, {'code': 500, 'error_code': 'unexpected_failure', 'msg': 'Error sending confirmation email'}, None), 'quotaFull'),
+        ('500 unexpected_failure "Error sending magic link email" (new API body)', (500, {'code': 'unexpected_failure', 'message': 'Error sending magic link email'}, NEWAPI), 'quotaFull'),
+        # supabase-js 2.117.2 turns every 5xx into AuthRetryableFetchError (status kept, error_code dropped): a 500 whose message is not
+        # GoTrue's "Error sending ... email" cannot be told apart from any other server fault -> sendError
+        ('500 unexpected_failure, generic message (not identifiable as SMTP)', (500, {'code': 'unexpected_failure', 'message': 'Internal server error'}, NEWAPI), 'sendError'),
+        ('400 validation_failed invalid format', (400, {'code': 400, 'error_code': 'validation_failed', 'msg': 'Unable to validate email address: invalid format'}, None), 'sendFail'),
+        ('400 email_address_invalid', (400, {'code': 400, 'error_code': 'email_address_invalid', 'msg': 'Email address "a@b.co" is invalid'}, None), 'sendFail'),
+        ('400 email_address_not_authorized (server config, not the address)', (400, {'code': 400, 'error_code': 'email_address_not_authorized', 'msg': 'Email address not authorized'}, None), 'sendError'),
+        ('422 otp_disabled', (422, {'code': 422, 'error_code': 'otp_disabled', 'msg': 'Signups not allowed for otp'}, None), 'sendError'),
+        ('500 without code', (500, {'message': 'boom'}, None), 'sendError'),
+        ('503 service unavailable (retryable)', (503, {'message': 'service unavailable'}, None), 'sendError'),
+        ('400 validation_failed on another field (not email)', (400, {'code': 400, 'error_code': 'validation_failed', 'msg': 'Invalid redirect_to'}, None), 'sendError'),
+    ]
+    fake = FakeSupabase()
+    ctx = new_ctx(fake, mobile=True)
+    page, errs, perrs = open_page(ctx)
+    page.tap('#accountBtn'); wait_until(page, '!!Kodhane.cloud.state.client')
+    check('send errors: texts exposed as keys, exactly Yazı r1', page.evaluate('Kodhane.cloud.TEXT') == {'cloud.' + k: v for k, v in TXT.items()}, page.evaluate('Kodhane.cloud.TEXT'))
+
+    def send_once(sel='#accSend'):
+        page.evaluate("Kodhane.cloud.state.cooldownUntil = 0; Kodhane.cloud.state.status = 'guest'; document.getElementById('accMsg').textContent = ''")
+        n0 = len(fake.otp)
+        page.tap(sel)
+        wait_until(page, "Kodhane.cloud.state.status === 'error' || Kodhane.cloud.state.status === 'guest' && document.getElementById('accMsg').textContent !== ''", 8000)
+        return page.inner_text('#accMsg'), len(fake.otp) - n0
+
+    for name, fail, key in CASES:
+        fake.otp_fail = fail
+        page.fill('#accEmail', 'hata@example.com')
+        msg, n = send_once()
+        check('send error [%s] -> %s' % (name, key), msg == TXT[key] and n == 1 and page.evaluate("Kodhane.cloud.state.status") == 'error'
+              and page.is_visible('#accEmail'), [msg, n])
+    # sendFail yalnızca adres hatasında: diğer hiçbir durumda "Adresi kontrol" çıkmadı
+    check('send errors: sendFail only for the two invalid-address cases', sum(1 for _, _, k in CASES if k == 'sendFail') == 2)
+    # ağ hatası (istek kurulamadı) ve çevrimdışı: eski metinler aynen
+    fake.otp_fail = None; fake.down = True
+    msg, n = send_once()
+    check('send error [network failure] -> unchanged network text', msg == NET_T, msg)
+    fake.down = False
+    ctx.set_offline(True)
+    msg, n = send_once()
+    check('send error [offline] -> unchanged "İnternet bağlantısı yok" text, no request', msg == OFF_T and n == 0, [msg, n])
+    ctx.set_offline(False)
+    # tekrar gönderim (kod adımı): hız sınırı / kota yeni metinler; diğer hatada eski tekrar gönderim metni
+    msg, n = send_once()
+    ok = wait_until(page, "!document.getElementById('accCodeForm').classList.contains('hidden')")
+    check('send errors: a normal send still works afterwards (code step)', ok and n == 1)
+    for fail, want, name in [((429, {'code': 429, 'error_code': 'over_email_send_rate_limit', 'msg': 'email rate limit exceeded'}, None), TXT['rateLimit'], 'rateLimit'),
+                             ((500, {'code': 500, 'error_code': 'unexpected_failure', 'msg': 'Error sending magic link email'}, None), TXT['quotaFull'], 'quotaFull'),
+                             ((503, {'message': 'service unavailable'}, None), RESEND_ERR, 'other (resend text kept)')]:
+        fake.otp_fail = fail
+        msg, n = send_once('#accResend')
+        check('resend error -> %s' % name, msg == want and n == 1 and page.is_visible('#accCode'), [msg, n])
+    fake.otp_fail = None
+    check('send errors: no uncaught page errors', not perrs, '; '.join(perrs))
     ctx.close()
 
     # mobil girişli görünüm ekran görüntüsü

@@ -107,11 +107,11 @@
   // {s} ve {d} yer tutucuları resetText() ile CFG.reset'ten doldurulur.
   var RESET_TEXT = {
     "reset.title": "Kaydın sıfırlansın mı?",
-    "reset.body": "Oyuna en baştan başlarsın. Sıfırlama kaydının tamamını siler, bir kısmını seçip tutamazsın.",
+    "reset.body": "Oyuna en baştan başlarsın. Kalacaklar dışında her şey silinir, silinecekleri seçemezsin.",
     "reset.deleteTitle": "Silinecekler",
     "reset.deleteList": ["Para ve kazanç", "Çalışanlar", "Geliştirmeler", "Başarımlar", "Yatırım turu hisseleri ve yatırım turu sayısı", "Halka Arz, Borsa Payları ve ağaç", "Aşama ilerlemesi", "Haberler", "İtibar ve günlük seri"],
     "reset.keepTitle": "Kalacaklar",
-    "reset.keepList": ["Tüm Zamanlar puanın ve sıradaki yerin", "Takma adın", "Kodhane hesabın", "Ses, titreşim ve gizlilik ayarların"],
+    "reset.keepList": ["Tüm Zamanlar puanın ve sıradaki yerin", "Takma adın", "Kodhane hesabın", "Son olayların listesi", "Ses, titreşim ve gizlilik ayarların"],
     "reset.prestigeHint": "Başarımlarını, itibarını ve günlük serini korumak istiyorsan sıfırlamak yerine yatırım turuna çık. Yatırım turunda bunlar korunur, üstüne bir üretim bonusu kazanırsın. Bu bonus Halka Arz'da da silinmez.",
     "reset.prestigeBtn": "Yatırım turuna git",
     "reset.backup": "Silinen kayıt {d} gün boyunca yedekte kalır. Bu süre içinde geri yükleyebilirsin.",
@@ -191,7 +191,7 @@
       "Ayrıca sıralama ve Açık Ofis haberlerinin kaç kez gösterildiğini ve tıklandığını Teserix'in kendi sunucusunda sayıyoruz. Bu sayımda yalnızca olayın adı gider. Sunucu olayları tek tek kaydetmez, yalnızca o günün toplamını bir artırır. Hesap bilgisi, IP adresi ya da cihaz bilgisi bu sayıma yazılmaz.",
       "Site Cloudflare üzerinden sunulduğu için Cloudflare de sayfa açılışlarını kendi aracıyla ayrıca sayar. Cloudflare'in açıklamasına göre bu araç çerez kullanmaz ve ziyaretçileri tanımaya çalışmaz.",
       "Bu iki sayaç da yalnızca bu bildirime “Tamam” dedikten sonra çalışır. “Tamam” demeden hiçbiri bir şey göndermez. İstediğin zaman İstatistik sekmesindeki Gizlilik bölümünden kapatabilirsin. Kapattığın anda ikisi de durur. Cloudflare'in sayımı bunun dışındadır ve sayfa açıldığında çalışır.",
-      "Kaydın, son 20 önemli olayı da kendi içinde tutar: Halka Arz, Yatırım turu ve sıfırlama, ayrıca bu olaylardan önceki ve sonraki hisse ve Borsa Payı sayıların. Bu liste yalnızca kaydının içinde durur. Bulut kaydı kullanıyorsan kaydınla birlikte buluta gider, başka hiçbir yere gönderilmez. Bir destek talebinde neyin ne zaman olduğunu görmek için kullanılır.",
+      "Kaydın, son 20 önemli olayı da kendi içinde tutar: Halka Arz, Yatırım turu ve sıfırlama, ayrıca bu olaylardan önceki ve sonraki hisse ve Borsa Payı sayıların. Bu liste yalnızca kaydının içinde durur. Bulut kaydı kullanıyorsan kaydınla birlikte buluta gider, başka hiçbir yere gönderilmez. Bir destek talebinde neyin ne zaman olduğunu görmek için kullanılır. Kaydını sıfırlasan da bu liste kalır. Hesabın silinirse liste sunucudan silinir, bu cihazdaki kaydınla birlikte cihazında kalır.",
       "Bu bilgilerin veri sorumlusu Teserix Bilişim ve Dijital Çözümler. KVKK'nın 11. maddesindeki haklarını kullanmak için info@teserix.com adresine yazabilirsin."
     ],
     "telemetry.detailsClose": "Kapat",
@@ -654,6 +654,12 @@
       .map(function (e) { return logEntry(e.type, nz(e.sharesBefore), nz(e.sharesAfter), nz(e.paysBefore), nz(e.paysAfter), e.at); });
     var max = Math.max(1, (CFG.eventLog && CFG.eventLog.max) | 0 || 20);
     return out.slice(-max);
+  }
+  // "Kaydı sıfırla": mevcut liste + sıfırlama girdisi (hisse ve Borsa Payı -> 0), tavan (CFG.eventLog.max) aşılmaz (FIFO)
+  function resetCarryLog(st) {
+    st = st || S;
+    return pushEvent(cleanEventLog(st.eventLog), logEntry('reset', isNum(st.shares) && st.shares > 0 ? st.shares : 0, 0,
+      isNum(st.ipoShares) && st.ipoShares > 0 ? st.ipoShares : 0, 0));
   }
   function doPrestige() {
     var gain = sharesGain();
@@ -1338,7 +1344,7 @@
     VERSION: VERSION, SAVE_VERSION: SAVE_VERSION, CFG: CFG, TREE: TREE, NEWS: NEWS, STAGE_TINTS: STAGE_TINTS,
     STAGE_BY_ID: STAGE_BY_ID, LEGACY_STAGE_IDS: LEGACY_STAGE_IDS, stageRank: stageRank, stageAtLeast: stageAtLeast, legacyStageIndex: legacyStageIndex,
     ipoCooldownLeft: ipoCooldownLeft, ipoRoundsOk: ipoRoundsOk, ipoPendingShares: ipoPendingShares, ipoKeptShares: ipoKeptShares, stagePay: stagePay,
-    shareAccel: shareAccel, accelEarned: accelEarned, nextShareAt: nextShareAt, fmtDur: fmtDur, num: num, ipoEventData: ipoEventData, treeEventData: treeEventData, treeFull: treeFull, ipoConfirmHtml: ipoConfirmHtml, cleanEventLog: cleanEventLog, EVENT_TYPES: EVENT_TYPES,
+    shareAccel: shareAccel, accelEarned: accelEarned, nextShareAt: nextShareAt, fmtDur: fmtDur, num: num, ipoEventData: ipoEventData, treeEventData: treeEventData, treeFull: treeFull, ipoConfirmHtml: ipoConfirmHtml, cleanEventLog: cleanEventLog, EVENT_TYPES: EVENT_TYPES, resetCarryLog: resetCarryLog,
     hasNode: hasNode, nodeState: nodeState, nodeCost: nodeCost, buyNode: buyNode, ipoUnlocked: ipoUnlocked, ipoGain: ipoGain, doIpo: doIpo,
     costGrowth: costGrowth, offlineCapSec: offlineCapSec, shareBonus: shareBonus, investorBonus: investorBonus, pctText: pctText, offerSec: offerSec, offerFreq: offerFreq, offerPayMult: offerPayMult,
     genUnlocked: genUnlocked, unspentMult: unspentMult, ipoPayStage: ipoPayStage, globalMult: globalMult,
@@ -1715,7 +1721,7 @@
     if (readEpoch() > meta.epoch) return; // bu sekme bayatmış; güncel kayıt yüklendi, sıfırlama yapılmadı
     resetBusy = true;
     var snapshot = serialize();
-    var carryLog = pushEvent(cleanEventLog(S.eventLog), logEntry('reset', S.shares, 0, S.ipoShares, 0));
+    var carryLog = resetCarryLog(S);
     var signed = signedIn();
     var p = signed && typeof Core.beforeReset === 'function' ? withTimeout(Promise.resolve(Core.beforeReset()), 10000) : Promise.resolve(null);
     resetting = true;
@@ -2962,7 +2968,7 @@
   Core.showStageUp = showStageUp; Core.hideStageUp = hideStageUp; Core.shareLink = shareLink; Core.shareText = shareText;
   Core.maybeShowNews = maybeShowNews; Core.newsSession = news;
   Core.onResetCloudRender = onCloudRenderReset; Core.refreshRestoreBox = refreshRestoreBox; Core.openResetDialog = openResetDialog;
-  Core.EPOCH_KEY = EPOCH_KEY; Core.UNDO_KEY = UNDO_KEY; Core.RESET_HOLD_MS = RESET_HOLD_MS;
+  Core.EPOCH_KEY = EPOCH_KEY; Core.UNDO_KEY = UNDO_KEY; Core.RESET_HOLD_MS = RESET_HOLD_MS; Core.LOG_CARRY_KEY = LOG_CARRY_KEY;
   Core.undoActive = function () { return !!undoState.marker; };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
