@@ -20,6 +20,12 @@
   var GAME = 'kodhane'; // Açık Ofis gibi başka oyunların listeleri karışmasın
   var TABLE = 'kodhane_profiles';
   var RPC = 'kodhane_leaderboard';
+  // v4.4 (Backend paket B): kodhane_leaderboard_v7(p_limit) = v6 Kodhane listesi + stage_id (en iyi aşamanın v4.4 ID'si;
+  // kendi pending/hidden satırında NULL). Yalnız p_limit alır (p_game yok). Yoksa (B uygulanmamış / geri alınmış:
+  // HTTP 404, PostgREST PGRST202) v6'ya düşülür; bu karar bu sayfa oturumunda V7_RETRY_MS boyunca tutulur (saklanmaz).
+  var RPC_V7 = 'kodhane_leaderboard_v7';
+  var V7_RETRY_MS = 10 * 60 * 1000;
+  var v7 = { missingUntil: 0, api: '' };
 
   // ---------------------------------------------------------------- saf mantık (testlerde de kullanılır)
   var NICK_RE = /^[A-Za-z0-9çğıöşüÇĞİÖŞÜ _-]+$/;
@@ -99,6 +105,12 @@
     var st = id && K.STAGE_BY_ID ? K.STAGE_BY_ID[id] : (K.LEGACY_STAGE_IDS ? null : (K.STAGES ? K.STAGES[i] : null));
     return st ? st.icon + ' ' + st.name : 'Aşama ' + (Math.floor(i) + 1); // yeni aşamalar eski sürümde de görünsün
   }
+  // v7 satırında stage_id bilinen bir aşama ID'siyse o aşama (Unicorn / Şirketler Grubu dahil); yoksa eski sıra (v6)
+  function rowStageLabel(r) {
+    var id = r && typeof r.stage_id === 'string' ? r.stage_id : null;
+    var st = id && K.STAGE_BY_ID && Object.prototype.hasOwnProperty.call(K.STAGE_BY_ID, id) ? K.STAGE_BY_ID[id] : null;
+    return st ? st.icon + ' ' + st.name : stageLabel(r ? r.stage : null);
+  }
   function ownRankText(rank) { return 'Sen: #' + rank; }
   function rankBadge(rank) { return rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '#' + rank; }
   function gameLink() {
@@ -122,19 +134,36 @@
   function visible() { return typeof K.activeTab === 'function' && K.activeTab() === 'siralama'; }
   function toast(m, ms) { if (K.toast) { try { K.toast(m, ms); } catch (e) {} } }
 
-  function fetchRows() {
+  function callRpc(name, body) {
     var c = cloud(), s = cstate(), cfg = c.config;
     if (s && s.client && s.user) {
-      return s.client.rpc(RPC, { p_limit: LIMIT, p_game: GAME }).then(function (r) { if (r.error) throw r.error; return r.data; });
+      return s.client.rpc(name, body).then(function (r) {
+        if (r.error) { var e = r.error; try { e.status = r.status; } catch (x) {} throw e; }
+        return r.data;
+      });
     }
     // Misafir: SDK indirmeden, herkese açık anahtarla doğrudan çağrı
-    return fetch(cfg.url + '/rest/v1/rpc/' + RPC, {
+    return fetch(cfg.url + '/rest/v1/rpc/' + name, {
       method: 'POST',
       headers: { apikey: cfg.key, Authorization: 'Bearer ' + cfg.key, 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ p_limit: LIMIT, p_game: GAME })
+      body: JSON.stringify(body)
     }).then(function (res) {
-      if (!res.ok) throw new Error('HTTP ' + res.status);
+      if (!res.ok) {
+        return res.json().catch(function () { return {}; }).then(function (b) {
+          var e = new Error('HTTP ' + res.status); e.status = res.status; e.code = b && b.code; throw e;
+        });
+      }
       return res.json();
+    });
+  }
+  function v7Missing(e) { return !!e && (e.status === 404 || e.code === 'PGRST202' || e.code === '42883'); }
+  function fetchV6() { v7.api = 'v6'; return callRpc(RPC, { p_limit: LIMIT, p_game: GAME }); }
+  function fetchRows() {
+    if (Date.now() < v7.missingUntil) return fetchV6();
+    return callRpc(RPC_V7, { p_limit: LIMIT }).then(function (rows) { v7.api = 'v7'; v7.missingUntil = 0; return rows; }, function (e) {
+      if (!v7Missing(e)) throw e;
+      v7.missingUntil = Date.now() + V7_RETRY_MS;
+      return fetchV6();
     });
   }
   function refresh() {
@@ -249,7 +278,7 @@
     var nm = node('div', 'lb-name', r.nickname);
     if (r.is_me) nm.appendChild(node('span', 'lb-you', 'sen'));
     who.appendChild(nm);
-    var st = stageLabel(r.stage);
+    var st = rowStageLabel(r);
     if (st) who.appendChild(node('div', 'lb-stage', st));
     li.appendChild(who);
     li.appendChild(node('span', 'lb-score', K.tl(r.score)));
@@ -409,7 +438,8 @@
   K.leaderboard = {
     state: L, refresh: refresh, validateNickname: validateNickname, normalizeNickname: normalizeNickname, nickKey: nickKey, buildView: buildView,
     serverNickError: serverNickError, messages: MESSAGES, statusText: STATUS_TEXT, ownRankText: ownRankText, shareText: shareText,
-    stageLabel: stageLabel, rankBadge: rankBadge, LIMIT: LIMIT, STALE_MS: STALE_MS, GAME: GAME
+    stageLabel: stageLabel, rowStageLabel: rowStageLabel, rankBadge: rankBadge, LIMIT: LIMIT, STALE_MS: STALE_MS, GAME: GAME,
+    RPC: RPC, RPC_V7: RPC_V7, V7_RETRY_MS: V7_RETRY_MS, v7: v7
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);

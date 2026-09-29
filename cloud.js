@@ -527,6 +527,9 @@
   }
   // Bayat yazma: HTTP 409, PT409 (stale_revision ya da eski istemci yolu stale_write)
   function isStale(e) { return !!(e && (e.code === 'PT409' || e.status === 409 || /^(stale_revision|stale_write)$/.test(e.message || ''))); }
+  // v4.4 (Backend paket B, sürüm koruması): gönderilen data.saveVersion saklı olandan küçük -> SQLSTATE PT426, HTTP 426,
+  // message save_version_too_old. Tekrar denenmez; oyun "Sayfayı yenile" bandını gösterir, yerel kayda dokunulmaz.
+  function isTooOld(e) { return !!(e && (e.code === 'PT426' || e.status === 426 || e.message === 'save_version_too_old')); }
   function remoteRow() {
     return T.select().then(function (r) { if (r.error) throw rpcError(r); return r.data; });
   }
@@ -668,7 +671,7 @@
     var uid = C.user.id;
     var rev = num(knownRev(uid)) + 1;
     var row = { user_id: uid, data: state, save_version: num(state.saveVersion) || num(state.version) || 2, updated_at: now.toISOString(), revision: rev };
-    var staleErr = null;
+    var staleErr = null, tooOld = null;
     setStatus('syncing', 'Buluta kaydediliyor…');
     C.pushing = T.upsert(row).then(function (r) {
       if (r.error) throw rpcError(r);
@@ -681,11 +684,20 @@
       setStatus('saved', '');
       return true;
     }).catch(function (e) {
+      if (isTooOld(e)) { tooOld = e; return false; }
       if (isStale(e)) { staleErr = e; return false; }
       setStatus('error', friendlyError(e, 'Buluta kaydedilemedi; tekrar denenecek. Oyun bu cihazda kayıtlı.'));
       return false;
     }).then(function (ok) {
       C.pushing = null;
+      if (tooOld) {
+        // Genel hata yok, tekrar deneme yok: yazma kapanır (game.js writesBlocked), zamanlayıcı durur, bant gösterilir.
+        C.lastTooOld = { code: tooOld.code, message: tooOld.message, status: tooOld.status, details: tooOld.details || null };
+        clearPushTimer();
+        if (K.markOlderTab) K.markOlderTab({ detail: tooOld.details });
+        setStatus('error', (K.uiText && K.uiText('update.olderTab.text')) || '');
+        return ok;
+      }
       if (staleErr) { C.lastStale = { code: staleErr.code, message: staleErr.message, status: staleErr.status }; if (!o.quiet) handleStale(staleErr); }
       return ok;
     });

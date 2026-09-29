@@ -28,6 +28,7 @@ PORT = int(os.environ.get('KODHANE_CLOUD_TEST_PORT', '8766'))
 BASE = 'http://127.0.0.1:%d' % PORT
 URL = BASE + '/index.html'
 SS = os.path.join(ROOT, 'screenshots') + os.sep
+OUT_SHOTS = os.environ.get('KODHANE_V44_SHOTS', '/workspace')   # v4.4 ekran görüntüleri (repoya girmez)
 os.makedirs(SS, exist_ok=True)
 FAKE = 'https://kodhane-test.supabase.co'
 PROD_URL = 'https://kodhane-api.teserix.com'
@@ -36,6 +37,9 @@ PAGES = 'https://thejackaltr.github.io/kodhane/'
 SAVES_PATH = '/rest/v1/kodhane_saves'
 PROFILES_PATH = '/rest/v1/kodhane_profiles'
 RPC_PATH = '/rest/v1/rpc/kodhane_leaderboard'
+RPC7_PATH = '/rest/v1/rpc/kodhane_leaderboard_v7'   # v4.4 Backend paket B
+LEGACY_IDS = ['freelancer', 'ev_ofisi', 'butik_studyo', 'ajans', 'dev_ajans', 'global_holding', 'teknoloji_devi', 'yapay_zeka_lab', 'mars_ofisi']
+REV_KEY = 'kodhane_cloud_rev_v1'
 COUNT_PATH = '/rest/v1/rpc/kodhane_count_event'
 STORAGE_KEY = 'kodhane_auth_v1'
 BACKUP_KEY = 'kodhane_ajans_save_backup'
@@ -121,6 +125,10 @@ class FakeSupabase:
         self.profiles = {}   # uid -> nickname
         self.others = []     # takma adlı diğer oyuncular: (nickname, score, stage)
         self.rpc_calls = []  # (authorization kullanıcı mı, p_limit, p_game)
+        self.v7 = False      # v4.4: kodhane_leaderboard_v7 var mı (Backend paket B); yoksa PostgREST 404 PGRST202
+        self.v7_calls = []   # (authorization kullanıcı mı, gövde)
+        self.v7_fail = None  # (status, body): v7 başka bir hatayla döner
+        self.stage_ids = {}  # takma ad -> v7 stage_id (yoksa eski sıradan türetilir)
         self.hidden = set()  # yöneticinin gizlediği uid'ler
         self.pending = set() # puanı makul bulunmayan (kontrol edilen) uid'ler
         self.events = []     # anonim haber sayacı çağrıları: (p_event, kullanıcı jetonu var mı)
@@ -196,6 +204,24 @@ class FakeSupabase:
             return route.fulfill(status=204, headers=CORS, body='')
         if u.path == '/auth/v1/token':
             return self.reply(route, 400, {'error': 'invalid_grant'})
+        if u.path == RPC7_PATH and method == 'POST':
+            body = json.loads(req.post_data or '{}')
+            self.v7_calls.append((bool(claims), body))
+            nf = {'code': 'PGRST202', 'message': 'Could not find the function public.kodhane_leaderboard_v7(%s) in the schema cache' % ', '.join(sorted(body)),
+                  'details': 'Searched for the function public.kodhane_leaderboard_v7 with parameters %s' % ', '.join(sorted(body)), 'hint': None}
+            if not self.v7 or set(body) - {'p_limit'}:      # v7 yalnız p_limit alır: p_game gönderilirse fonksiyon bulunamaz
+                return self.reply(route, 404, nf)
+            if self.v7_fail:
+                return self.reply(route, *self.v7_fail)
+            rows = self.board(claims['sub'] if claims else None, int(body.get('p_limit') or 50))
+            for r in rows:
+                if r['status'] != 'ok':
+                    r['stage_id'] = None
+                else:
+                    st = r.get('stage')
+                    r['stage_id'] = self.stage_ids.get(r['nickname']) or (LEGACY_IDS[st] if isinstance(st, int) and 0 <= st < len(LEGACY_IDS) else None)
+            self.last_board = rows
+            return self.reply(route, 200, rows)
         if u.path == RPC_PATH and method == 'POST':
             body = json.loads(req.post_data or '{}')
             self.rpc_calls.append((bool(claims), body.get('p_limit'), body.get('p_game')))
@@ -797,7 +823,7 @@ with sync_playwright() as p:
     ok = wait_until(page, "document.querySelectorAll('#lbList .lb-row').length === 50")
     check('lb guest: top 50 listed from RPC', ok, str(page.evaluate("document.querySelectorAll('#lbList .lb-row').length")))
     check('lb guest: no SDK download, anonymous RPC call only', len(ctx.cdn_hits) == 0 and fake.rpc_calls and fake.rpc_calls[-1] == (False, 50, 'kodhane')
-          and all(p in (RPC_PATH,) for _, p, _ in fake.log), str(fake.log[:3]))
+          and all(p in (RPC_PATH, RPC7_PATH) for _, p, _ in fake.log), str(fake.log[:3]))
     first = page.locator('#lbList .lb-row').first
     check('lb guest: row shows medal, nickname, stage and game-formatted score', first.locator('.lb-rank').inner_text() == '🥇'
           and first.locator('.lb-name').inner_text() == 'KodUstası' and first.locator('.lb-stage').inner_text() == '🌐 Global Holding'
@@ -855,6 +881,86 @@ with sync_playwright() as p:
     check('nicknames rendered as text only (no HTML injection)', page.locator('#lbList .lb-name').nth(3).inner_text() == '<img src=x onerror="window.__xss=1">'
           and page.locator('#lbList img').count() == 0 and page.evaluate('window.__xss') is None)
     check('stage beyond the current 9 shown as "Aşama 13" (no fixed cap)', page.locator('#lbList .lb-stage').nth(3).inner_text() == 'Aşama 13')
+    ctx.close()
+
+    # ------------------------------------------------------------ 12c) v4.4: kodhane_leaderboard_v7 var -> stage_id ile aşama adı (Unicorn / Şirketler Grubu)
+    fake = FakeSupabase()
+    fake.v7 = True
+    fake.others = [('Unicornçu', 3.1e11, 5), ('GrupBaşkanı', 2.2e13, 5), ('TeknoDev', 4.4e15, 6), ('GlobalH', 5e9, 5), ('Marslı', 8.2e17, 8),
+                   ('GelecekSürüm', 1e9, 5), ('Freelancer1', 500, 0)]
+    fake.others.sort(key=lambda r: -r[1])
+    fake.stage_ids = {'Unicornçu': 'unicorn', 'GrupBaşkanı': 'sirketler_grubu', 'GelecekSürüm': 'uzay_istasyonu'}
+    ctx = b.new_context(locale='tr-TR', service_workers='block', viewport={'width': 360, 'height': 640}, device_scale_factor=1, is_mobile=True, has_touch=True)
+    ctx.add_init_script(cfg_script(None, True))
+    ctx.add_init_script(seed_script(tel='off'))   # isimsiz sayaç bandı kapalı (ekran görüntüsü)
+    ctx.route(FAKE + '/**', fake.handle)
+    ctx.route('https://cdn.jsdelivr.net/**', lambda r: r.fulfill(status=200, headers={'content-type': 'application/javascript; charset=utf-8', 'access-control-allow-origin': '*'}, body=SDK_BYTES))
+    page, errs, perrs = open_page(ctx)
+    check('v7: client legacy stage ids = fake / Backend legacy mapping', page.evaluate('Kodhane.LEGACY_STAGE_IDS') == LEGACY_IDS, page.evaluate('Kodhane.LEGACY_STAGE_IDS'))
+    page.tap('#bottomNav [data-view="siralama"]')
+    ok = wait_until(page, "document.querySelectorAll('#lbList .lb-row').length === 7")
+    lab = dict(zip(page.evaluate("[...document.querySelectorAll('#lbList .lb-name')].map(e => e.textContent)"),
+                   page.evaluate("[...document.querySelectorAll('#lbList .lb-stage')].map(e => e.textContent)")))
+    check('v7: Unicorn and Şirketler Grubu shown with their own names (stage_id), not Global Holding', ok and lab.get('Unicornçu') == '🦄 Unicorn'
+          and lab.get('GrupBaşkanı') == '🏬 Şirketler Grubu', json.dumps(lab, ensure_ascii=False))
+    check('v7: other ids rendered from stage_id (Teknoloji Devi, Global Holding, Mars Ofisi, Freelancer)', lab.get('TeknoDev') == '🛰️ Teknoloji Devi'
+          and lab.get('GlobalH') == '🌐 Global Holding' and lab.get('Marslı') == '🔴 Mars Ofisi' and lab.get('Freelancer1') == '🏠 Freelancer', json.dumps(lab, ensure_ascii=False))
+    check('v7: unknown stage_id (newer server) falls back to the legacy stage label', lab.get('GelecekSürüm') == '🌐 Global Holding', lab.get('GelecekSürüm'))
+    check('v7: called once with exactly {p_limit: 50} (no p_game), v6 not called', fake.v7_calls == [(False, {'p_limit': 50})] and fake.rpc_calls == []
+          and page.evaluate('Kodhane.leaderboard.v7.api') == 'v7', [fake.v7_calls, fake.rpc_calls])
+    check('v7: 360px, no horizontal overflow', page.evaluate('document.documentElement.scrollWidth') <= 360)
+    page.evaluate("document.querySelector('#lbList').scrollIntoView({block: 'start'}); window.scrollBy(0, -120)")
+    page.wait_for_timeout(300)
+    page.screenshot(path=os.path.join(OUT_SHOTS, 'kodhane-v44-siralama-v7-360x640.png'))
+    check('v7: no page/console errors', not perrs and not errs, '; '.join(perrs + errs))
+    ctx.close()
+
+    # ------------------------------------------------------------ 12d) v4.4: v7 yok (404 PGRST202) -> v6 ve bugünkü görünüm; karar oturumda önbellekli
+    fake = FakeSupabase()
+    fake.others = [('Unicornçu', 3.1e11, 5), ('TeknoDev', 4.4e15, 6)]
+    fake.others.sort(key=lambda r: -r[1])
+    ctx = new_ctx(fake, mobile=True)
+    page, errs, perrs = open_page(ctx)
+    page.tap('#bottomNav [data-view="siralama"]')
+    ok = wait_until(page, "document.querySelectorAll('#lbList .lb-row').length === 2")
+    lab = page.evaluate("[...document.querySelectorAll('#lbList .lb-stage')].map(e => e.textContent)")
+    check('v7 missing: falls back to v6 (p_game kodhane), current rendering (Unicorn player shows Global Holding)', ok and len(fake.v7_calls) == 1
+          and fake.rpc_calls == [(False, 50, 'kodhane')] and lab == ['🛰️ Teknoloji Devi', '🌐 Global Holding'] and page.evaluate('Kodhane.leaderboard.v7.api') == 'v6', [fake.v7_calls, fake.rpc_calls, lab])
+    for _ in range(2):
+        page.tap('#lbRefresh'); wait_until(page, "!Kodhane.leaderboard.state.loading")
+    check('v7 missing: fallback cached in this session (2 refreshes -> v6 only, no more 404s)', len(fake.v7_calls) == 1 and len(fake.rpc_calls) == 3, [len(fake.v7_calls), len(fake.rpc_calls)])
+    ttl = page.evaluate('Kodhane.leaderboard.v7.missingUntil - Date.now()')
+    check('v7 missing: cache is temporary (~10 min, in memory only, nothing in localStorage)', 9 * 60000 < ttl <= 10 * 60000
+          and not page.evaluate("Object.keys(localStorage).some(k => /v7|leaderboard/i.test(k) || /v7/.test(localStorage.getItem(k) || ''))"), ttl)
+    fake.v7 = True; fake.stage_ids = {'Unicornçu': 'unicorn'}
+    page.evaluate('Kodhane.leaderboard.v7.missingUntil = Date.now() - 1')   # 10 dk doldu
+    page.tap('#lbRefresh'); wait_until(page, "!Kodhane.leaderboard.state.loading")
+    lab = page.evaluate("[...document.querySelectorAll('#lbList .lb-stage')].map(e => e.textContent)")
+    check('v7 missing: after the cache expires v7 is tried again and used once available', len(fake.v7_calls) == 2 and len(fake.rpc_calls) == 3
+          and lab == ['🛰️ Teknoloji Devi', '🦄 Unicorn'], [len(fake.v7_calls), lab])
+    fake.v7_fail = (500, {'code': 'XX000', 'message': 'boom'})
+    page.tap('#lbRefresh')
+    ok = wait_until(page, "document.getElementById('lbStatus').textContent.startsWith('Sıralama yüklenemedi.')")
+    check('v7 other error (500): normal error copy, no silent v6 fallback', ok and len(fake.rpc_calls) == 3 and len(fake.v7_calls) == 3, [len(fake.rpc_calls), len(fake.v7_calls)])
+    fake.v7_fail = None
+    check('v7 missing: no page errors (404/500 resource logs only)', not perrs and not [e for e in errs if 'Failed to load resource' not in e], '; '.join(perrs + errs))
+    ctx.close()
+    # girişli: SDK üzerinden v7 404 -> v6 (p_game ile); satır stage_id'siz -> eski görünüm
+    fake = FakeSupabase()
+    UID_7, EMAIL_7 = str(uuid.uuid5(uuid.NAMESPACE_DNS, 'v7@example.com')), 'v7@example.com'
+    fake.others = [('Unicornçu', 3.1e11, 5)]
+    ctx = new_ctx(fake, mobile=True, init=seed_script(save=local_save(1000, started, clicks=9), session=session_obj(UID_7, EMAIL_7)))
+    page, errs, perrs = open_page(ctx)
+    wait_until(page, 'Kodhane.cloud.state.reconciled', 10000)
+    page.tap('#bottomNav [data-view="siralama"]')
+    ok = wait_until(page, "!Kodhane.leaderboard.state.loading && document.querySelectorAll('#lbList .lb-row').length >= 1", 10000)
+    check('v7 missing (signed in, SDK): v7 tried with the user token, then v6', ok and fake.v7_calls[:1] == [(True, {'p_limit': 50})] and fake.rpc_calls
+          and fake.rpc_calls[-1] == (True, 50, 'kodhane') and page.evaluate('Kodhane.leaderboard.v7.api') == 'v6', [fake.v7_calls, fake.rpc_calls])
+    fake.v7 = True; fake.stage_ids = {'Unicornçu': 'sirketler_grubu'}
+    page.evaluate('Kodhane.leaderboard.v7.missingUntil = 0')
+    page.tap('#lbRefresh'); wait_until(page, "!Kodhane.leaderboard.state.loading")
+    check('v7 present (signed in, SDK): stage_id rendered (Şirketler Grubu)', page.locator('#lbList .lb-stage').first.inner_text() == '🏬 Şirketler Grubu'
+          and fake.v7_calls[-1] == (True, {'p_limit': 50}), page.locator('#lbList .lb-stage').first.inner_text())
     ctx.close()
 
     # ------------------------------------------------------------ 13) Sıralama: girişli ama takma adı yok -> form, doğrulama, alınmış ad, katılım, sabitlenmiş satır
@@ -999,6 +1105,109 @@ with sync_playwright() as p:
           json.dumps(fake.rows.get(UID_N, {}).get('data', {}).get('newsSeen')))
     check('news (signed in): no page errors', not perrs, '; '.join(perrs))
     ctx.close()
+
+    # ------------------------------------------------------------ 16) v4.4: bulut yazması 426 (PT426 save_version_too_old; Backend paket B sürüm koruması)
+    fake = FakeSupabase()
+    UID_O, EMAIL_O = str(uuid.uuid5(uuid.NAMESPACE_DNS, 'eski-sekme@example.com')), 'eski-sekme@example.com'
+    ctx = b.new_context(locale='tr-TR', service_workers='block', viewport={'width': 360, 'height': 640}, device_scale_factor=1, is_mobile=True, has_touch=True)
+    ctx.add_init_script(cfg_script(None, True))
+    ctx.add_init_script(seed_script(save=local_save(5000, started, clicks=50), session=session_obj(UID_O, EMAIL_O), tel='off'))
+    ctx.route(FAKE + '/**', fake.handle)
+    ctx.route('https://cdn.jsdelivr.net/**', lambda r: r.fulfill(status=200, headers={'content-type': 'application/javascript; charset=utf-8', 'access-control-allow-origin': '*'}, body=SDK_BYTES))
+    page, errs, perrs = open_page(ctx)
+    ok = wait_until(page, 'Kodhane.cloud.state.reconciled && Kodhane.cloud.state.lastPushAt > 0', 10000)
+    check('426: signed in, first write ok (row v5)', ok and fake.rows[UID_O]['data'].get('saveVersion') == 5)
+    # başka cihazda daha yeni sürüm (saveVersion 6) yazdı; sunucuda sürüm koruması açık
+    fake.saves.version_guard = True
+    newer = dict(fake.rows[UID_O]['data'], saveVersion=6, version=6, clicks=777, totalEarned=99999.0)
+    fake.rows[UID_O] = dict(fake.rows[UID_O], data=newer, save_version=6, revision=fake.rows[UID_O]['revision'] + 1)
+    row_before = json.dumps(fake.rows[UID_O], sort_keys=True)
+    page.evaluate("Kodhane.state.clicks += 5; Kodhane.save()")
+    local_before = page.evaluate("localStorage.getItem('%s')" % SAVE_KEY)
+    posts0 = fake.count('POST', SAVES_PATH)
+    r = page.evaluate('Kodhane.cloud.push(true)')
+    page.wait_for_timeout(300)
+    TT = {'title': 'Oyunun yeni sürümü var', 'text': 'Hesabına oyunun yeni sürümünden kayıt yapıldı, sayfayı yenileyince güncel kaydın yüklenecek.',
+          'btn': 'Sayfayı yenile', 'textShort': 'Sayfayı yenile, güncel kaydın yüklenecek.'}
+    check('426 texts: update.olderTab.* verbatim (Yazı eski-sekme r1)', all(page.evaluate("Kodhane.UI_TEXT['update.olderTab.%s']" % k) == v for k, v in TT.items())
+          and page.evaluate("Object.keys(Kodhane.UI_TEXT).filter(k => /saveTooOld/.test(k)).length") == 0)
+    check('426: push fails once (the 426 write), server row unchanged', r is False and fake.count('POST', SAVES_PATH) == posts0 + 1 and json.dumps(fake.rows[UID_O], sort_keys=True) == row_before,
+          [r, fake.count('POST', SAVES_PATH) - posts0])
+    check('426: recorded as PT426 / 426 / save_version_too_old', page.evaluate('Kodhane.cloud.state.lastTooOld') == {'code': 'PT426', 'message': 'save_version_too_old', 'status': 426,
+          'details': 'sent saveVersion 5, stored saveVersion 6'}, page.evaluate('Kodhane.cloud.state.lastTooOld'))
+    band = page.inner_text('#updateBar')
+    check('426: olderTab band shown (title, short text at 360px, "Sayfayı yenile"), not the generic error', page.is_visible('#updateBar')
+          and page.get_attribute('#updateBar', 'data-test') == 'older-tab-band' and page.inner_text('#updateBar .ub-title') == TT['title']
+          and page.inner_text('#updateBar .ub-text') in (TT['text'], TT['textShort']) and page.inner_text('#updateBtn') == TT['btn']
+          and 'tekrar denenecek' not in band and 'Buluta kaydedilemedi' not in band, band)
+    check('426: account status = olderTab text (no generic "Buluta kaydedilemedi; tekrar denenecek")', page.evaluate('Kodhane.cloud.state.message') == TT['text']
+          and 'tekrar denenecek' not in page.evaluate('Kodhane.cloud.state.message'), page.evaluate('Kodhane.cloud.state.message'))
+    # tekrar yok: zamanlayıcı, elle push, flush (pagehide/visibilitychange), otomatik kayıt, sıralama yenileme
+    for _ in range(5):
+        page.tap('#clickBtn')
+    page.evaluate("Kodhane.save(); Kodhane.cloud.push(true); Kodhane.cloud.push(false); Kodhane.cloud.flush(); window.dispatchEvent(new Event('pagehide')); document.dispatchEvent(new Event('visibilitychange'))")
+    page.evaluate("Kodhane.cloud.state.pushTimer")
+    page.tap('#bottomNav [data-view="siralama"]'); page.wait_for_timeout(1500)
+    check('426: zero retries (no further save writes; no push timer)', fake.count('POST', SAVES_PATH) == posts0 + 1 and page.evaluate('Kodhane.cloud.state.pushTimer') is None,
+          fake.count('POST', SAVES_PATH) - posts0)
+    check('426: local save untouched (byte-equal after clicks, save(), pagehide, visibilitychange)', page.evaluate("localStorage.getItem('%s')" % SAVE_KEY) == local_before)
+    check('426: writes blocked in this tab (reset / Yatırım Turu guarded like newerSave)', page.evaluate('Kodhane.writesBlocked()') is True)
+    page.tap('#bottomNav [data-view="kod"]'); page.wait_for_timeout(200)
+    page.screenshot(path=os.path.join(OUT_SHOTS, 'kodhane-v44-eski-sekme-360x640.png'))
+    # aynı anda newerSave (daha yeni kayıt okundu) ve servis çalışanı güncellemesi: tek bant, olderTab metni
+    page.evaluate("Kodhane.guardFuture({saveVersion: 6}, 'test'); Kodhane.showUpdate({postMessage() {}})")
+    page.wait_for_timeout(150)
+    check('overlap: olderTab + newerSave + SW update -> ONE band, olderTab text only', page.locator('.update-bar:not(.hidden)').count() == 1
+          and page.get_attribute('#updateBar', 'data-test') == 'older-tab-band' and page.inner_text('#updateBar .ub-title') == TT['title']
+          and 'ilerlemen korunuyor' not in page.inner_text('#updateBar') and 'Yeni sürüm hazır' not in page.inner_text('#updateBar'), page.inner_text('#updateBar'))
+    page.set_viewport_size({'width': 1280, 'height': 800}); page.wait_for_timeout(200)
+    check('426 band (wide screen): title + full text', page.inner_text('#updateBar .ub-text') == TT['text'], page.inner_text('#updateBar'))
+    check('426: no page errors', not perrs, '; '.join(perrs))
+    # "Sayfayı yenile" -> v4.4 yeniden açılır: buluttaki kayıt v6 -> newerSave bandı, yerel kayıt buluttan EZİLMEZ, yazma yok
+    posts1 = fake.count('POST', SAVES_PATH)
+    with page.expect_navigation(timeout=15000):
+        page.click('#updateBtn')
+    page.wait_for_selector('#clickBtn')
+    ok = wait_until(page, "Kodhane.writesBlocked() && !document.getElementById('updateBar').classList.contains('hidden')", 10000)
+    after = json.loads(page.evaluate("localStorage.getItem('%s')" % SAVE_KEY))
+    lb = json.loads(local_before)
+    check('426 -> reload (same v4.4 still served): cloud save is v6 -> newerSave band, the v6 cloud save is NOT applied, local progress kept, no writes',
+          ok and page.get_attribute('#updateBar', 'data-test') == 'newer-save-band' and after['clicks'] == lb['clicks'] == 55 and page.evaluate('Kodhane.state.clicks') == 55
+          and fake.count('POST', SAVES_PATH) == posts1 and json.dumps(fake.rows[UID_O], sort_keys=True) == row_before, [after['clicks'], page.get_attribute('#updateBar', 'data-test')])
+    ctx.close()
+
+    # ------------------------------------------------------------ 17) v4.4 açılışı: eski sekmenin yerel kaydı mı, buluttaki daha yeni kayıt mı? (cloud.js reconcile)
+    def boot(local, cloud_row, rev=None):
+        f = FakeSupabase()
+        uid, email = str(uuid.uuid4()), 'boot@example.com'
+        f.rows[uid] = cloud_row
+        extra = '' if rev is None else "localStorage.setItem(%s, %s);" % (json.dumps(REV_KEY), json.dumps(json.dumps({'uid': uid, 'rev': rev})))
+        c = new_ctx(f, init=seed_script(save=local, session=session_obj(uid, email)) + extra)
+        pg, _, pe = open_page(c)
+        wait_until(pg, 'Kodhane.cloud.state.reconciled && !Kodhane.cloud.state.reconciling', 10000)
+        pg.wait_for_timeout(600)
+        out = {'clicks': pg.evaluate('Kodhane.state.clicks'), 'local': json.loads(pg.evaluate("localStorage.getItem('%s')" % SAVE_KEY))['clicks'],
+               'backup': json.loads(pg.evaluate("localStorage.getItem('%s') || 'null'" % BACKUP_KEY) or 'null'), 'row': f.rows[uid]['data'].get('clicks'),
+               'toast': pg.inner_text('#toast'), 'modal': pg.is_visible('#modal'), 'perrs': pe}
+        c.close()
+        return out
+    old_local = dict(local_save(5000, started, clicks=50), version=4, saveVersion=4)     # v4.3.1 sekmesinin son yerel kaydı
+    def cloud_row(total, clicks, rev):
+        d = dict(local_save(total, started, clicks=clicks), version=5, saveVersion=5)
+        return {'data': d, 'save_version': 5, 'updated_at': '2026-09-29T18:00:00Z', 'revision': rev, 'strict_revision': True, 'best_score': total, 'best_stage': 0}
+    o = boot(old_local, cloud_row(9000, 90, 4), rev=3)
+    # reconcile() önce K.save() çağırır: yerel lastSaved = şimdi > bulutun updated_at -> needsBackup doğru, eski yerel kayıt yedeklenir
+    check('boot A (server revision ahead of this device, cloud further): cloud save loaded, local save overwritten with it, old local copied to backup slot, no dialog',
+          o['clicks'] == 90 and o['local'] == 90 and o['backup'] and o['backup']['clicks'] == 50 and not o['modal'] and not o['perrs']
+          and 'başka bir cihazda ya da sekmede devam ettin' in o['toast'], {k: o[k] for k in ('clicks', 'local', 'toast')})
+    o = boot(dict(old_local, totalEarned=20000.0, runEarned=20000.0), cloud_row(9000, 90, 4), rev=3)
+    check('boot B (server revision ahead, this device further): cloud save STILL loaded (revision rule), old local copied to the local backup slot, no dialog',
+          o['clicks'] == 90 and o['local'] == 90 and o['backup'] and o['backup']['clicks'] == 50 and not o['modal'], {k: o[k] for k in ('clicks', 'local', 'toast')})
+    o = boot(dict(old_local, totalEarned=20000.0, runEarned=20000.0), cloud_row(9000, 90, 4), rev=None)
+    check('boot C (no revision known on this device, this device further): local save wins and is written to the cloud',
+          o['clicks'] == 50 and o['local'] == 50 and o['row'] == 50, {k: o[k] for k in ('clicks', 'local', 'row')})
+    o = boot(old_local, cloud_row(9000, 90, 3), rev=3)
+    check('boot D (same revision, cloud further): cloud save loaded (higher total earned)', o['clicks'] == 90 and o['local'] == 90, o)
 
     b.close()
 

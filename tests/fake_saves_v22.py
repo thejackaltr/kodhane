@@ -67,6 +67,10 @@ class SaveStore:
         self.backups = []
         self.mode = 'lenient'
         self.rpc_log = []
+        # v4.4 Backend paket B (20260929204000_v4_4b..., kodhane_saves_a_version_guard): BEFORE UPDATE, v2.2 revision
+        # kuralından ÖNCE: gelen data.saveVersion (yok / sayı değil = 0) saklı olandan küçükse PT426 / HTTP 426
+        # save_version_too_old, satır değişmez. Varsayılan kapalı (B yayında değilken olduğu gibi).
+        self.version_guard = False
 
     def alive(self, b):
         return b['created'] > time.time() - RETENTION_DAYS * DAY
@@ -88,6 +92,14 @@ class SaveStore:
                               'strict_revision': rev > 0, 'best_score': max(score(it['data']), prev),
                               'best_stage': max(stage_checked(it['data']), prev_st)}
             return 201, {'revision': rev}
+        if self.version_guard:
+            def sv(d):
+                v = (d or {}).get('saveVersion')
+                return min(1000000, max(0, int(v))) if isinstance(v, (int, float)) and not isinstance(v, bool) else 0
+            sv_new, sv_old = sv(it.get('data')), sv(old.get('data'))
+            if sv_new < sv_old:
+                return err(426, 'PT426', 'save_version_too_old', 'sent saveVersion %s, stored saveVersion %s' % (sv_new, sv_old),
+                           'This game version is older than the cloud save. Update the game (reload the page); do not retry this write.')
         orev = int(old.get('revision') or 0)
         rev = orev if sent is None else int(sent)
         detail = 'sent revision %s, server revision %s' % (rev, orev)

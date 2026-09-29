@@ -169,7 +169,13 @@
     "ipo.accelNote": "Kazandığın her Borsa Payı yeni hisseleri +%{k} artırır, harcasan da sayılır. En fazla {max} kat.",
     "update.newerSave.text": "✨ Yeni sürüm hazır, ilerlemen korunuyor. Devam etmek için yenile.",
     "update.newerSave.textShort": "✨ Yeni sürüm hazır, ilerlemen korunuyor.",
-    "update.newerSave.btn": "Yenile"
+    "update.newerSave.btn": "Yenile",
+    // v4.4: eski sekme uyarısı (Yazı, kodhane-v4.4-eski-sekme-yazi-r1): bulut kaydı yazılırken sunucu 426 / PT426
+    // save_version_too_old döndü (hesaptaki kayıt bu istemciden yeni sürümle yazılmış). Aynı bantta newerSave'den önceliklidir.
+    "update.olderTab.title": "Oyunun yeni sürümü var",
+    "update.olderTab.text": "Hesabına oyunun yeni sürümünden kayıt yapıldı, sayfayı yenileyince güncel kaydın yüklenecek.",
+    "update.olderTab.btn": "Sayfayı yenile",
+    "update.olderTab.textShort": "Sayfayı yenile, güncel kaydın yüklenecek."
   };
   function uiText(key, vars) {
     var t = UI_TEXT[key];
@@ -1180,7 +1186,16 @@
     }
     return true;
   }
-  function writesBlocked() { return !!futureSave; }
+  // v4.4: bulut yazması 426 (PT426 save_version_too_old) aldı: sunucudaki kayıt bu istemciden yeni sürümle yazılmış.
+  // Aynı sonuç: bu sayfa oturumunda hiçbir kayıt (yerel dahil) yazılmaz, bulut yazması tekrar denenmez; bant olderTab metni.
+  var olderTab = null;
+  function markOlderTab(info) {
+    if (olderTab) return false;
+    olderTab = { at: Date.now(), detail: info && info.detail ? String(info.detail) : '' };
+    if (typeof Core.onOlderTab === 'function') { try { Core.onOlderTab(olderTab); } catch (e) {} }
+    return true;
+  }
+  function writesBlocked() { return !!futureSave || !!olderTab; }
   function serialize() { S.lastSaved = Date.now(); return JSON.stringify(saveData()); }
   function isNum(x) { return typeof x === 'number' && isFinite(x); }
   function deserialize(str) {
@@ -1360,7 +1375,7 @@
     eventPool: eventPool, pickEvent: pickEvent, resolveEvent: resolveEvent, checkAchievements: checkAchievements,
     checkDaily: checkDaily, makeTasks: makeTasks, taskProgress: taskProgress, taskLabel: taskLabel, today: today, shiftDay: shiftDay,
     streakBonus: streakBonus, setToday: function (s) { Core.fakeToday = s || null; },
-    UI_TEXT: UI_TEXT, uiText: uiText, guardFuture: guardFuture, writesBlocked: writesBlocked, saveVersionOf: saveVersionOf, get futureSave() { return futureSave; }, RESET_TEXT: RESET_TEXT, RESET_SIGNED_ONLY: RESET_SIGNED_ONLY, TEL_TEXT: TEL_TEXT, telText: telText, resetText: resetText, otherDeviceText: otherDeviceText, saveData: saveData,
+    UI_TEXT: UI_TEXT, uiText: uiText, guardFuture: guardFuture, writesBlocked: writesBlocked, saveVersionOf: saveVersionOf, get futureSave() { return futureSave; }, markOlderTab: markOlderTab, get olderTab() { return olderTab; }, RESET_TEXT: RESET_TEXT, RESET_SIGNED_ONLY: RESET_SIGNED_ONLY, TEL_TEXT: TEL_TEXT, telText: telText, resetText: resetText, otherDeviceText: otherDeviceText, saveData: saveData,
     meta: meta,
     rng: Math.random, lastCrit: false, fakeToday: null, loadedVersion: null,
     CRIT_CHANCE: CRIT_CHANCE, CRIT_MULT: CRIT_MULT
@@ -2660,8 +2675,8 @@
 
   // PWA: servis çalışanı ve güncelleme bildirimi.
   // v4.3.1: tek bant (#updateBar) iki durumu gösterir: servis çalışanı güncellemesi ("✨ Yeni sürüm hazır.", index.html) ve
-  // daha yeni sürümün kaydı (update.newerSave.*). İkisi aynı anda asla ayrı bant olmaz: newerSave önceliklidir, metni
-  // güncelleme metninin yerine geçer. Bant üstte (sabit üst çubuğun altında), izin bandı altta: çakışmazlar; çok kısa
+  // daha yeni sürümün kaydı (update.newerSave.*; v4.4: bulut 426 ise update.olderTab.*). Aynı anda asla ayrı bant olmaz:
+  // olderTab > newerSave > servis çalışanı güncellemesi; öncelikli olanın metni diğerinin yerine geçer. Bant üstte (sabit üst çubuğun altında), izin bandı altta: çakışmazlar; çok kısa
   // ekranda izin bandının üstünde kalacak şekilde yukarı kayar.
   var swWaiting = null, swUpdateText = '';
   function showUpdate(worker) { swWaiting = worker; renderUpdateBar(); }
@@ -2681,19 +2696,32 @@
       setTimeout(go, 6000);
     }, go);
   }
+  // v4.4: olderTab (bulut 426) ile newerSave (daha yeni kayıt okundu) aynı durumun iki yolu (hesaptaki kayıt bu istemciden
+  // yeni); ikisi birden olsa da TEK bant ve olderTab metni gösterilir (bu sekmenin son ilerlemesinin buluta yazılamadığını
+  // da kapsar, "ilerlemen korunuyor" demez).
+  function setBandText(txt, key, short) {
+    txt.textContent = '';
+    if (key === 'olderTab') {
+      var t = document.createElement('b'); t.className = 'ub-title'; t.textContent = uiText('update.olderTab.title');
+      txt.appendChild(t);
+      var s = document.createElement('span'); s.className = 'ub-text'; s.textContent = uiText(short ? 'update.olderTab.textShort' : 'update.olderTab.text');
+      txt.appendChild(s);
+    } else txt.textContent = uiText(short ? 'update.newerSave.textShort' : 'update.newerSave.text');
+  }
   function renderUpdateBar() {
     if (!el.updateBar || !el.updateText) return;
-    var newer = writesBlocked();
+    var newer = writesBlocked(), older = !!olderTab;
     if (!newer && !swWaiting) { el.updateBar.classList.add('hidden'); return; }
-    var bar = el.updateBar, txt = el.updateText;
+    var bar = el.updateBar, txt = el.updateText, key = older ? 'olderTab' : 'newerSave';
     bar.classList.remove('hidden');
     bar.classList.toggle('newer-save', newer);
-    bar.setAttribute('data-test', newer ? 'newer-save-band' : 'update-band');
+    bar.classList.toggle('older-tab', older);
+    bar.setAttribute('data-test', older ? 'older-tab-band' : newer ? 'newer-save-band' : 'update-band');
     bar.classList.remove('ub-short');
-    txt.textContent = newer ? uiText('update.newerSave.text') : swUpdateText;
-    el.updateBtn.textContent = newer ? uiText('update.newerSave.btn') : 'Yenile';
+    if (newer) setBandText(txt, key, false); else txt.textContent = swUpdateText;
+    el.updateBtn.textContent = newer ? uiText('update.' + key + '.btn') : 'Yenile';
     // Dar ekran: uzun metin bantta tek satıra sığmıyorsa kısa metin
-    if (newer && txt.scrollWidth > txt.clientWidth + 1) { txt.textContent = uiText('update.newerSave.textShort'); bar.classList.add('ub-short'); }
+    if (newer && txt.scrollWidth > txt.clientWidth + 1) { setBandText(txt, key, true); bar.classList.add('ub-short'); }
     el.updateBtn.onclick = newer ? reloadForNewer : function () {
       updateRequested = true; save();
       swWaiting.postMessage('skipWaiting');
@@ -2725,6 +2753,7 @@
     if (Core.cloud && Core.cloud.state) { var c = Core.cloud.state; if (c.pushTimer) { clearTimeout(c.pushTimer); c.pushTimer = null; } }
     renderUpdateBar();
   };
+  Core.onOlderTab = Core.onFutureSave;
   Core.renderUpdateBar = renderUpdateBar; Core.blockedAction = blockedAction; Core.showUpdate = showUpdate;
   function initServiceWorker() {
     if (!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) return;
