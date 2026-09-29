@@ -13,30 +13,32 @@ function fresh() { K.state = K.newState(); return K.state; }
 const CFG = K.CFG, H = CFG.halkaArz, T = CFG.tree;
 
 // ---------------------------------------------------------------- sürüm, aşamalar
-check('version 4.3.1 / save version 4', K.VERSION === '4.3.1' && K.SAVE_VERSION === 4 && fresh().version === 4);
+check('version 4.4.0 / save version 5', K.VERSION === '4.4.0' && K.SAVE_VERSION === 5 && fresh().version === 5);
 const names = K.STAGES.map((s) => s.name);
-check('9 stages, 3 new after Global Holding', names.length === 9 && names.slice(5).join('|') === 'Global Holding|Teknoloji Devi|Yapay Zekâ Laboratuvarı|Mars Ofisi', names);
+check('11 stages: Unicorn and Şirketler Grubu between Global Holding and Teknoloji Devi (v4.4)', names.length === 11 && names.slice(5).join('|') === 'Global Holding|Unicorn|Şirketler Grubu|Teknoloji Devi|Yapay Zekâ Laboratuvarı|Mars Ofisi', names);
 check('stage thresholds strictly increasing', K.STAGES.every((s, i) => i === 0 || s.at > K.STAGES[i - 1].at));
 check('new stage messages (spec copy)',
-  K.STAGES[6].msg === "Tebrikler! Artık müşteri aramıyorsunuz, müşteriler sizi arıyor. Hepsi de 'acil' diyor." &&
-  K.STAGES[7].msg === "Tebrikler! Kodu artık yapay zekâ yazıyor, siz de ona 'biraz daha büyüt' diyorsunuz." &&
-  K.STAGES[8].msg === "Tebrikler! Mars'tasınız. Mesajlar 20 dakikada geliyor, revize talepleri yine de anında.");
+  K.STAGE_BY_ID.teknoloji_devi.msg === "Tebrikler! Artık müşteri aramıyorsunuz, müşteriler sizi arıyor. Hepsi de 'acil' diyor." &&
+  K.STAGE_BY_ID.yapay_zeka_lab.msg === "Tebrikler! Kodu artık yapay zekâ yazıyor, siz de ona 'biraz daha büyüt' diyorsunuz." &&
+  K.STAGE_BY_ID.mars_ofisi.msg === "Tebrikler! Mars'tasınız. Mesajlar 20 dakikada geliyor, revize talepleri yine de anında.");
 check('one tint per stage', K.STAGE_TINTS.length === K.STAGES.length && K.STAGE_TINTS.every((c) => /^#[0-9a-f]{6}$/i.test(c)));
 
 // ---------------------------------------------------------------- yeni çalışanlar
 const newGens = K.GENERATORS.filter((g) => g.stage);
-check('3 new employee types bound to stages 6/7/8', newGens.map((g) => g.id + ':' + g.stage).join(',') === 'arge:6,yzlab:7,mars:8');
+check('5 stage-bound employee types, bound by stage ID (v4.4: veri, cip new; arge moves to Şirketler Grubu)', newGens.map((g) => g.id + ':' + g.stage).join(',') === 'veri:unicorn,arge:sirketler_grubu,cip:teknoloji_devi,yzlab:yapay_zeka_lab,mars:mars_ofisi', newGens.map((g) => g.id + ':' + g.stage));
 check('new employees get stronger and pricier', newGens.every((g, i) => i === 0 || (g.base > newGens[i - 1].base && g.tps > newGens[i - 1].tps)));
 check('each new employee has upgrades', newGens.every((g) => K.UPGRADES.filter((u) => u.target === g.id).length >= 3));
 fresh();
 check('new employees locked before their stage', newGens.every((g) => !K.genUnlocked(g)));
 K.state.money = 1e40;
 check('locked employee cannot be bought', !K.buyGen('arge', 1) && K.state.gens.arge === 0);
-K.state.stageBest = 6;
-check('stage 6 unlocks Ar-Ge only', K.genUnlocked(newGens[0]) && !K.genUnlocked(newGens[1]));
-check('unlocked employee can be bought', K.buyGen('arge', 1) && K.state.gens.arge === 1);
-K.state.stageBest = 8;
-check('stage 8 unlocks all', newGens.every((g) => K.genUnlocked(g)));
+K.state.stageBest = K.stageRank('unicorn');
+check('Unicorn unlocks Veri Merkezi only', K.genUnlocked(newGens[0]) && !K.genUnlocked(newGens[1]));
+check('unlocked employee can be bought', K.buyGen('veri', 1) && K.state.gens.veri === 1);
+K.state.stageBest = K.stageRank('sirketler_grubu');
+check('Şirketler Grubu unlocks Ar-Ge', K.genUnlocked(newGens[1]) && !K.genUnlocked(newGens[2]) && K.buyGen('arge', 1) && K.state.gens.arge === 1);
+K.state.stageBest = K.stageRank('mars_ofisi');
+check('Mars Ofisi unlocks all', newGens.every((g) => K.genUnlocked(g)));
 
 // ---------------------------------------------------------------- büyük sayılar
 check('suffixes up to Kentilyon', [1e15, 2.5e18, 9.99e20].map(K.fmt).join('|') === '1 Kat|2,5 Kent|999 Kent', [1e15, 2.5e18, 9.99e20].map(K.fmt));
@@ -52,15 +54,16 @@ check('IPO locked after 2 rounds', K.state.cycleRounds === 2 && !K.ipoUnlocked()
 round(1e9);
 check('IPO unlocks after CFG.halkaArz.rounds rounds', K.state.cycleRounds === H.rounds && K.ipoUnlocked());
 check('first IPO gives at least firstMin even with a small cycle', K.state.cycleEarned === 3e9 && K.state.cycleStage === 4 && K.ipoGain() === H.firstMin);
-K.earn(8e14 - 3e9);
-check('gain = stagePays[highest stage this cycle] (Global Holding -> 2)', K.state.cycleStage === 5 && K.ipoGain() === H.stagePays[5] && K.ipoGain() === 2, [K.state.cycleStage, K.ipoGain()]);
+K.earn(5e10 - 3e9);
+check('gain = stagePays[ID of highest stage this cycle] (Global Holding -> 2)', K.STAGES[K.state.cycleStage].id === 'global_holding' && K.ipoGain() === H.stagePays.global_holding && K.ipoGain() === 2, [K.state.cycleStage, K.ipoGain()]);
 K.state.upgrades = ['click_2']; K.state.tree = []; K.state.achievements.push('tik_1');
-const before = clone(K.state);
+const before = clone(K.state), pendingBefore = K.sharesGain();
 const g1 = K.doIpo();
 const s = K.state;
 check('IPO pays Borsa Payı', g1 === 2 && s.ipoShares === 2 && s.ipoSharesEarned === 2 && s.ipoCount === 1);
 check('IPO keeps totalEarned (leaderboard score)', s.totalEarned === before.totalEarned);
-check('IPO resets money, employees, upgrades and Yatırımcı Hissesi', s.money === 0 && K.totalOwned() === 0 && s.upgrades.length === 0 && s.shares === 0 && s.runEarned === 0);
+check('IPO resets money, employees, upgrades; v4.4 keeps Yatırımcı Hissesi and adds this round\'s pending shares', s.money === 0 && K.totalOwned() === 0 && s.upgrades.length === 0 && s.runEarned === 0 &&
+  pendingBefore > 0 && s.shares === before.shares + pendingBefore, [before.shares, pendingBefore, s.shares]);
 check('IPO resets cycle (rounds, earnings) but keeps prestige count', s.cycleRounds === 0 && s.cycleEarned === 0 && s.prestigeCount === before.prestigeCount);
 check('IPO keeps achievements and stageBest', s.achievements.indexOf('tik_1') !== -1 && s.stageBest === before.stageBest);
 K.checkAchievements();
@@ -70,7 +73,7 @@ round(1e9); round(1e9); round(1e9);
 check('second IPO has no minimum (gain 0 -> refused)', K.ipoGain() === 0 && K.doIpo() === 0 && K.state.ipoCount === 1);
 // save round trip after IPO must not re-run the v3 migration
 const rt = JSON.parse(K.serialize()); K.deserialize(JSON.stringify(rt));
-check('post-IPO save reload keeps cycle fields', K.state.version === 4 && K.state.cycleRounds === 3 && K.state.cycleEarned === 3e9 && K.state.ipoCount === 1);
+check('post-IPO save reload keeps cycle fields', K.state.version === 5 && K.state.cycleRounds === 3 && K.state.cycleEarned === 3e9 && K.state.ipoCount === 1);
 const sv = H.rounds; H.rounds = 5;
 check('IPO round requirement is a setting', !K.ipoUnlocked()); H.rounds = sv;
 const sm = H.mode; H.mode = 'root'; K.state.cycleEarned = H.threshold * Math.pow(2, H.root); K.state.ipoCount = 1;
@@ -155,9 +158,9 @@ function v3Save(over) {
 const old = v3Save();
 K.deserialize(JSON.stringify(old));
 const m = K.state;
-check('migration: version bumped to 4, loadedVersion 2', m.version === 4 && K.loadedVersion === 2);
+check('migration: version bumped to 5, loadedVersion 2', m.version === 5 && K.loadedVersion === 2);
 check('migration: money, run and total earnings unchanged', m.money === old.money && m.runEarned === old.runEarned && m.totalEarned === old.totalEarned);
-check('migration: all old employees kept, new ones 0', Object.keys(old.gens).every((k) => m.gens[k] === old.gens[k]) && m.gens.arge === 0 && m.gens.yzlab === 0 && m.gens.mars === 0);
+check('migration: all old employees kept, new ones 0', Object.keys(old.gens).every((k) => m.gens[k] === old.gens[k]) && m.gens.veri === 0 && m.gens.arge === 0 && m.gens.cip === 0 && m.gens.yzlab === 0 && m.gens.mars === 0);
 check('migration: upgrades, achievements, shares, prestige kept', JSON.stringify(m.upgrades) === JSON.stringify(old.upgrades) && JSON.stringify(m.achievements) === JSON.stringify(old.achievements) && m.shares === 57 && m.prestigeCount === 4);
 check('migration: stats kept', ['clicks', 'clickEarned', 'playTime', 'startedAt', 'eventsClicked', 'offlineEarned', 'critClicks', 'eventsResolved', 'reputation', 'boostLeft'].every((k) => m[k] === old[k]));
 check('migration: daily + buffs kept', m.daily.streak === 3 && m.daily.tasks.length === 1 && m.buffs.length === 1);
@@ -165,11 +168,11 @@ check('migration: cycle = all-time, rounds = prestige count (Halka Arz can unloc
 check('migration: no IPO / tree yet', m.ipoShares === 0 && m.ipoCount === 0 && m.tree.length === 0);
 check('migration: Global Holding player gets the new-stage news', m.stageBest === 5 && JSON.stringify(m.newsPending) === '["yeni_asama"]');
 K.deserialize(K.serialize());
-check('migration: reload of migrated save is stable (no second migration, news still pending)', K.loadedVersion === 4 && K.state.cycleRounds === 4 && JSON.stringify(K.state.newsPending) === '["yeni_asama"]');
+check('migration: reload of migrated save is stable (no second migration, news still pending)', K.loadedVersion === 5 && K.state.cycleRounds === 4 && JSON.stringify(K.state.newsPending) === '["yeni_asama"]');
 K.deserialize(JSON.stringify(v3Save({ stage: 3, runEarned: 2e6, totalEarned: 5e6, prestigeCount: 0, shares: 0 })));
 check('migration: early player gets no new-stage news', K.state.newsPending.length === 0 && K.state.stageBest === 3 && K.state.cycleRounds === 0);
 K.deserialize(JSON.stringify({ version: 1, money: 10, runEarned: 50, totalEarned: 50, gens: { stajyer: 2 } }));
-check('migration: very old v1 save loads', K.state.version === 4 && K.state.gens.stajyer === 2 && K.state.totalEarned === 50);
+check('migration: very old v1 save loads', K.state.version === 5 && K.state.gens.stajyer === 2 && K.state.totalEarned === 50);
 K.deserialize(JSON.stringify(Object.assign(v3Save({ version: 3 }), { tree: ['kod_2', 'kod_1', 'kod_1', 'yok', 'ekip_2'], newsSeen: ['siralama', 'x', 'siralama'], ipoShares: -3, cycleEarned: 1e30 })));
 check('v4 save sanitised: tree order/prefix, known news, no negatives, cycle <= total',
   JSON.stringify(K.state.tree) === '["kod_1"]' && JSON.stringify(K.state.newsSeen) === '["siralama"]' && K.state.ipoShares === 0 && K.state.cycleEarned === K.state.totalEarned, [K.state.tree, K.state.newsSeen]);

@@ -92,9 +92,11 @@
     if (me && top.indexOf(me) === -1) pinned = me;
     return { top: top, me: me, pinned: pinned, empty: top.length === 0, meStatus: me ? null : meStatus };
   }
+  // best_stage sunucuda eski (v4.3) aşama sırasıyla tutulur (0..8); v4.4'te araya aşama girdiği için sıra -> aşama ID'si -> aşama.
   function stageLabel(i) {
     if (typeof i !== 'number' || !isFinite(i) || i < 0) return '';
-    var st = K.STAGES ? K.STAGES[i] : null;
+    var id = K.LEGACY_STAGE_IDS ? K.LEGACY_STAGE_IDS[Math.floor(i)] : null;
+    var st = id && K.STAGE_BY_ID ? K.STAGE_BY_ID[id] : (K.LEGACY_STAGE_IDS ? null : (K.STAGES ? K.STAGES[i] : null));
     return st ? st.icon + ' ' + st.name : 'Aşama ' + (Math.floor(i) + 1); // yeni aşamalar eski sürümde de görünsün
   }
   function ownRankText(rank) { return 'Sen: #' + rank; }

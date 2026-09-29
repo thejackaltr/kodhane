@@ -435,6 +435,12 @@ body::before { content: ''; position: fixed; inset: 0; pointer-events: none; z-i
 .ipo { margin-top: 18px; padding-top: 14px; border-top: 1px dashed var(--line); position: relative; }
 .ipo h3 { margin: 0 0 8px; }
 .ipo-lock { font-weight: 700; color: var(--gold); margin: 0 0 8px; }
+.ipo-wait { margin: 0 0 8px; }
+.ipo-wait .ipo-lock { margin: 0; font-variant-numeric: tabular-nums; }
+.ipo-wait-note, .ipo-accel-note { color: var(--muted); font-size: .8rem; margin: 2px 0 0; line-height: 1.35; overflow-wrap: anywhere; }
+.ipo-accel-note { margin: -2px 0 8px; }
+#ipoBtn { font-variant-numeric: tabular-nums; }
+.ipo .stats dd { overflow-wrap: anywhere; }
 .ipo.locked .ipo-body { filter: blur(3px) grayscale(.6); opacity: .55; pointer-events: none; user-select: none; }
 .tree { margin-top: 16px; }
 .tree-title { margin: 0; font-size: 1.05rem; }

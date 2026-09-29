@@ -167,15 +167,16 @@ with sync_playwright() as p:
     check('v4.1: hint hidden when pays are available, bonus row +%0', not pg.is_visible('#ipoHint') and pg.inner_text('#ipoBonus') == '+%0 üretim', pg.inner_text('#ipoBonus'))
     total0 = ev('Kodhane.state.totalEarned')
     pg.click('#ipoBtn')
+    # v4.4 (Yazı r3): hisseler korunur, bu turun hissesi eklenir; tam metin tests/test_v44_ui.py'de birebir sınanır
     check('confirm modal copy', modal_title(pg) == 'Halka arz et?' and
-          'Kasa, çalışanlar, geliştirmeler ve yatırımcı hisselerin sıfırlanacak. Borsa Payı Ağacı, başarımların ve sıralamadaki puanın olduğu gibi kalır.' in pg.inner_text('#modalText') and
-          'Şu anki +%0 yatırımcı bonusun sıfırlanır, karşılığında 2 Borsa Payı kazanırsın.' in pg.inner_text('#modalText') and
-          'Harcamadığın her Borsa Payı +%1 üretim verir.' in pg.inner_text('#modalText') and
-          'Kazanacağın' not in pg.inner_text('#modalText') and 'Karşılığında kalıcı Borsa Payı' not in pg.inner_text('#modalText'), pg.inner_text('#modalText'))
+          'Kasa, çalışanlar ve geliştirmeler sıfırlanacak. Yatırımcı hisselerin korunur, bu turda biriken 3 hisse de eklenir. Borsa Payı Ağacı, başarımların ve sıralamadaki puanın da kalır.' in pg.inner_text('#modalText') and
+          'Kazanacağın: 2 Borsa Payı. Sonraki Yatırım Turlarında hisselerin %20 fazla gelir.' in pg.inner_text('#modalText') and
+          'Harcamadığın her Borsa Payı +%1 üretim verir. Sonraki Halka Arz için en az 12 saat beklemen gerekir.' in pg.inner_text('#modalText') and
+          'yatırımcı bonusun sıfırlanır' not in pg.inner_text('#modalText') and 'Karşılığında kalıcı Borsa Payı' not in pg.inner_text('#modalText'), pg.inner_text('#modalText'))
     pg.click('#modalActions button:has-text("Vazgeç")')
     check('cancel keeps everything', ev('Kodhane.state.ipoCount') == 0 and ev('Kodhane.state.cycleRounds') == 3)
     pg.click('#ipoBtn'); pg.click('#modalActions button:has-text("Halka arz et")')
-    check('done modal copy', modal_title(pg) == 'Borsa zili çaldı!' and pg.inner_text('#modalText') == 'Artık halka açık bir şirketsin. Borsa Payların: 2', pg.inner_text('#modalText'))
+    check('done modal copy', modal_title(pg) == 'Borsa zili çaldı!' and pg.inner_text('#modalText') == 'Artık halka açık bir şirketsin. Hisselerin yerinde duruyor. Borsa Payların: 2', pg.inner_text('#modalText'))
     check('IPO keeps the leaderboard score (totalEarned)', ev('Kodhane.state.totalEarned') >= total0 and ev('Kodhane.state.ipoCount') == 1)
     check('Borsa Zili unlocked', 'borsa_zili' in ev('Kodhane.state.achievements'))
     pg.click('#modalActions button:has-text("Paylaş")')
@@ -201,9 +202,10 @@ with sync_playwright() as p:
     check('Yatırım Turu intro shows the boosted share bonus', pg.inner_text('#prPer') == '+%12,5', pg.inner_text('#prPer'))
     # kilitli yeni çalışan satırı
     ev("Kodhane.GENERATORS.forEach(g => { if (!g.stage) Kodhane.state.gens[g.id] = 1; }); Kodhane.renderAll()")
-    txt = ev("document.querySelector('#genList [data-gen=arge]').textContent")
-    check('only the next new employee is teased', ev("document.querySelector('#genList [data-gen=yzlab]').classList.contains('hidden')"))
-    check('new employee row locked until Teknoloji Devi', 'Teknoloji Devi aşamasında açılır' in txt, txt[:200])
+    # v4.4: sıradaki yeni çalışan Veri Merkezi (Unicorn)
+    txt = ev("document.querySelector('#genList [data-gen=veri]').textContent")
+    check('only the next new employee is teased', ev("document.querySelector('#genList [data-gen=arge]').classList.contains('hidden')") and ev("document.querySelector('#genList [data-gen=yzlab]').classList.contains('hidden')"))
+    check('new employee row locked until Unicorn', 'Unicorn aşamasında açılır' in txt, txt[:200])
     check('no page errors (IPO)', not pg.errs, '; '.join(pg.errs))
     c.close()
 
@@ -345,7 +347,7 @@ with sync_playwright() as p:
     ev = pg.evaluate
     ev("""(() => { const S = Kodhane.state; S.prestigeCount = 7; S.cycleRounds = 3; S.shares = 120; S.ipoCount = 2; S.ipoSharesEarned = 9;
       S.tree = ['kod_1', 'kod_2', 'ekip_1', 'yatirim_1']; S.ipoShares = 4; S.cycleEarned = 2.7e15; S.totalEarned = 4.1e16; S.runEarned = 3e12;
-      S.stage = 5; S.stageBest = 6; S.newsSeen = ['siralama', 'yeni_asama']; Kodhane.renderAll(); })()""")
+      S.stage = 5; S.stageBest = Kodhane.stageRank('teknoloji_devi'); S.newsSeen = ['siralama', 'yeni_asama']; Kodhane.renderAll(); })()""")
     pg.tap('#bottomNav [data-view="prestige"]')
     ev("Kodhane.selectTab('prestige')")
     pg.wait_for_timeout(300)
@@ -354,7 +356,7 @@ with sync_playwright() as p:
     pg.wait_for_timeout(300)
     pg.screenshot(path=SS + 'v4-hisse-agaci-mobile.png')
     check('screenshot: tree (mobile)', os.path.getsize(SS + 'v4-hisse-agaci-mobile.png') > 20000)
-    ev("Kodhane.state.cycleStage = 6; Kodhane.renderAll()")
+    ev("Kodhane.state.cycleStage = Kodhane.stageRank('teknoloji_devi'); Kodhane.renderAll()")
     pg.wait_for_timeout(200)
     ev("document.getElementById('ipoSection').scrollIntoView({block: 'start'}); window.scrollBy(0, -80); document.getElementById('toast').innerHTML = ''")
     pg.wait_for_timeout(200)
@@ -362,7 +364,7 @@ with sync_playwright() as p:
     check('screenshot v4.1: Halka Arz with unspent bonus (mobile)', os.path.getsize(SS + 'v41-halka-arz-mobile.png') > 20000 and pg.inner_text('#ipoBonus') == '+%4 üretim')
     pg.tap('#ipoBtn'); pg.wait_for_timeout(300)
     pg.screenshot(path=SS + 'v41-halka-arz-onay-mobile.png')
-    check('screenshot v4.1: IPO confirm (mobile)', 'karşılığında 5 Borsa Payı kazanırsın' in pg.inner_text('#modalText'), pg.inner_text('#modalText'))
+    check('screenshot v4.1: IPO confirm (mobile)', 'Kazanacağın: 5 Borsa Payı.' in pg.inner_text('#modalText'), pg.inner_text('#modalText'))
     pg.click('#modalActions button:has-text("Vazgeç")')
     pg.tap('#bottomNav [data-view="kod"]')
     ev("(() => { const S = Kodhane.state; Object.assign(S.gens, {stajyer: 150, junior: 120, senior: 100, tasarimci: 80, pm: 60, ai: 45, sunucu: 30, ofis: 12}); S.money = 8.4e11; Kodhane.renderAll(); Kodhane.spawnEvent('eticaret_sunucu'); })()")
@@ -374,14 +376,15 @@ with sync_playwright() as p:
     c = ctx_for(mobile=True)
     pg = open_page(c)
     ev = pg.evaluate
-    ev("Kodhane.state.newsSeen = ['siralama', 'acik_ofis']; Kodhane.state.stageBest = 7; Kodhane.state.stage = 7; Kodhane.state.runEarned = Kodhane.STAGES[7].at; Kodhane.renderAll()")
-    ev("Kodhane.earn(Kodhane.STAGES[8].at)")
+    # v4.4: Mars Ofisi son aşama (sıra 10), bir önceki Yapay Zekâ Laboratuvarı
+    ev("const M = Kodhane.STAGES.length - 1; Kodhane.state.newsSeen = ['siralama', 'acik_ofis']; Kodhane.state.stageBest = M - 1; Kodhane.state.stage = M - 1; Kodhane.state.runEarned = Kodhane.STAGES[M - 1].at; Kodhane.renderAll()")
+    ev("Kodhane.earn(Kodhane.STAGES[Kodhane.STAGES.length - 1].at)")
     pg.wait_for_selector('#stageUp:not(.hidden)', timeout=3000)
     ev("Kodhane.CFG.stageModalSec = 60")
     pg.wait_for_timeout(700)
     ev("document.getElementById('toast').innerHTML = ''")
     pg.wait_for_timeout(200)
-    check('Mars overlay', pg.inner_text('#suTitle') == 'Mars Ofisi' and ev("getComputedStyle(document.documentElement).getPropertyValue('--stage-tint').trim()") == ev('Kodhane.STAGE_TINTS[8]'))
+    check('Mars overlay', pg.inner_text('#suTitle') == 'Mars Ofisi' and ev("getComputedStyle(document.documentElement).getPropertyValue('--stage-tint').trim()") == ev('Kodhane.STAGE_BY_ID.mars_ofisi.tint') == ev('Kodhane.STAGE_TINTS[Kodhane.STAGES.length - 1]'))
     pg.screenshot(path=SS + 'v4-asama-tebrik-mobile.png')
     check('screenshot: stage-up (mobile)', os.path.getsize(SS + 'v4-asama-tebrik-mobile.png') > 20000)
     c.close()

@@ -52,8 +52,11 @@ sw = open(os.path.join(ROOT, 'sw.js'), encoding='utf-8').read()
 check('sw.js: analiz.teserix.com is never cached/intercepted', "url.hostname === 'analiz.teserix.com') return;" in sw and 'analiz' not in sw.split('var ASSETS')[1].split(';')[0])
 src = ''.join(open(os.path.join(ROOT, f), encoding='utf-8').read() for f in ('game.js', 'cloud.js', 'leaderboard.js'))
 names = sorted(set(re.findall(r"\btrack\('([a-z_]+)'\)", src)))
-check('Umami events wired (unchanged list)', names == sorted(['acikofis_news_click', 'cloud_save', 'game_start', 'login_success', 'reset_or_prestige', 'share_click']), str(names))
-check('track calls pass event names only (no second argument)', not re.search(r"\btrack\('[a-z_]+'\s*,", src))
+check('Umami events wired (name-only list unchanged)', names == sorted(['acikofis_news_click', 'cloud_save', 'game_start', 'login_success', 'reset_or_prestige', 'share_click']), str(names))
+# v4.4: yalnızca iki olay veri taşır, verisi de yalnızca sabit alan üreten iki yardımcıdan gelir (gizlilik metninde yazılı)
+with_data = re.findall(r"\btrack\('([a-z_]+)'\s*,\s*([^)]*\))", src)
+check('only ipo_complete / tree_full carry data, from ipoEventData / treeEventData only',
+      sorted(x[0] for x in with_data) == ['ipo_complete', 'tree_full'] and all(re.match(r'(ipoEventData|treeEventData)\(', x[1]) for x in with_data), str(with_data))
 check('leaderboard.js countEvent is gated by Kodhane.counterAllowed', "if (typeof K.counterAllowed !== 'function' || !K.counterAllowed()) return;" in src)
 
 FAKE_REAL = r"""(function () {

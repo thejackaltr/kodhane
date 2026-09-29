@@ -53,38 +53,66 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
     if (!fs.existsSync(f)) { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, execFileSync('git', ['show', 'v4-local:game.js'], { cwd: ROOT })); }
     OLD = require(f);
   } catch (e) { OLD = null; }
+  // v4.4: aşama alanları çalışma anında aşama sırasıdır; v4.4'te araya iki aşama girdiği için tohum aşamaları ID ile verilir
+  // (eski oyunda 6 = Teknoloji Devi, 7 = Yapay Zekâ Laboratuvarı).
+  const rankOf = (M, id, legacy) => (M.stageRank ? M.stageRank(id) : legacy);
   function seeded(M) {
     M.rng = (() => { let x = 42; return () => (x = (x * 16807) % 2147483647) / 2147483647; })();
     M.setToday('2026-09-28');
     const s = M.newState();
     Object.assign(s, { money: 5e9, runEarned: 4e12, totalEarned: 9e12, cycleEarned: 6e12, clicks: 1234, shares: 17, prestigeCount: 4, cycleRounds: 3,
       reputation: 42, achievements: ['ilk_tik', 'itibar_25'].filter((id) => M.ACHIEVEMENTS.some((a) => a.id === id)), ipoShares: 3, ipoSharesEarned: 5, ipoCount: 1,
-      tree: ['kod_1'], stage: 6, stageBest: 7, cycleStage: 6, startedAt: 1000, lastSaved: 2000, upgrades: ['stajyer_1'] });
+      tree: ['kod_1'], stage: rankOf(M, 'teknoloji_devi', 6), stageBest: rankOf(M, 'yapay_zeka_lab', 7), cycleStage: rankOf(M, 'teknoloji_devi', 6), startedAt: 1000, lastSaved: 2000, upgrades: ['stajyer_1'] });
     s.gens.stajyer = 50; s.gens.junior = 20;
     s.daily = { date: '2026-09-28', tasks: [], streak: 5, best: 9, lastComplete: '2026-09-27', allDone: false, daysCompleted: 12 };
     M.state = s;
     return s;
   }
-  function strip(s) { const o = clone(s); delete o.startedAt; delete o.lastSaved; return o; }
+  // v4.4'ün bilerek eklediği alanlar karşılaştırmadan çıkarılır; aşama alanları ID'ye çevrilir
+  const V44_ONLY = ['ipoAt', 'startedVersion', 'eventLog'];
+  function strip(s, M) {
+    const o = clone(s); delete o.startedAt; delete o.lastSaved; delete o.version; // kayıt sürümü: v4.4'te 5
+    V44_ONLY.forEach((k) => delete o[k]);
+    if (o.gens) { delete o.gens.veri; delete o.gens.cip; }
+    ['stage', 'stageBest', 'cycleStage'].forEach((k) => { if (M && typeof o[k] === 'number') o[k] = M.STAGES[o[k]].name; });
+    return o;
+  }
+  // v4.4 dengesini kapatınca (hızlandırıcı yok, Halka Arz hisseleri silinir, bekleme yok) eski oyunla birebir aynı olmalı
+  const HA44 = ['keepShares', 'keepMode', 'bankPending', 'shareGainPerEarned', 'accelCap', 'cooldownSec'];
+  const saved44 = {}; HA44.forEach((k) => { saved44[k] = K.CFG.halkaArz[k]; });
+  function neutral44(on) { Object.assign(K.CFG.halkaArz, on ? { keepShares: 0, keepMode: 'floor', bankPending: false, shareGainPerEarned: 0, accelCap: null, cooldownSec: 0 } : saved44); }
   seeded(K); const before = clone(K.state);
   K.meta.epoch = 777; K.meta.resetAt = 555;
-  const gNew = K.doPrestige(); const afterNew = strip(K.state);
+  const gNew = K.doPrestige(); const afterNew = strip(K.state, K);
   check('prestige keeps achievements, reputation, streak', JSON.stringify(K.state.achievements) === JSON.stringify(before.achievements) &&
     K.state.reputation === 42 && K.state.daily.streak === 5 && K.state.daily.best === 9);
   check('prestige: shares/prestigeCount/cycleRounds as before', K.state.shares === before.shares + gNew && K.state.prestigeCount === 5 && K.state.cycleRounds === 4 && gNew > 0);
   check('prestige does not touch save generation (epoch/resetAt)', K.meta.epoch === 777 && K.meta.resetAt === 555);
-  check('state keys unchanged (no new field inside the game state)', Object.keys(K.newState()).join() === (OLD ? Object.keys(OLD.newState()).join() : Object.keys(K.newState()).join()));
+  check('state keys: only v4.4 fields added (ipoAt, startedVersion, eventLog)', OLD ? Object.keys(K.newState()).filter((k) => V44_ONLY.indexOf(k) === -1).join() === Object.keys(OLD.newState()).join() &&
+    V44_ONLY.every((k) => k in K.newState()) : true);
   if (OLD) {
+    neutral44(true);
+    seeded(K); const gN0 = K.doPrestige(); const afterN0 = strip(K.state, K);
     seeded(OLD); const gOld = OLD.doPrestige();
-    check('prestige identical to v4-local (gain + full state)', gOld === gNew && JSON.stringify(strip(OLD.state)) === JSON.stringify(afterNew));
+    check('prestige identical to v4-local with v4.4 balance off (gain + full state)', gOld === gN0 && JSON.stringify(strip(OLD.state, OLD)) === JSON.stringify(afterN0), [gOld, gN0]);
     seeded(K); seeded(OLD);
     K.state.cycleRounds = OLD.state.cycleRounds = 3;
     const iNew = K.doIpo(), iOld = OLD.doIpo();
-    check('Halka Arz identical to v4-local (gain + full state)', iNew === iOld && iNew > 0 && JSON.stringify(strip(K.state)) === JSON.stringify(strip(OLD.state)));
+    check('Halka Arz identical to v4-local with v4.4 balance off (gain + full state)', iNew === iOld && iNew > 0 && JSON.stringify(strip(K.state, K)) === JSON.stringify(strip(OLD.state, OLD)), [iNew, iOld]);
     seeded(K); seeded(OLD);
-    check('multipliers identical to v4-local', K.tps() === OLD.tps() && K.clickValue() === OLD.clickValue() && K.sharesGain() === OLD.sharesGain() && K.ipoGain() === OLD.ipoGain());
+    // v4.4: araya giren aşamalar aşama bonusunu (+%10 / aşama) değiştirir: 4e12 eskiden Global Holding (5), şimdi Unicorn (6).
+    // Denge simülasyonu da aynı hesabı kullanır (E100cd12). Aşama çarpanı çıkarılınca gerisi aynı olmalı.
+    const sm = (M) => 1 + 0.10 * M.stageIndex(M.state.runEarned);
+    const close = (a, b) => Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a));
+    check('multipliers identical to v4-local with v4.4 balance off (apart from the stage bonus of the new stages)', close(K.tps() / sm(K), OLD.tps() / sm(OLD)) && close(K.clickValue() / sm(K), OLD.clickValue() / sm(OLD)) &&
+      K.sharesGain() === OLD.sharesGain() && K.ipoGain() === OLD.ipoGain() && K.stageIndex(4e12) === 6 && OLD.stageIndex(4e12) === 5,
+      [K.tps(), OLD.tps(), K.clickValue(), OLD.clickValue(), K.sharesGain(), OLD.sharesGain(), K.ipoGain(), OLD.ipoGain()]);
     check('reset result identical to v4-local (fresh newState: achievements, reputation, streak wiped as before)',
-      JSON.stringify(strip(K.newState())) === JSON.stringify(strip(OLD.newState())));
+      JSON.stringify(strip(K.newState(), K)) === JSON.stringify(strip(OLD.newState(), OLD)));
+    neutral44(false);
+    // v4.4 dengesi açıkken: Yatırım Turu hızlandırıcıyla daha çok hisse verir (5 pay -> x1,5), gerisi aynı
+    seeded(K); const gAcc = K.doPrestige();
+    check('v4.4 prestige: accelerator x(1 + 0.1 x 5) on shares', gAcc === Math.floor(Math.sqrt(4e12 / 1e8) * 1.5) && gAcc > gOld, [gAcc, gOld]);
   } else check('v4-local game.js available for comparison', false);
   const fresh = K.newState();
   check('reset wipes achievements, reputation, streak, prestige (same as v4.1.1 and the copy deleteList)',

@@ -1,4 +1,4 @@
-/* Kodhane: Ajans Tycoon — v4.3.1 (isimsiz sayaç izni + gizlilik ayarı + güvenli kayıt sıfırlama + yeni aşamalar + Halka Arz + Borsa Payı Ağacı + müşteri sektörleri)
+/* Kodhane: Ajans Tycoon — v4.4.0 (Halka Arz hisseleri korur + hızlandırıcı + 12 sa bekleme + Unicorn / Şirketler Grubu aşamaları + aşama ID'leri, isimsiz sayaç izni + gizlilik ayarı + güvenli kayıt sıfırlama + yeni aşamalar + Halka Arz + Borsa Payı Ağacı + müşteri sektörleri)
  * Vanilla JS, derleme adımı yok. Tüm oyun metinleri Türkçe.
  * v1 kayıtları ('kodhane_ajans_save_v1') ilk açılışta otomatik olarak taşınır; v2/v3/v4 kayıtları kayıpsız yeni alanları alır.
  * Denge sayıları CFG (ayarlar) ve tablolarda durur; açıklama metinleri sayıları bu ayarlardan okur.
@@ -10,8 +10,9 @@
   // ------------------------------------------------------------------
   // Tanımlar (denge değerleri)
   // ------------------------------------------------------------------
-  var VERSION = '4.3.1';
-  var SAVE_VERSION = 4; // kayıt biçimi (v4.1 oyun sürümü; 3 = v4). Kayda 'version' ve (v4.3.1) 'saveVersion' olarak yazılır.
+  var VERSION = '4.4.0';
+  // kayıt biçimi (3 = oyun v4, 4 = v4.1, 5 = v4.4: aşamalar ID ile). Kayda 'version' ve (v4.3.1'den beri) 'saveVersion' olarak yazılır.
+  var SAVE_VERSION = 5;
   var SAVE_KEY = 'kodhane_ajans_save_v2';
   var LEGACY_KEYS = ['kodhane_ajans_save_v1'];
   var SETTINGS_KEY = 'kodhane_ayarlar_v1';
@@ -35,14 +36,25 @@
     newsPerSession: 1,           // oturum başına en fazla haber
     halkaArz: {
       rounds: 3,                 // Halka Arz, bu döngüde bu kadar Yatırım Turu'ndan sonra açılır
-      // Borsa Payı = max(ilk ? firstMin : 0, bu döngüde ulaşılan en yüksek aşamanın payı (stagePays[aşama]))
+      // Borsa Payı = max(ilk ? firstMin : 0, bu döngüde ulaşılan en yüksek aşamanın payı (stagePays[aşama ID'si]))
       mode: 'stage',             // 'stage' (seçilen) | 'root': floor(k * (döngü kazancı / threshold)^(1/root)) (karşılaştırma için)
-      stagePays: [0, 0, 0, 0, 0, 2, 5, 8, 12],
-      repeatMinStage: 6,         // 2. halka arzdan itibaren pay için en az bu aşama (Global Holding'de hızlı tekrar = pay çiftliği olmasın)
+      // v4.4 (E100cd12): aşama ID'si -> Borsa Payı (listede olmayan aşama 0 pay). Simülasyon: tests/balance_v44.js PAYS44.
+      stagePays: { global_holding: 2, unicorn: 3, sirketler_grubu: 4, teknoloji_devi: 5, yapay_zeka_lab: 8, mars_ofisi: 12 },
+      repeatMinStage: 'teknoloji_devi', // 2. halka arzdan itibaren pay için en az bu aşama (hızlı tekrar = pay çiftliği olmasın)
       k: 1, threshold: 1e14, root: 6,
       firstMin: 1,
       unspentBonus: 0.01,        // harcanmamış her Borsa Payı kalıcı +%1 üretim...
-      unspentCap: 50             // ...en fazla bu kadar pay sayılır (+%50; hızlı halka arz çiftliği katlanarak büyümesin)
+      unspentCap: 50,            // ...en fazla bu kadar pay sayılır (+%50; hızlı halka arz çiftliği katlanarak büyümesin)
+      // v4.4 (E100cd12): Halka Arz hisseleri silmez. Yatırımcı hisselerinin keepShares oranı kalır (1 = hepsi; keepMode
+      // 'floor' = tam sayıya aşağı yuvarlanır); bankPending: bu turda biriken (henüz Yatırım Turu yapılmamış) hisse de önce eklenir.
+      keepShares: 1.0, keepMode: 'floor', bankPending: true,
+      // Borsa hızlandırıcısı: kazanılmış her Borsa Payı (ipoSharesEarned, harcansa da sayılır) Yatırım Turu hissesini
+      // +shareGainPerEarned artırır; en fazla accelCap pay sayılır (0,10 x 40 = +%400, yani en fazla 5 kat).
+      shareGainPerEarned: 0.10, accelCap: 40,
+      // İki Halka Arz arasında en az bu kadar saniye (12 sa). Son Halka Arz anı kayıtta (ipoAt, ms). Eski kayıtta alan yoksa ilk
+      // Halka Arz hemen açıktır; ileri tarihli ipoAt yüklemede ve her kontrolde şimdiye çekilir (bekleme en fazla cooldownSec).
+      // NOT: 12 saatin altına inerse arka arkaya Halka Arz yeniden mümkün olur (pay çiftliği; kodhane-v4.4-sim-sonuclari.md bölüm 6).
+      cooldownSec: 43200
     },
     tree: {
       costs: [1, 3, 6],          // her dalda 1., 2., 3. düğüm (Borsa Payı)
@@ -65,7 +77,7 @@
       share: 0.5,                // açık sektör varken olay kartlarının bu kadarı sektör kartı
       rejectSec: 600,            // reddedilen sektörden kartlar bu süre boyunca azalır...
       rejectWeight: 0.25,        // ...bu ağırlıkla (itibar etkilenmez)
-      unlock: { esnaf: 0, eticaret: 2, oyun: 3, kamu: 4 }, // açıldığı aşama (en iyi aşama; Yatırım Turu'nda kapanmaz)
+      unlock: { esnaf: 'freelancer', eticaret: 'butik_studyo', oyun: 'ajans', kamu: 'dev_ajans' }, // açıldığı aşama ID'si (en iyi aşama; Yatırım Turu'nda kapanmaz)
       eticaret_sunucu: { cost: 20, pay: 120 },
       eticaret_buton: { pay: 25, sec: 20, mult: 0.9 },
       oyun_yama: { pay: 150, sec: 60, mult: 0.7 },
@@ -79,7 +91,11 @@
     reset: {
       undoSeconds: 10,           // sıfırladıktan sonra "Geri al" düğmesinin kalma süresi (sn)
       backupDays: 30             // YER TUTUCU (onay bekliyor): silinen bulut kaydının yedekte kalma süresi (gün); Backend'in saklama süresiyle aynı olmalı
-    }
+    },
+    // v4.4: kayıt içi olay listesi (S.eventLog). Son max olay (FIFO): Halka Arz, Yatırım Turu, Kaydı sıfırla. Her girdi YALNIZCA
+    // { type, at (ms), sharesBefore, sharesAfter, paysBefore, paysAfter }. Hiçbir yere gönderilmez (Umami / sayaç yok); yalnızca
+    // kaydın parçası olarak (bulut kaydı dahil) durur. Gizlilik metni (telemetry.details) "son 20" der: max değişirse metin de değişmeli.
+    eventLog: { max: 20 }
   };
   // Testler için geçersiz kılma (ör. { reset: { undoSeconds: 2 } })
   if (root && root.KODHANE_CFG_OVERRIDE && typeof root.KODHANE_CFG_OVERRIDE === 'object') {
@@ -96,7 +112,7 @@
     "reset.deleteList": ["Para ve kazanç", "Çalışanlar", "Geliştirmeler", "Başarımlar", "Yatırım turu hisseleri ve yatırım turu sayısı", "Halka Arz, Borsa Payları ve ağaç", "Aşama ilerlemesi", "Haberler", "İtibar ve günlük seri"],
     "reset.keepTitle": "Kalacaklar",
     "reset.keepList": ["Tüm Zamanlar puanın ve sıradaki yerin", "Takma adın", "Kodhane hesabın", "Ses, titreşim ve gizlilik ayarların"],
-    "reset.prestigeHint": "Başarımlarını, itibarını ve günlük serini korumak istiyorsan sıfırlamak yerine yatırım turuna çık. Yatırım turunda bunlar korunur, üstüne Halka Arz'a kadar geçerli bir üretim bonusu kazanırsın.",
+    "reset.prestigeHint": "Başarımlarını, itibarını ve günlük serini korumak istiyorsan sıfırlamak yerine yatırım turuna çık. Yatırım turunda bunlar korunur, üstüne bir üretim bonusu kazanırsın. Bu bonus Halka Arz'da da silinmez.",
     "reset.prestigeBtn": "Yatırım turuna git",
     "reset.backup": "Silinen kayıt {d} gün boyunca yedekte kalır. Bu süre içinde geri yükleyebilirsin.",
     "reset.hold": "Sıfırlamak için basılı tut",
@@ -127,12 +143,30 @@
     return t.replace(/\{(s|d)\}/g, function (m, k) { return String(v[k]); });
   }
 
-  // v4.3.1: Yatırım Turu / Halka Arz onay metinleri ve yeni sürüm (daha yeni kayıt) bandı. Onaylı kesin metin.
-  // Yer tutucular uiText() ile doldurulur: {g} kazanılacak hisse, {b} bu turun hisselerinin bonusu, {x} şu anki
-  // yatırımcı bonusu, {n} kazanılacak Borsa Payı, {u} harcanmamış pay başına üretim (hepsi biçimlenmiş metin).
+  // Yatırım Turu / Halka Arz / bekleme metinleri ve yeni sürüm (daha yeni kayıt) bandı. Onaylı kesin metin (v4.4: Yazı r3,
+  // kodhane-v4.4-metinler-yazi-r3.md). Metinlerde sayı yok; yer tutucular uiText() ile CFG'den ve oyundan doldurulur:
+  //  {g} kazanılacak hisse (hızlandırıcı dahil), {b} bu turun hisselerinin bonusu, {p} Halka Arz'da eklenecek bu turun
+  //  hissesi, {n} kazanılacak Borsa Payı, {y} Halka Arz sonrası yatırımcı bonusu, {z} hızlandırıcı yüzdesi (bu Halka Arz'ın
+  //  payları dahil), {u} harcanmamış pay başına üretim, {h} iki Halka Arz arası en kısa süre ("12 saat"), {s} kalan süre
+  //  (fmtSec), {k} pay başına hızlandırma, {max} en fazla kat, {x} Halka Arz sonrası Borsa Payı toplamı.
   var UI_TEXT = {
-    "prestige.confirm": "Yatırımcılar şirketine <b>{g} hisse</b> karşılığında yatırım yapacak. Paran, çalışanların ve geliştirmelerin sıfırlanır; karşılığında Halka Arz'a kadar tüm kazançlara <b>+%{b}</b> bonus alırsın. Başarımların, itibarın ve günlük serin korunur.",
-    "ipo.confirm": "Kasa, çalışanlar, geliştirmeler ve yatırımcı hisselerin sıfırlanacak. Borsa Payı Ağacı, başarımların ve sıralamadaki puanın olduğu gibi kalır.<br>Şu anki +%{x} yatırımcı bonusun sıfırlanır, karşılığında <b>{n} Borsa Payı</b> kazanırsın.<br><small>Harcamadığın her Borsa Payı +%{u} üretim verir. İstersen payları hemen Borsa Payı Ağacı'nda kalıcı bonuslara harcayabilirsin.</small>",
+    "prestige.confirm": "Yatırımcılar şirketine <b>{g} hisse</b> karşılığında yatırım yapacak. Paran, çalışanların ve geliştirmelerin sıfırlanır; karşılığında tüm kazançlara <b>+%{b}</b> bonus alırsın. Bu bonus Halka Arz'da da silinmez. Başarımların, itibarın ve günlük serin korunur.",
+    // p >= 1 iken tam metin; p < 1 iken ilk cümle ipo.confirm.noPending olur, hızlandırıcı tavandaysa ikinci satırın sonu
+    // ipo.confirm.accelMax olur; isteğe bağlı bonus satırı (ipo.confirm.bonus) p >= 1 iken "Kazanacağın"dan önce gelir.
+    "ipo.confirm": "Kasa, çalışanlar ve geliştirmeler sıfırlanacak. Yatırımcı hisselerin korunur, bu turda biriken <b>{p} hisse</b> de eklenir. Borsa Payı Ağacı, başarımların ve sıralamadaki puanın da kalır.<br>Kazanacağın: <b>{n} Borsa Payı</b>. Sonraki Yatırım Turlarında hisselerin %{z} fazla gelir.<br><small>Harcamadığın her Borsa Payı +%{u} üretim verir. Sonraki Halka Arz için en az {h} beklemen gerekir.</small>",
+    "ipo.confirm.noPending": "Kasa, çalışanlar ve geliştirmeler sıfırlanacak. Yatırımcı hisselerin korunur. Borsa Payı Ağacı, başarımların ve sıralamadaki puanın da kalır.",
+    "ipo.confirm.accel": "Sonraki Yatırım Turlarında hisselerin %{z} fazla gelir.",
+    "ipo.confirm.accelMax": "Sonraki Yatırım Turlarında hisselerin %{z} fazla gelir (en fazla).",
+    "ipo.confirm.bonus": "Yatırımcı bonusun +%{y} olur.",
+    "ipo.done": "Artık halka açık bir şirketsin. Hisselerin yerinde duruyor. Borsa Payların: <b>{x}</b>",
+    "ipo.btnWait": "Halka arz et ({s})",
+    "ipo.lockWait": "⏳ Sonraki Halka Arz için {s} kaldı.",
+    "ipo.lockWaitNote": "İki Halka Arz arasında en az {h} olmalı.",
+    "ipo.reopened": "🔔 Halka Arz yeniden açık.",
+    "ipo.accelLabel": "Hisse hızlandırıcısı",
+    "ipo.accelValue": "+%{z}",
+    "ipo.accelValueMax": "+%{z} (en fazla)",
+    "ipo.accelNote": "Kazandığın her Borsa Payı yeni hisseleri +%{k} artırır, harcasan da sayılır. En fazla {max} kat.",
     "update.newerSave.text": "✨ Yeni sürüm hazır, ilerlemen korunuyor. Devam etmek için yenile.",
     "update.newerSave.textShort": "✨ Yeni sürüm hazır, ilerlemen korunuyor.",
     "update.newerSave.btn": "Yenile"
@@ -147,16 +181,17 @@
   // (tests/fixtures/kodhane-telemetry-copy.json ile birebir karşılaştırılır).
   var TEL_TEXT = {
     "telemetry.title": "İsimsiz sayaç",
-    "telemetry.body": "Oyunu geliştirmek için ziyaretleri ve bazı oyun olaylarını isimsiz olarak sayıyoruz. Hesabın ya da kaydının içeriği gönderilmez. İstemezsen kapatabilirsin.",
+    "telemetry.body": "Oyunu geliştirmek için ziyaretleri ve bazı oyun olaylarını isimsiz olarak sayıyoruz. Hesap bilgilerin ve takma adın gönderilmez. İstemezsen kapatabilirsin.",
     "telemetry.ok": "Tamam",
     "telemetry.off": "Kapat",
     "telemetry.detailsLink": "Ayrıntılar",
     "telemetry.detailsTitle": "İsimsiz sayaç hakkında",
     "telemetry.details": [
-      "Oyunu geliştirmek için sayfa ziyaretlerini ve bazı oyun olaylarını Teserix'in kendi analiz sunucusunda sayıyoruz. Sayılan olaylar şunlar: oyuna başlama, giriş, oturumdaki ilk bulut kaydı, sıfırlama, Yatırım turu, Halka Arz, paylaşım ve Açık Ofis haberine tıklama. Bizim gönderdiğimiz yalnızca olayın adı, hesabın ya da kaydının içeriği gönderilmez. Analiz aracı her kayda standart olarak şunları da ekler: sayfa adresi (? ve # işaretinden sonrası hariç), sayfa başlığı, geldiğin site, alan adı, ekran boyutu, tarayıcı dili, tarayıcın, işletim sistemin ve cihaz türün. Konum yalnızca ülke düzeyinde tutulur, IP adresi istatistik kayıtlarına yazılmaz. Ziyaret kayıtları 13 ay sonra silinir.",
+      "Oyunu geliştirmek için sayfa ziyaretlerini ve bazı oyun olaylarını Teserix'in kendi analiz sunucusunda sayıyoruz. Sayılan olaylar şunlar: oyuna başlama, giriş, oturumdaki ilk bulut kaydı, sıfırlama, Yatırım turu, Halka Arz, Borsa Payı ağacının dolması, paylaşım ve Açık Ofis haberine tıklama. Çoğu olayda bizim gönderdiğimiz yalnızca olayın adı. İki olayda oyundaki ilerlemenden birkaç bilgi de gider: Halka Arz'da ulaştığın aşama, kazandığın Borsa Payı ve kaçıncı Halka Arz olduğu; ağaç dolduğunda oyuna başladığından bu yana geçen süre (tam saat olarak), kaçıncı Halka Arz olduğu ve oyuna v4.4 güncellemesinden önce mi, sonra mı başladığın. Bunların dışında hesabın ya da kaydının içeriği gönderilmez. Analiz aracı her kayda standart olarak şunları da ekler: sayfa adresi (? ve # işaretinden sonrası hariç), sayfa başlığı, geldiğin site, alan adı, ekran boyutu, tarayıcı dili, tarayıcın, işletim sistemin ve cihaz türün. Konum yalnızca ülke düzeyinde tutulur, IP adresi istatistik kayıtlarına yazılmaz. Ziyaret kayıtları 13 ay sonra silinir.",
       "Ayrıca sıralama ve Açık Ofis haberlerinin kaç kez gösterildiğini ve tıklandığını Teserix'in kendi sunucusunda sayıyoruz. Bu sayımda yalnızca olayın adı gider. Sunucu olayları tek tek kaydetmez, yalnızca o günün toplamını bir artırır. Hesap bilgisi, IP adresi ya da cihaz bilgisi bu sayıma yazılmaz.",
       "Site Cloudflare üzerinden sunulduğu için Cloudflare de sayfa açılışlarını kendi aracıyla ayrıca sayar. Cloudflare'in açıklamasına göre bu araç çerez kullanmaz ve ziyaretçileri tanımaya çalışmaz.",
       "Bu iki sayaç da yalnızca bu bildirime “Tamam” dedikten sonra çalışır. “Tamam” demeden hiçbiri bir şey göndermez. İstediğin zaman İstatistik sekmesindeki Gizlilik bölümünden kapatabilirsin. Kapattığın anda ikisi de durur. Cloudflare'in sayımı bunun dışındadır ve sayfa açıldığında çalışır.",
+      "Kaydın, son 20 önemli olayı da kendi içinde tutar: Halka Arz, Yatırım turu ve sıfırlama, ayrıca bu olaylardan önceki ve sonraki hisse ve Borsa Payı sayıların. Bu liste yalnızca kaydının içinde durur. Bulut kaydı kullanıyorsan kaydınla birlikte buluta gider, başka hiçbir yere gönderilmez. Bir destek talebinde neyin ne zaman olduğunu görmek için kullanılır.",
       "Bu bilgilerin veri sorumlusu Teserix Bilişim ve Dijital Çözümler. KVKK'nın 11. maddesindeki haklarını kullanmak için info@teserix.com adresine yazabilirsin."
     ],
     "telemetry.detailsClose": "Kapat",
@@ -185,10 +220,13 @@
     { id: 'ai',       name: 'Yapay Zekâ Kod Ajanı',  icon: '🤖',   base: 1400000,   tps: 1400,  desc: 'Gece gündüz yorulmadan commit atar.' },
     { id: 'sunucu',   name: 'Sunucu Odası',          icon: '🖥️',   base: 20000000,  tps: 7800,  desc: 'Uğultusu para sesi gibidir.' },
     { id: 'ofis',     name: 'Yurt Dışı Ofis',        icon: '🌍',   base: 330000000, tps: 44000, desc: 'Güneş hiç batmayan ajans.' },
-    // v4: her yeni aşama bir çalışan tipi açar (stage = gereken aşama sırası)
-    { id: 'arge',     name: 'Ar-Ge Kampüsü',         icon: '🏛️',   base: 6.0e9,     tps: 3.0e5, stage: 6, desc: 'Her fikrin bir prototipi, her prototipin bir toplantısı var.' },
-    { id: 'yzlab',    name: 'Yapay Zekâ Araştırmacısı', icon: '🧪', base: 1.2e11,    tps: 2.5e6, stage: 7, desc: 'Modeli eğitiyor; model de onu.' },
-    { id: 'mars',     name: 'Mars Ekibi',            icon: '👩‍🚀', base: 3.0e12,    tps: 2.0e7, stage: 8, desc: 'Günlük stand-up 20 dakika gecikmeyle başlar.' }
+    // v4: her yeni aşama bir çalışan tipi açar (stage = gereken aşamanın ID'si). v4.4: Veri Merkezi (Unicorn) ve Çip Fabrikası
+    // (Teknoloji Devi) yeni; Ar-Ge Kampüsü Şirketler Grubu'na taşındı. Maliyet/üretim simülasyondan (balance_v44.js GENS44).
+    { id: 'veri',     name: 'Veri Merkezi',          icon: '🗄️',   base: 1.5e9,     tps: 1.2e5, stage: 'unicorn', desc: 'Sunucu Odası\'nın büyüğü. Soğutma faturası da öyle.' },
+    { id: 'arge',     name: 'Ar-Ge Kampüsü',         icon: '🏛️',   base: 6.0e9,     tps: 3.0e5, stage: 'sirketler_grubu', desc: 'Her fikrin bir prototipi, her prototipin bir toplantısı var.' },
+    { id: 'cip',      name: 'Çip Fabrikası',         icon: '🏭',   base: 2.5e10,    tps: 8.0e5, stage: 'teknoloji_devi', desc: 'Yapay zekânın yediği çipleri artık kendin üretiyorsun.' },
+    { id: 'yzlab',    name: 'Yapay Zekâ Araştırmacısı', icon: '🧪', base: 1.2e11,    tps: 2.5e6, stage: 'yapay_zeka_lab', desc: 'Modeli eğitiyor; model de onu.' },
+    { id: 'mars',     name: 'Mars Ekibi',            icon: '👩‍🚀', base: 3.0e12,    tps: 2.0e7, stage: 'mars_ofisi', desc: 'Günlük stand-up 20 dakika gecikmeyle başlar.' }
   ];
   var DEV_IDS = ['stajyer', 'junior', 'senior', 'ai'];
 
@@ -203,7 +241,9 @@
     ai:       [['Daha Büyük Bağlam Penceresi', '🧠'], ['İnce Ayarlı Model', '🎛️'], ['Ajan Sürüsü', '🐝'], ['Kendini Test Eden Kod', '✅'], ['Tekillik Toplantısı', '🌀']],
     sunucu:   [['Sıvı Soğutma', '💧'], ['Otomatik Ölçekleme', '📈'], ['Yeşil Enerji', '🌱'], ['Kendi Veri Merkezin', '🏗️'], ['Kuantum Rafı', '⚛️']],
     ofis:     [['Berlin Şubesi', '🥨'], ['Dubai Şubesi', '🏙️'], ['Tokyo Şubesi', '🗼'], ['New York Genel Merkezi', '🗽'], ['Ay Üssü Şubesi', '🌙']],
+    veri:     [['Sıcak–Soğuk Koridor', '🌡️'], ['Yedeğin Yedeği', '🪆'], ['Denizaltı Kablosu', '🐙'], ['Kutup Soğutması', '🧊'], ['Uzay Soğutması', '🪐']],
     arge:     [['Prototip Atölyesi', '🛠️'], ['Patent Duvarı', '📜'], ['Kuluçka Merkezi', '🐣'], ['Kampüs Servisi', '🚌'], ['Uzay Asansörü Taslağı', '🛗']],
+    cip:      [['Temiz Oda Tulumu', '🥼'], ['Silikon Gofret', '🧇'], ['Nanometre Yarışı', '🏁'], ['Çip Kıtlığına Son', '🚚'], ['Kendini Tasarlayan Çip', '♾️']],
     yzlab:    [['GPU Kümesi', '🎮'], ['Temiz Veri Seti', '🧼'], ['Hizalama Ekibi', '📏'], ['Kendini Eğiten Model', '♻️'], ['Genel Zekâ Toplantısı', '🧠']],
     mars:     [['Basınçlı Ofis Kubbesi', '🫧'], ['Kızıl Toz Filtresi', '🌪️'], ['Gecikmeli Toplantı Protokolü', '📡'], ['Yerel Kahve Serası', '🌱'], ['Olympus Genel Merkezi', '🏔️']]
   };
@@ -249,19 +289,38 @@
   var UPG_BY_ID = {};
   UPGRADES.forEach(function (u) { UPG_BY_ID[u.id] = u; });
 
+  // v4.4: aşamalar ID ile tutulur (kayıt, ayarlar, karşılaştırmalar). Sıra (indeks) yalnız bellekte: aşama bonusu, ilerleme
+  // çubuğu ve "en az şu aşama" karşılaştırmaları stageRank(id) ile yapılır. tint: arka plan ve tebrik penceresi rengi.
   var STAGES = [
-    { name: 'Freelancer',     icon: '🏠', at: 0,          desc: 'Evde bir laptop ve bolca çay.', msg: '' },
-    { name: 'Ev Ofisi',       icon: '🛋️', at: 1000,       desc: 'Salonun köşesi artık resmen ofis.', msg: 'Tebrikler! Pijamayla toplantıya girmek artık resmen şirket kültürü.' },
-    { name: 'Butik Stüdyo',   icon: '🏢', at: 50000,      desc: 'Küçük ama tatlı bir ekip, ilk kurumsal müşteriler.', msg: 'Kapıda adınız yazıyor. Müşteri artık ‘ekibiniz kaç kişi?’ diye sormaya çekinmiyor.' },
-    { name: 'Ajans',          icon: '🚀', at: 1000000,    desc: 'Kendi binan, kendi tabelan.', msg: 'Artık ‘biz’ diyorsunuz ve bunu gerçekten ciddi söylüyorsunuz.' },
-    { name: 'Dev Ajans',      icon: '🏙️', at: 50000000,   desc: 'Plaza katları, yüzlerce proje.', msg: 'Toplantı odalarına gezegen adı koyma zamanı geldi.' },
-    { name: 'Global Holding', icon: '🌐', at: 2500000000, desc: 'Üç kıtada ofis, her saat diliminde bir toplantı.', msg: 'Tebrikler! Artık logoyu büyütmeyi siz istiyorsunuz.' },
-    { name: 'Teknoloji Devi', icon: '🛰️', at: 1e15, desc: 'Müşteriler sırada, hepsi acil.', msg: 'Tebrikler! Artık müşteri aramıyorsunuz, müşteriler sizi arıyor. Hepsi de \'acil\' diyor.' },
-    { name: 'Yapay Zekâ Laboratuvarı', icon: '🧬', at: 1e19, desc: 'Kodu model yazıyor, siz yön veriyorsunuz.', msg: 'Tebrikler! Kodu artık yapay zekâ yazıyor, siz de ona \'biraz daha büyüt\' diyorsunuz.' },
-    { name: 'Mars Ofisi', icon: '🔴', at: 1e23, desc: 'Kızıl gezegende ilk ajans.', msg: 'Tebrikler! Mars\'tasınız. Mesajlar 20 dakikada geliyor, revize talepleri yine de anında.' }
+    { id: 'freelancer',      name: 'Freelancer',     icon: '🏠', at: 0,          tint: '#7c5cff', desc: 'Evde bir laptop ve bolca çay.', msg: '' },
+    { id: 'ev_ofisi',        name: 'Ev Ofisi',       icon: '🛋️', at: 1000,       tint: '#8b6cff', desc: 'Salonun köşesi artık resmen ofis.', msg: 'Tebrikler! Pijamayla toplantıya girmek artık resmen şirket kültürü.' },
+    { id: 'butik_studyo',    name: 'Butik Stüdyo',   icon: '🏢', at: 50000,      tint: '#5c8dff', desc: 'Küçük ama tatlı bir ekip, ilk kurumsal müşteriler.', msg: 'Kapıda adınız yazıyor. Müşteri artık ‘ekibiniz kaç kişi?’ diye sormaya çekinmiyor.' },
+    { id: 'ajans',           name: 'Ajans',          icon: '🚀', at: 1000000,    tint: '#22d3a6', desc: 'Kendi binan, kendi tabelan.', msg: 'Artık ‘biz’ diyorsunuz ve bunu gerçekten ciddi söylüyorsunuz.' },
+    { id: 'dev_ajans',       name: 'Dev Ajans',      icon: '🏙️', at: 50000000,   tint: '#ffb347', desc: 'Plaza katları, yüzlerce proje.', msg: 'Toplantı odalarına gezegen adı koyma zamanı geldi.' },
+    { id: 'global_holding',  name: 'Global Holding', icon: '🌐', at: 2500000000, tint: '#4fc3f7', desc: 'Üç kıtada ofis, her saat diliminde bir toplantı.', msg: 'Tebrikler! Artık logoyu büyütmeyi siz istiyorsunuz.' },
+    { id: 'unicorn',         name: 'Unicorn',        icon: '🦄', at: 1e11,       tint: '#4fc3f7', desc: 'Yatırımcılar kapıda, basın peşinde.', msg: 'Tebrikler! Artık sunumlarda “başarı hikâyesi” diye sizin logonuz gösteriliyor.' },
+    { id: 'sirketler_grubu', name: 'Şirketler Grubu', icon: '🏬', at: 1e13,      tint: '#4fc3f7', desc: 'Bir çatı şirket, altında bir sürü şirket. Hepsinin ayrı bir toplantısı var.', msg: 'Tebrikler! Artık şirketlerinizin de şirketleri var. Organizasyon şeması tek sayfaya sığmıyor.' },
+    { id: 'teknoloji_devi',  name: 'Teknoloji Devi', icon: '🛰️', at: 1e15,       tint: '#00e5ff', desc: 'Müşteriler sırada, hepsi acil.', msg: 'Tebrikler! Artık müşteri aramıyorsunuz, müşteriler sizi arıyor. Hepsi de \'acil\' diyor.' },
+    { id: 'yapay_zeka_lab',  name: 'Yapay Zekâ Laboratuvarı', icon: '🧬', at: 1e19, tint: '#b388ff', desc: 'Kodu model yazıyor, siz yön veriyorsunuz.', msg: 'Tebrikler! Kodu artık yapay zekâ yazıyor, siz de ona \'biraz daha büyüt\' diyorsunuz.' },
+    { id: 'mars_ofisi',      name: 'Mars Ofisi',     icon: '🔴', at: 1e23,       tint: '#ff5a3c', desc: 'Kızıl gezegende ilk ajans.', msg: 'Tebrikler! Mars\'tasınız. Mesajlar 20 dakikada geliyor, revize talepleri yine de anında.' }
   ];
-  // Aşamaya göre hafif tema rengi (arka plan ve tebrik penceresi)
-  var STAGE_TINTS = ['#7c5cff', '#8b6cff', '#5c8dff', '#22d3a6', '#ffb347', '#4fc3f7', '#00e5ff', '#b388ff', '#ff5a3c'];
+  var STAGE_BY_ID = {};
+  STAGES.forEach(function (st, i) { st.rank = i; STAGE_BY_ID[st.id] = st; });
+  // Aşama ID'sinin sırası (bilinmeyen ID: -1). "En az şu aşama" karşılaştırmaları hep bununla.
+  function stageRank(id) { var st = STAGE_BY_ID[id]; return st ? st.rank : -1; }
+  function stageAtLeast(rank, id) { var r = stageRank(id); return r >= 0 && rank >= r; }
+  // Aşamaya göre hafif tema rengi (arka plan ve tebrik penceresi), sıraya göre
+  var STAGE_TINTS = STAGES.map(function (st) { return st.tint; });
+  // v4.4 öncesi kayıtların (saveVersion <= 4) ve sunucunun (best_stage, kodhane_save_stage_checked) aşama sırası.
+  // Eski kayıttaki sayı bu listeyle ID'ye çevrilir. v4.4 kayıtları da 'stage'/'stageBest'/'cycleStage' alanlarına bu eski
+  // sıradaki sayıyı yazar (sunucudaki sıralama aşaması ve eski istemciler için); asıl değer '...Id' alanlarındaki ID'dir.
+  var LEGACY_STAGE_IDS = ['freelancer', 'ev_ofisi', 'butik_studyo', 'ajans', 'dev_ajans', 'global_holding', 'teknoloji_devi', 'yapay_zeka_lab', 'mars_ofisi'];
+  function legacyStageIndex(rank) { // şimdiki sıra -> eski sıra (Unicorn / Şirketler Grubu eski listede yok: Global Holding sayılır)
+    var out = 0;
+    LEGACY_STAGE_IDS.forEach(function (id, i) { if (stageRank(id) <= rank) out = i; });
+    return out;
+  }
+  function stageRankFromLegacy(n) { var i = Math.max(0, Math.min(LEGACY_STAGE_IDS.length - 1, Math.floor(n))); return stageRank(LEGACY_STAGE_IDS[i]); }
   // Borsa Payı Ağacı (Halka Arz ile kazanılan Borsa Payı ile alınır; halka arzdan sonra da kalır).
   // Her dalda 3 düğüm sırayla açılır; maliyetler CFG.tree.costs. Açıklamalar sayıları CFG'den okur.
   var T = CFG.tree;
@@ -349,6 +408,17 @@
     var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
     return (h ? h + ':' + pad(m) : m) + ':' + pad(r);
   }
+  // v4.4: ayar süresini okunur yazar (metinlerdeki {h}): 43200 -> "12 saat", 5400 -> "1 saat 30 dakika", 90 -> "1 dakika 30 saniye".
+  // fmtTime'dan ayrı (o "12 sa 0 dk 0 sn" verir ve başka yerlerde kullanılıyor).
+  function fmtDur(sec) {
+    sec = Math.max(0, Math.round(sec));
+    var d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60, out = [];
+    if (d) out.push(d + ' gün');
+    if (h) out.push(h + ' saat');
+    if (m) out.push(m + ' dakika');
+    if (s || !out.length) out.push(s + ' saniye');
+    return out.join(' ');
+  }
   function pct(x) { return Math.round(x * 100); }
   function num(x) { return fixedTR(x, 2); } // ayar sayılarını metne yazar: 1.5 -> "1,5"
   // v4.3.1: bonus oranını yüzde metnine çevirir (0,125 -> "12,5"; büyük değerler kısaltmalı: 1250 -> "1,25 Bin")
@@ -389,7 +459,12 @@
       ipoShares: 0, ipoSharesEarned: 0, ipoCount: 0, cycleEarned: 0, cycleRounds: 0, tree: [], stageBest: 0,
       newsSeen: [], newsPending: [],
       // v4.1
-      cycleStage: 0, sectorCool: {}, followUps: { kafe: 0, emlak: 0 }, pendingPay: []
+      cycleStage: 0, sectorCool: {}, followUps: { kafe: 0, emlak: 0 }, pendingPay: [],
+      // v4.4: son Halka Arz anı (ms; 0 = yok) ve kaydın başladığı oyun sürümü (yeni kayıt ve "Kaydı sıfırla" sonrası
+      // bu sürüm; v4.4 öncesi kayıtlarda boş kalır, doldurulmaz)
+      ipoAt: 0, startedVersion: VERSION,
+      // v4.4: olay listesi (CFG.eventLog); Yatırım Turu / Halka Arz'da korunur, "Kaydı sıfırla"da taşınır ve sıfırlama girdisi eklenir
+      eventLog: []
     };
   }
   var S = newState();
@@ -410,7 +485,7 @@
   function offerFreq() { return hasNode('musteri_1') ? 1 / (1 + CFG.tree.offerMore) : 1; } // teklif aralığı çarpanı
   function offerPayMult() { return hasNode('musteri_3') ? CFG.tree.offerPayMult : 1; }
   function unspentMult() { return 1 + CFG.halkaArz.unspentBonus * Math.min(S.ipoShares, CFG.halkaArz.unspentCap); } // harcanmamış Borsa Payı bonusu
-  function genUnlocked(g) { return !g.stage || S.stageBest >= g.stage; }
+  function genUnlocked(g) { return !g.stage || stageAtLeast(S.stageBest, g.stage); }
   function totalOwned() { var t = 0; for (var k in S.gens) t += S.gens[k]; return t; }
   function stageIndexOf(earned) {
     var i = 0;
@@ -534,41 +609,95 @@
     taskProgress('upgrade', 1);
     return true;
   }
-  function sharesGain() { return Math.floor(Math.sqrt(S.runEarned / PRESTIGE_UNIT)); }
-  function nextShareAt() { var n = sharesGain() + 1; return n * n * PRESTIGE_UNIT; }
+  // v4.4: Borsa hızlandırıcısı dahil. Hisse = floor(sqrt(turKazancı / PRESTIGE_UNIT) x (1 + shareGainPerEarned x min(kazanılan pay, accelCap)))
+  function accelEarned(earned) { var H = CFG.halkaArz; return Math.min(earned === undefined ? S.ipoSharesEarned : earned, H.accelCap == null ? Infinity : H.accelCap); }
+  function shareAccel(earned) { return 1 + (CFG.halkaArz.shareGainPerEarned || 0) * accelEarned(earned); }
+  function sharesGain() { return Math.floor(Math.sqrt(S.runEarned / PRESTIGE_UNIT) * shareAccel()); }
+  function nextShareAt() { // bir sonraki hisse için gereken tur kazancı (hızlandırıcıyla)
+    var n = sharesGain() + 1, a = shareAccel(), r = Math.pow(n / a, 2) * PRESTIGE_UNIT;
+    while (Math.floor(Math.sqrt(r / PRESTIGE_UNIT) * a) < n) r *= 1 + 1e-12;
+    return r;
+  }
   var KEEP_ON_PRESTIGE = ['totalEarned', 'clicks', 'clickEarned', 'playTime', 'startedAt', 'eventsClicked', 'offlineEarned',
     'achievements', 'critClicks', 'eventsResolved', 'logoAccepted', 'revisions', 'meetings', 'serverCrashes',
     'reputation', 'noMeetingSec', 'daily',
     'ipoShares', 'ipoSharesEarned', 'ipoCount', 'cycleEarned', 'tree', 'stageBest', 'newsSeen', 'newsPending',
-    'cycleStage', 'sectorCool', 'followUps', 'pendingPay'];
+    'cycleStage', 'sectorCool', 'followUps', 'pendingPay', 'ipoAt', 'startedVersion', 'eventLog'];
   // Sıfırlama sonrası (Yatırım Turu ve Halka Arz): Hazır Kadro başlangıç çalışanları
   function resetTo(keep) {
     S = newState();
     for (var k in keep) S[k] = keep[k];
     if (hasNode('ekip_2')) CFG.tree.startGens.forEach(function (x) { if (S.gens[x[0]] !== undefined) S.gens[x[0]] += x[1]; });
   }
+  // ---- v4.4: kayıt içi olay listesi. Yazma kapalıyken (writesBlocked: daha yeni sürümün kaydı okundu) girdi eklenmez.
+  var EVENT_TYPES = ['ipo', 'prestige', 'reset'];
+  function logEntry(type, sb, sa, pb, pa, at) {
+    return { type: type, at: at || nowMs(), sharesBefore: sb, sharesAfter: sa, paysBefore: pb, paysAfter: pa };
+  }
+  function pushEvent(list, entry) {
+    var max = Math.max(1, (CFG.eventLog && CFG.eventLog.max) | 0 || 20);
+    list.push(entry);
+    while (list.length > max) list.shift();
+    return list;
+  }
+  function logEvent(type, sb, sa, pb, pa) {
+    if (writesBlocked()) return false;
+    if (!Array.isArray(S.eventLog)) S.eventLog = [];
+    pushEvent(S.eventLog, logEntry(type, sb, sa, pb, pa));
+    return true;
+  }
+  // Kayıttan gelen liste: yalnızca bilinen tür ve alanlar, sayılar negatif olamaz, en fazla max girdi (en yeniler)
+  function cleanEventLog(a) {
+    if (!Array.isArray(a)) return [];
+    var nz = function (x) { return isNum(x) && x > 0 ? x : 0; };
+    var out = a.filter(function (e) { return e && typeof e === 'object' && EVENT_TYPES.indexOf(e.type) !== -1 && isNum(e.at) && e.at > 0; })
+      .map(function (e) { return logEntry(e.type, nz(e.sharesBefore), nz(e.sharesAfter), nz(e.paysBefore), nz(e.paysAfter), e.at); });
+    var max = Math.max(1, (CFG.eventLog && CFG.eventLog.max) | 0 || 20);
+    return out.slice(-max);
+  }
   function doPrestige() {
     var gain = sharesGain();
     if (gain < 1) return 0;
+    var sb = S.shares, pb = S.ipoShares;
     var keep = { shares: S.shares + gain, prestigeCount: S.prestigeCount + 1, cycleRounds: S.cycleRounds + 1 };
     KEEP_ON_PRESTIGE.forEach(function (k) { keep[k] = S[k]; });
     resetTo(keep);
+    logEvent('prestige', sb, S.shares, pb, S.ipoShares);
     return gain;
   }
-  // ---- Halka Arz (ikinci prestij): kasa, çalışanlar, geliştirmeler ve yatırım turu bonusu (Yatırımcı Hisseleri) sıfırlanır;
-  // Borsa Payı Ağacı, başarımlar ve sıralamadaki toplam kazanç (totalEarned) kalır.
-  function ipoUnlocked() { return S.cycleRounds >= CFG.halkaArz.rounds; }
+  // ---- Halka Arz (ikinci prestij): kasa, çalışanlar ve geliştirmeler sıfırlanır. v4.4: yatırımcı hisseleri korunur
+  // (keepShares) ve bu turda biriken hisse de eklenir (bankPending); Borsa Payı Ağacı, başarımlar ve sıralamadaki toplam
+  // kazanç (totalEarned) da kalır. İki Halka Arz arasında en az CFG.halkaArz.cooldownSec.
+  function nowMs() { return typeof Core.nowMs === 'function' ? Core.nowMs() : Date.now(); } // testler/simülasyon saati değiştirebilir
+  // Son Halka Arz anı gelecekteyse (saat geri alındı / ileri tarihli kayıt) şimdiye çekilir: bekleme en fazla cooldownSec.
+  function clampIpoAt(now) { if (!(S.ipoAt > 0)) S.ipoAt = 0; else if (S.ipoAt > now) S.ipoAt = now; return S.ipoAt; }
+  function ipoCooldownLeft() { // kalan bekleme (sn); ilk Halka Arz ve alanı olmayan eski kayıt: 0
+    var H = CFG.halkaArz, now = nowMs();
+    if (!(H.cooldownSec > 0) || !(S.ipoCount > 0)) return 0;
+    var at = clampIpoAt(now);
+    if (!at) return 0;
+    return Math.max(0, H.cooldownSec - (now - at) / 1000);
+  }
+  function ipoRoundsOk() { return S.cycleRounds >= CFG.halkaArz.rounds; }
+  function ipoUnlocked() { return ipoRoundsOk() && !(ipoCooldownLeft() > 0); }
+  function stagePay(rank) { var st = STAGES[rank]; return (st && CFG.halkaArz.stagePays[st.id]) || 0; }
   function ipoGain() {
     var H = CFG.halkaArz, g;
     if (H.mode === 'root') g = Math.floor(H.k * Math.pow(Math.max(0, S.cycleEarned) / H.threshold, 1 / H.root) + 1e-9);
-    else g = (S.ipoCount > 0 && S.cycleStage < H.repeatMinStage) ? 0 : (H.stagePays[Math.min(S.cycleStage, H.stagePays.length - 1)] || 0);
+    else g = (S.ipoCount > 0 && !stageAtLeast(S.cycleStage, H.repeatMinStage)) ? 0 : stagePay(S.cycleStage);
     return Math.max(S.ipoCount === 0 ? H.firstMin : 0, g);
   }
-  // Borsa Payı veren ilk aşama (ör. Global Holding): kilit açıkken 0 pay görünürse ipucu için
+  // Borsa Payı veren ilk aşamanın sırası (ör. Global Holding): kilit açıkken 0 pay görünürse ipucu için
   function ipoPayStage() {
-    var P = CFG.halkaArz.stagePays, from = S.ipoCount > 0 ? CFG.halkaArz.repeatMinStage : 0;
-    for (var i = from; i < P.length; i++) if (P[i] >= 1) return i;
-    return P.length - 1;
+    var from = S.ipoCount > 0 ? Math.max(0, stageRank(CFG.halkaArz.repeatMinStage)) : 0;
+    for (var i = from; i < STAGES.length; i++) if (stagePay(i) >= 1) return i;
+    return STAGES.length - 1;
+  }
+  // Halka Arz'da eklenecek, bu turda biriken hisse ({p}) ve Halka Arz sonrası hisse sayısı
+  function ipoPendingShares() { return CFG.halkaArz.bankPending ? sharesGain() : 0; }
+  function ipoKeptShares() {
+    var H = CFG.halkaArz, ks = (S.shares + ipoPendingShares()) * (H.keepShares || 0);
+    return H.keepMode === 'frac' ? ks : Math.floor(ks + 1e-9);
   }
   function doIpo() {
     if (!ipoUnlocked()) return 0;
@@ -576,9 +705,13 @@
     if (gain < 1) return 0;
     var keep = { prestigeCount: S.prestigeCount };
     KEEP_ON_PRESTIGE.forEach(function (k) { keep[k] = S[k]; });
+    keep.ipoAt = nowMs();
+    keep.shares = ipoKeptShares();
     keep.ipoShares = S.ipoShares + gain; keep.ipoSharesEarned = S.ipoSharesEarned + gain; keep.ipoCount = S.ipoCount + 1;
     keep.cycleEarned = 0; keep.cycleStage = 0;
+    var sb = S.shares, pb = S.ipoShares;
     resetTo(keep);
+    logEvent('ipo', sb, S.shares, pb, S.ipoShares);
     return gain;
   }
   function nodeState(id) {
@@ -720,7 +853,7 @@
   ];
   var SECTOR_BY_ID = {};
   SECTORS.forEach(function (x) { SECTOR_BY_ID[x.id] = x; });
-  function sectorOpen(id) { return S.stageBest >= SC.unlock[id]; }
+  function sectorOpen(id) { return stageAtLeast(S.stageBest, SC.unlock[id]); }
   function sectorWeight(id) { return (S.sectorCool[id] || 0) > 0 ? SC.rejectWeight : 1; }
   function payLater(sec, delay, label) {
     var x = pay(sec);
@@ -856,12 +989,15 @@
     { id: 'ekip_150', icon: '🧍', name: 'Kalabalık Stand-up', desc: 'Aynı anda 150 çalışanın olsun', test: function () { return totalOwned() >= 150; } },
     { id: 'ekip_300', icon: '🗃️', name: 'İK Departmanı Şart', desc: 'Aynı anda 300 çalışanın olsun', test: function () { return totalOwned() >= 300; } },
     { id: 'robot', icon: '🤖', name: 'Robot Meslektaş', desc: 'İlk Yapay Zekâ Kod Ajanını işe al', test: function () { return S.gens.ai >= 1; } },
-    { id: 'asama_2', icon: '🏢', name: 'Butik Hayaller', desc: 'Butik Stüdyo aşamasına ulaş', test: function () { return S.stage >= 2; } },
-    { id: 'asama_3', icon: '🚀', name: 'Tabela Asıldı', desc: 'Ajans aşamasına ulaş', test: function () { return S.stage >= 3; } },
-    { id: 'asama_5', icon: '🌐', name: 'Kıtalar Arası', desc: 'Global Holding aşamasına ulaş', test: function () { return S.stage >= 5; } },
-    { id: 'asama_6', icon: '🛰️', name: 'Acil Kuyruğu', desc: 'Teknoloji Devi aşamasına ulaş', test: function () { return S.stageBest >= 6; } },
-    { id: 'asama_7', icon: '🧬', name: 'Model Eğitildi', desc: 'Yapay Zekâ Laboratuvarı aşamasına ulaş', test: function () { return S.stageBest >= 7; } },
-    { id: 'asama_8', icon: '🔴', name: 'Kızıl Tabela', desc: 'Mars Ofisi aşamasına ulaş', test: function () { return S.stageBest >= 8; } },
+    // aşama başarımları aşama ID'sine bağlı (v4.4 öncesi kimlikler asama_6/7/8 aynen kalır)
+    { id: 'asama_2', icon: '🏢', name: 'Butik Hayaller', desc: 'Butik Stüdyo aşamasına ulaş', test: function () { return stageAtLeast(S.stage, 'butik_studyo'); } },
+    { id: 'asama_3', icon: '🚀', name: 'Tabela Asıldı', desc: 'Ajans aşamasına ulaş', test: function () { return stageAtLeast(S.stage, 'ajans'); } },
+    { id: 'asama_5', icon: '🌐', name: 'Kıtalar Arası', desc: 'Global Holding aşamasına ulaş', test: function () { return stageAtLeast(S.stage, 'global_holding'); } },
+    { id: 'asama_unicorn', icon: '🦄', name: 'Tek Boynuzlu', desc: 'Unicorn aşamasına ulaş', test: function () { return stageAtLeast(S.stageBest, 'unicorn'); } },
+    { id: 'asama_grup', icon: '🏬', name: 'Organizasyon Şeması', desc: 'Şirketler Grubu aşamasına ulaş', test: function () { return stageAtLeast(S.stageBest, 'sirketler_grubu'); } },
+    { id: 'asama_6', icon: '🛰️', name: 'Acil Kuyruğu', desc: 'Teknoloji Devi aşamasına ulaş', test: function () { return stageAtLeast(S.stageBest, 'teknoloji_devi'); } },
+    { id: 'asama_7', icon: '🧬', name: 'Model Eğitildi', desc: 'Yapay Zekâ Laboratuvarı aşamasına ulaş', test: function () { return stageAtLeast(S.stageBest, 'yapay_zeka_lab'); } },
+    { id: 'asama_8', icon: '🔴', name: 'Kızıl Tabela', desc: 'Mars Ofisi aşamasına ulaş', test: function () { return stageAtLeast(S.stageBest, 'mars_ofisi'); } },
     { id: 'localhost', icon: '💻', name: 'Localhost’ta Çalışıyordu', desc: 'Bir sunucu çökmesini atlat', test: function () { return S.serverCrashes >= 1; } },
     { id: 'revize_7', icon: '📑', name: 'Son Revize 7. Kez', desc: '7 revize talebini kabul et', test: function () { return S.revisions >= 7; } },
     { id: 'toplantisiz', icon: '🤫', name: 'Toplantısız Gün', desc: '10 dakika boyunca hiçbir toplantıya katılmadan oyna', test: function () { return S.noMeetingSec >= 600; } },
@@ -1004,7 +1140,16 @@
   //    kazanınca başka cihazdaki sıfırlama buradan anlaşılır.
   //  Bulut revizyonu (kodhane_saves.revision) kaydın içinde değil, cloud.js'te tutulur.
   var meta = { epoch: 0, resetAt: 0 };
-  function saveData() { var o = {}; for (var k in S) o[k] = S[k]; o.saveVersion = SAVE_VERSION; o.epoch = meta.epoch; o.resetAt = meta.resetAt; return o; }
+  // v4.4: aşamalar kayıtta ID ile ('stageId', 'stageBestId', 'cycleStageId'). 'stage' / 'stageBest' / 'cycleStage' sayıları eski
+  // sıradadır (LEGACY_STAGE_IDS): sunucu sıralama aşamasını (best_stage) 'stage'den hesaplar, eski istemciler de okur.
+  function saveData() {
+    var o = {}; for (var k in S) o[k] = S[k];
+    ['stage', 'stageBest', 'cycleStage'].forEach(function (k) {
+      var r = Math.max(0, Math.min(STAGES.length - 1, S[k] | 0));
+      o[k + 'Id'] = STAGES[r].id; o[k] = legacyStageIndex(r);
+    });
+    o.version = SAVE_VERSION; o.saveVersion = SAVE_VERSION; o.epoch = meta.epoch; o.resetAt = meta.resetAt; return o;
+  }
 
   // v4.3.1: İleri sürüm koruması. Kayıt biçimi sürümü kayıtta 'saveVersion' (v4.3.1'den beri) ve 'version' (eski ad, aynı
   // değer) alanlarında, bulutta ayrıca kodhane_saves.save_version sütunundadır. Alan(lar) yoksa kayıt eski biçimdir ve
@@ -1036,7 +1181,7 @@
     var d = JSON.parse(str);
     if (!d || typeof d !== 'object') throw new Error('Geçersiz kayıt');
     var base = newState();
-    Core.loadedVersion = d.version || 1;
+    Core.loadedVersion = saveVersionOf(d) || 1;
     meta.epoch = isNum(d.epoch) && d.epoch > 0 ? d.epoch : 0;
     meta.resetAt = isNum(d.resetAt) && d.resetAt > 0 ? d.resetAt : 0;
     for (var k in base) {
@@ -1085,12 +1230,25 @@
       var maxDelay = Math.max(SC.kamu_ihale.delay, SC.kamu_imza.delay), left = Math.min(p.left, maxDelay);
       return { amount: p.amount, left: left, total: isNum(p.total) ? Math.min(Math.max(p.total, left), maxDelay) : left, label: p.label.slice(0, 40) };
     });
+    // v4.4: aşamalar ID'den (kayıt v5). ID yoksa ya da bilinmiyorsa (v4.4 öncesi kayıt, sunucunun sıfırlama yükü) sayı eski
+    // sıradadır (LEGACY_STAGE_IDS) ve ID'ye çevrilir: eski 6 = Teknoloji Devi (Unicorn değil), 7 = Yapay Zekâ Lab, 8 = Mars.
+    ['stage', 'stageBest', 'cycleStage'].forEach(function (k) {
+      var id = d[k + 'Id'];
+      if (typeof id === 'string' && STAGE_BY_ID[id]) base[k] = stageRank(id);
+      else base[k] = stageRankFromLegacy(isNum(d[k]) ? Math.max(0, d[k]) : 0);
+    });
+    // v4.4: son Halka Arz anı (yoksa 0: ilk Halka Arz hemen açık; gelecekteyse şimdiye çekilir) ve başlangıç sürümü (eski
+    // kayıtta boş kalır). startedAt yoksa / geçersizse 0 (bilinmiyor): ağaç olayında süre alanı gönderilmez.
+    base.ipoAt = isNum(d.ipoAt) && d.ipoAt > 0 ? Math.min(d.ipoAt, nowMs()) : 0;
+    base.startedVersion = typeof d.startedVersion === 'string' ? d.startedVersion.slice(0, 20) : '';
+    if (!(isNum(d.startedAt) && d.startedAt > 0)) base.startedAt = 0;
+    base.eventLog = cleanEventLog(d.eventLog);   // v4.4 (kayıt v5): eski kayıtta alan yok -> boş liste
     // v2/v3 (oyun v1-v3) -> kayıt v3 (oyun v4): kayıpsız taşıma
     if (Core.loadedVersion < 3) {
       base.cycleEarned = base.totalEarned;          // henüz halka arz yok: döngü = tüm zamanlar
       base.cycleRounds = base.prestigeCount;        // şimdiye kadarki yatırım turları Halka Arz koşuluna sayılır
       base.stageBest = Math.max(base.stage, stageIndexOf(base.runEarned));
-      if (base.stageBest >= 5 && base.newsPending.indexOf('yeni_asama') === -1) base.newsPending.push('yeni_asama');
+      if (stageAtLeast(base.stageBest, 'global_holding') && base.newsPending.indexOf('yeni_asama') === -1) base.newsPending.push('yeni_asama');
     }
     // kayıt v3 (oyun v4) -> v4 (oyun v4.1): bu döngüde ulaşılan en yüksek aşama (halka arz yoksa tüm geçmiş)
     if (Core.loadedVersion < 4) {
@@ -1119,7 +1277,7 @@
   // ------------------------------------------------------------------
   var NEWS = [
     { id: 'yeni_asama', emoji: '🛰️', title: 'Global Holding son durak değilmiş.',
-      text: function () { return 'Yeni aşama açıldı: ' + STAGES[6].name + '.'; },
+      text: function () { return 'Yeni aşama açıldı: ' + STAGE_BY_ID.teknoloji_devi.name + '.'; },
       eligible: function () { return S.newsPending.indexOf('yeni_asama') !== -1; } },
     { id: 'siralama', emoji: '🏆', title: 'Yeni: Sıralama!',
       text: function () { return 'Toplam kazancınla listeye gir. Yatırım turu yapsan da yerin korunur.'; },
@@ -1145,8 +1303,42 @@
     S.newsPending = S.newsPending.filter(function (x) { return x !== id; });
   }
 
+  // v4.4: Halka Arz onay metni (Yazı r3). {z}: bu Halka Arz'ın payları dahil hızlandırıcı; {y}: Halka Arz sonrası bonus.
+  function ipoConfirmHtml() {
+    var H = CFG.halkaArz, n = ipoGain(), p = ipoPendingShares(), after = S.ipoSharesEarned + n;
+    var capped = H.accelCap != null && after >= H.accelCap;
+    var v = { p: fmt(p), n: fmt(n), z: num(accelEarned(after) * H.shareGainPerEarned * 100), u: num(H.unspentBonus * 100),
+      h: fmtDur(H.cooldownSec), y: pctText(investorBonus(ipoKeptShares())) };
+    var html = uiText('ipo.confirm', v), br = html.indexOf('<br>');
+    if (!(p >= 1)) html = uiText('ipo.confirm.noPending') + html.slice(br);
+    else html = html.replace('<br>Kazanacağın:', '<br>' + uiText('ipo.confirm.bonus', v) + ' Kazanacağın:');
+    if (capped) html = html.replace(uiText('ipo.confirm.accel', v), uiText('ipo.confirm.accelMax', v));
+    return html;
+  }
+  // v4.4: iki Umami olayının alanları (yalnız bunlar; kişisel veri ya da ek kimlik yok). Gönderim track() ile, izin kapısından.
+  //  ipo_complete: stage_id (bu döngüde ulaşılan, payı belirleyen aşamanın ID'si), pays (kazanılan Borsa Payı), ipo_number (kaçıncı Halka Arz)
+  //  tree_full:    hours_since_start (startedAt'ten bu yana tam saat; startedAt yok/geçersizse alan HİÇ yok), ipo_number,
+  //                started_v44 ('yes' = kayıt v4.4 ya da sonrasında başladı / sıfırlandı, startedVersion dolu; 'no' = boş)
+  function ipoEventData(stageRankBefore, pays) {
+    var st = STAGES[Math.max(0, Math.min(STAGES.length - 1, stageRankBefore | 0))];
+    return { stage_id: st.id, pays: pays, ipo_number: S.ipoCount };
+  }
+  var TREE_NODE_COUNT = TREE.reduce(function (a, br) { return a + br.nodes.length; }, 0);
+  function treeFull() { return S.tree.length >= TREE_NODE_COUNT; }
+  function treeEventData(now) {
+    now = now || nowMs();
+    var o = {}, st = S.startedAt;
+    if (isNum(st) && st > 0 && st <= now) o.hours_since_start = Math.round((now - st) / 3600000);
+    o.ipo_number = S.ipoCount;
+    o.started_v44 = S.startedVersion ? 'yes' : 'no';
+    return o;
+  }
+
   var Core = {
     VERSION: VERSION, SAVE_VERSION: SAVE_VERSION, CFG: CFG, TREE: TREE, NEWS: NEWS, STAGE_TINTS: STAGE_TINTS,
+    STAGE_BY_ID: STAGE_BY_ID, LEGACY_STAGE_IDS: LEGACY_STAGE_IDS, stageRank: stageRank, stageAtLeast: stageAtLeast, legacyStageIndex: legacyStageIndex,
+    ipoCooldownLeft: ipoCooldownLeft, ipoRoundsOk: ipoRoundsOk, ipoPendingShares: ipoPendingShares, ipoKeptShares: ipoKeptShares, stagePay: stagePay,
+    shareAccel: shareAccel, accelEarned: accelEarned, nextShareAt: nextShareAt, fmtDur: fmtDur, num: num, ipoEventData: ipoEventData, treeEventData: treeEventData, treeFull: treeFull, ipoConfirmHtml: ipoConfirmHtml, cleanEventLog: cleanEventLog, EVENT_TYPES: EVENT_TYPES,
     hasNode: hasNode, nodeState: nodeState, nodeCost: nodeCost, buyNode: buyNode, ipoUnlocked: ipoUnlocked, ipoGain: ipoGain, doIpo: doIpo,
     costGrowth: costGrowth, offlineCapSec: offlineCapSec, shareBonus: shareBonus, investorBonus: investorBonus, pctText: pctText, offerSec: offerSec, offerFreq: offerFreq, offerPayMult: offerPayMult,
     genUnlocked: genUnlocked, unspentMult: unspentMult, ipoPayStage: ipoPayStage, globalMult: globalMult,
@@ -1312,7 +1504,7 @@
       }
     } catch (e) {}
     var floor = readEpoch();
-    var fresh = function () { S = newState(); meta.epoch = floor; meta.resetAt = floor; return null; };
+    var fresh = function () { S = newState(); meta.epoch = floor; meta.resetAt = floor; if (floor) S.eventLog = takeLogCarry(floor); return null; };
     if (!raw) return fresh();
     // v4.3.1: daha yeni sürümün kaydı: gösterim için okunur (bilinen alanlar), ama bu oturumda hiç yazılmaz
     guardFuture(raw, 'local');
@@ -1332,6 +1524,15 @@
   var EPOCH_KEY = 'kodhane_save_epoch';      // localStorage: bu tarayıcıdaki en yeni kayıt kuşağı (tüm sekmeler)
   var UNDO_KEY = 'kodhane_reset_undo';       // sessionStorage: sıfırlamadan hemen önceki kayıt + geri alma bilgisi (yalnızca bu sekme)
   var UNDO_RELOAD_MS = 60000;                // sıfırlama ile sayfanın yeniden açılması arasında izin verilen en uzun süre
+  // v4.4: "Kaydı sıfırla" olay listesini silmez: liste + sıfırlama girdisi yeni kuşak numarasıyla burada bekler, yeniden açılışta
+  // boş kayda (aynı kuşak) konur. Geri al / yedekten geri yükleme kendi kaydının listesini getirir (sıfırlama girdisi olmadan).
+  var LOG_CARRY_KEY = 'kodhane_event_log_carry';
+  function takeLogCarry(epoch) {
+    try {
+      var c = JSON.parse(localStorage.getItem(LOG_CARRY_KEY) || 'null');
+      return c && c.epoch === epoch ? cleanEventLog(c.log) : [];
+    } catch (e) { return []; }
+  }
   var resetBusy = false;
   var undoState = { timer: 0, marker: null };
   function readEpoch() { try { var n = Number(localStorage.getItem(EPOCH_KEY)); return n > 0 && isFinite(n) ? n : 0; } catch (e) { return 0; } }
@@ -1360,7 +1561,7 @@
     }
     stalePendingSince = 0;
     var otherReset = !cur || num0(cur.resetAt) > meta.resetAt;
-    if (!cur) { cur = saveDataOf(newState()); cur.epoch = floor; cur.resetAt = floor; }
+    if (!cur) { cur = saveDataOf(newState()); cur.epoch = floor; cur.resetAt = floor; cur.eventLog = takeLogCarry(floor); }
     adoptSave(cur, otherReset ? 'otherDevice' : 'undoDone');
     return true;
   }
@@ -1514,6 +1715,7 @@
     if (readEpoch() > meta.epoch) return; // bu sekme bayatmış; güncel kayıt yüklendi, sıfırlama yapılmadı
     resetBusy = true;
     var snapshot = serialize();
+    var carryLog = pushEvent(cleanEventLog(S.eventLog), logEntry('reset', S.shares, 0, S.ipoShares, 0));
     var signed = signedIn();
     var p = signed && typeof Core.beforeReset === 'function' ? withTimeout(Promise.resolve(Core.beforeReset()), 10000) : Promise.resolve(null);
     resetting = true;
@@ -1530,6 +1732,7 @@
       } catch (e) { /* sessionStorage yoksa geri alma gösterilmez */ }
       try {
         localStorage.setItem(EPOCH_KEY, String(epoch));
+        localStorage.setItem(LOG_CARRY_KEY, JSON.stringify({ epoch: epoch, log: carryLog }));
         localStorage.removeItem(SAVE_KEY); LEGACY_KEYS.forEach(function (k) { localStorage.removeItem(k); });
       } catch (e) {}
       track('reset_or_prestige'); // Umami isteği keepalive ile gider; yeniden açılış onu kesmez
@@ -1692,7 +1895,7 @@
         // yeni aşamanın çalışanı: aşamaya ulaşınca açılır (bir sonraki kilitli olan gösterilir)
         if (revealedNext) { r.btn.classList.add('hidden'); return; }
         revealedNext = true;
-        var stg = STAGES[g.stage];
+        var stg = STAGE_BY_ID[g.stage];
         r.btn.classList.remove('hidden', 'affordable');
         r.btn.classList.add('locked'); r.btn.disabled = true;
         r.name.textContent = '???';
@@ -1845,20 +2048,34 @@
   }
   // Halka Arz bölümü + Borsa Payı Ağacı
   var treeSig = '';
+  var ipoWasWaiting = null;   // bekleme bitince tek seferlik "yeniden açık" bildirimi için
   function renderIpo() {
-    var open = ipoUnlocked(), H = CFG.halkaArz;
-    el.ipoSection.classList.toggle('locked', !open);
-    el.ipoLock.classList.toggle('hidden', open);
-    if (!open) el.ipoLock.textContent = '🔒 ' + H.rounds + ' yatırım turundan sonra açılır. (' + Math.min(S.cycleRounds, H.rounds) + '/' + H.rounds + ')';
+    var H = CFG.halkaArz, roundsOk = ipoRoundsOk(), wait = ipoCooldownLeft(), open = roundsOk && !(wait > 0);
+    el.ipoSection.classList.toggle('locked', !roundsOk);
+    el.ipoLock.classList.toggle('hidden', roundsOk);
+    if (!roundsOk) el.ipoLock.textContent = '🔒 ' + H.rounds + ' yatırım turundan sonra açılır. (' + Math.min(S.cycleRounds, H.rounds) + '/' + H.rounds + ')';
+    // v4.4: bekleme satırı tur şartı satırının altında ayrı satır (tek satıra birleştirilmez; dar ekranda taşar)
+    el.ipoWait.classList.toggle('hidden', !(wait > 0));
+    if (wait > 0) {
+      el.ipoWaitText.textContent = uiText('ipo.lockWait', { s: fmtSec(wait) });
+      el.ipoWaitNote.textContent = uiText('ipo.lockWaitNote', { h: fmtDur(H.cooldownSec) });
+    }
+    if (ipoWasWaiting && !(wait > 0) && S.ipoCount > 0) toast(uiText('ipo.reopened'), 3500);
+    ipoWasWaiting = wait > 0;
     var gain = ipoGain();
     el.ipoShares.textContent = fmt(S.ipoShares);
     el.ipoGain.textContent = fmt(gain) + ' Borsa Payı';
     el.ipoCount.textContent = fmt(S.ipoCount);
     el.ipoBonus.textContent = '+%' + num(Math.min(S.ipoShares, H.unspentCap) * H.unspentBonus * 100) + ' üretim' + (S.ipoShares >= H.unspentCap ? ' (en fazla)' : '');
+    var z = num(accelEarned() * H.shareGainPerEarned * 100), zMax = H.accelCap != null && S.ipoSharesEarned >= H.accelCap;
+    el.ipoAccel.textContent = uiText(zMax ? 'ipo.accelValueMax' : 'ipo.accelValue', { z: z });
+    el.ipoAccelNote.textContent = uiText('ipo.accelNote', { k: num(H.shareGainPerEarned * 100), max: num(1 + H.shareGainPerEarned * H.accelCap) });
     var hint = open && gain < 1;
     el.ipoHint.classList.toggle('hidden', !hint);
     if (hint) { var ps = STAGES[ipoPayStage()]; el.ipoHint.textContent = 'Borsa Payı kazanmak için önce ' + ps.icon + ' ' + ps.name + ' aşamasına ulaşman gerekiyor.'; }
     el.ipoBtn.disabled = !open || gain < 1;
+    var lbl = wait > 0 ? uiText('ipo.btnWait', { s: fmtSec(wait) }) : 'Halka arz et';
+    if (el.ipoBtn.textContent !== lbl) el.ipoBtn.textContent = lbl;
     var sig = S.tree.join(',') + '|' + S.ipoShares;
     if (sig === treeSig) return;
     treeSig = sig;
@@ -1876,7 +2093,10 @@
         var m = document.createElement('small'); m.className = 'tn-state'; m.textContent = nodeStateText(n, st);
         b.appendChild(nm); b.appendChild(c); b.appendChild(d); b.appendChild(m);
         b.addEventListener('click', function () {
-          if (buyNode(n.id)) { toast('🪙 ' + n.name + ' — Alındı! Bu bonus artık kalıcı.', 3500); sfx('buy'); vibrate(12); treeSig = ''; save(); renderAll(); }
+          if (buyNode(n.id)) {
+            toast('🪙 ' + n.name + ' — Alındı! Bu bonus artık kalıcı.', 3500); sfx('buy'); vibrate(12); treeSig = ''; save(); renderAll();
+            if (treeFull()) track('tree_full', treeEventData());   // v4.4: ağaç doldu (tüm düğümler = 40 pay)
+          }
         });
         box.appendChild(b);
       });
@@ -2195,7 +2415,8 @@
   // istekten, otomatik sayfa görüntülemesi dahil, önce onu çağırır; izin yoksa istek düşer); betiğin kendi kapatma
   // anahtarı localStorage 'umami.disabled' kapalıyken konur, açılınca kaldırılır.
   // Gizlilik: çerezsiz Umami, Do Not Track'e uyulur (data-do-not-track), sorgu dizesi ve # asla gönderilmez
-  // (data-exclude-search / data-exclude-hash). Yalnızca olay adı gider (e-posta, takma ad, kimlik asla).
+  // (data-exclude-search / data-exclude-hash). Olay adı gider; v4.4'ten beri yalnızca ipo_complete ve tree_full olaylarında
+  // sabit, kişisel olmayan birkaç oyun alanı da gider (ipoEventData / treeEventData). E-posta, takma ad, kimlik asla.
   // ------------------------------------------------------------------
   var TEL_KEYS = { pref: 'kodhane_tel', notice: 'kodhane_tel_notice', umamiOff: 'umami.disabled' };
   var UMAMI_SRC = 'https://analiz.teserix.com/script.js';
@@ -2239,7 +2460,7 @@
   };
   var umamiScript = null, umamiQueue = [], umamiFailed = false;  // umamiFailed: betik yüklenemedi (engelli/çevrimdışı), bu oturumda olaylar atılır
   function umamiReady() { try { var u = root.umami; return u && typeof u.track === 'function' ? u : null; } catch (e) { return null; } }
-  function umamiSend(u, name) { try { u.track(name); } catch (e) {} }
+  function umamiSend(u, name, data) { try { if (data) u.track(name, data); else u.track(name); } catch (e) {} }
   function umamiLoad() {
     if (umamiScript || !tel.allowed()) return umamiScript;
     root[UMAMI_BEFORE_SEND] = function (type, payload) { return tel.allowed() ? payload : null; };
@@ -2255,32 +2476,33 @@
     s.setAttribute('data-test', 'umami-script');
     s.addEventListener('load', function () {
       var q = umamiQueue.splice(0), u = umamiReady();
-      if (u && tel.allowed()) q.forEach(function (n) { umamiSend(u, n); });
+      if (u && tel.allowed()) q.forEach(function (n) { umamiSend(u, n.name, n.data); });
     });
     s.addEventListener('error', function () { umamiFailed = true; umamiQueue.length = 0; });
     (document.head || document.body || document.documentElement).appendChild(s);
     umamiScript = s;
     return s;
   }
-  // Olay adı gönderir. İzin yoksa hiçbir şey yapmaz ve atar (kuyruğa almaz). Asla hata fırlatmaz.
-  function track(name) {
-    var st;
+  // Olay adı (ve v4.4'te iki olayda sabit alanlı veri) gönderir. İzin yoksa hiçbir şey yapmaz ve atar (kuyruğa almaz).
+  // Asla hata fırlatmaz. data yalnız ipo_complete / tree_full için (ipoEventData / treeEventData); başka alan eklenmez.
+  function track(name, data) {
+    var st, d = data && typeof data === 'object' ? JSON.parse(JSON.stringify(data)) : null;
     try {
       if (!tel.sync()) st = 'off';
       else {
         var u = umamiReady();
-        if (u) { umamiSend(u, name); st = 'sent'; }
+        if (u) { umamiSend(u, name, d); st = 'sent'; }
         else if (umamiFailed) st = 'dropped';
-        else if (umamiQueue.length < 20) { umamiQueue.push(name); st = 'queued'; }
+        else if (umamiQueue.length < 20) { umamiQueue.push({ name: name, data: d }); st = 'queued'; }
         else st = 'dropped';
       }
     } catch (e) { st = 'off'; }
     if (st !== 'off') { Core.tracked.push(name); if (Core.tracked.length > 50) Core.tracked.shift(); }
-    Core.trackLog.push([name, st]); if (Core.trackLog.length > 100) Core.trackLog.shift();
+    Core.trackLog.push(d ? [name, st, d] : [name, st]); if (Core.trackLog.length > 100) Core.trackLog.shift();
     return st;
   }
   // tracked: izinle kabul edilen olaylar; trackLog: her çağrı ve sonucu ('off' = atıldı) — yalnızca bellekte, testler için
-  Core.tracked = []; Core.trackLog = []; Core.track = track; Core.umamiQueue = function () { return umamiQueue.slice(); };
+  Core.tracked = []; Core.trackLog = []; Core.track = track; Core.umamiQueue = function () { return umamiQueue.map(function (q) { return q.name; }); };
   Core.tel = tel; Core.TEL_KEYS = TEL_KEYS; Core.GATE_SUPABASE_COUNTER = GATE_SUPABASE_COUNTER;
   Core.UMAMI = { src: UMAMI_SRC, websiteId: UMAMI_WEBSITE_ID, domains: UMAMI_DOMAINS, beforeSend: UMAMI_BEFORE_SEND };
   Core.counterAllowed = function () { return tel.counterAllowed(); };
@@ -2525,7 +2747,7 @@
       'prGain', 'prNext', 'prestigeBtn', 'streakBox', 'taskList', 'achHead', 'achGrid', 'clientOffer', 'coText', 'coTimerFill',
       'eventCard', 'evIcon', 'evTitle', 'evText', 'evChoices', 'evLater', 'evTimerFill', 'toast', 'updateBar', 'updateBtn', 'updateText',
       'modal', 'modalEmoji', 'modalTitle', 'modalText', 'modalActions', 'panelKod', 'panelEkip', 'panelSide', 'bottomNav',
-      'prPer', 'ipoSection', 'ipoLock', 'ipoBody', 'ipoShares', 'ipoGain', 'ipoCount', 'ipoBonus', 'ipoHint', 'ipoBtn', 'treeGrid',
+      'prPer', 'ipoSection', 'ipoLock', 'ipoWait', 'ipoWaitText', 'ipoWaitNote', 'ipoAccel', 'ipoAccelNote', 'ipoBody', 'ipoShares', 'ipoGain', 'ipoCount', 'ipoBonus', 'ipoHint', 'ipoBtn', 'treeGrid',
       'stageUp', 'suIcon', 'suTitle', 'suMsg', 'suBonus', 'suShare', 'suClose',
       'modalCard', 'modalExtra', 'undoBar', 'undoText', 'undoBtn', 'restoreBox', 'restoreTitle', 'restoreBody', 'restoreNote', 'restoreBtn',
       'telBtn', 'telTitle', 'telHint', 'telDetailsBtn'
@@ -2656,18 +2878,22 @@
       if (!ipoUnlocked() || g < 1) return;
       modal({
         emoji: '🔔', title: 'Halka arz et?',
-        // {x}: şu anki yatırımcı bonusu (tüm hisseler, Yatırımcı Güveni dahil; üretimle aynı investorBonus())
-        html: uiText('ipo.confirm', { x: pctText(investorBonus(S.shares)), n: fmt(g), u: num(CFG.halkaArz.unspentBonus * 100) }),
+        html: ipoConfirmHtml(),
         buttons: [
           { label: 'Vazgeç', cls: 'ghost' },
           { label: 'Halka arz et', cls: 'primary', onClick: function () {
             if (blockedAction()) return;
-            doIpo(); lastStageShown = 0; upgSig = ''; treeSig = ''; checkAchievements(); save(); renderAll();
+            if (!ipoUnlocked()) return;
+            var stageBefore = S.cycleStage;
+            var got = doIpo();
+            if (!got) return;
+            lastStageShown = 0; upgSig = ''; treeSig = ''; checkAchievements(); save(); renderAll();
             track('reset_or_prestige');
+            track('ipo_complete', ipoEventData(stageBefore, got));   // v4.4: aşama ID'si, pay, kaçıncı Halka Arz
             sfx('stage'); vibrate([20, 60, 20]);
             modal({
               emoji: '🔔', title: 'Borsa zili çaldı!',
-              html: 'Artık halka açık bir şirketsin. Borsa Payların: <b>' + fmt(S.ipoShares) + '</b>',
+              html: uiText('ipo.done', { x: fmt(S.ipoShares) }),
               buttons: [
                 { label: '📣 Paylaş', cls: 'ghost', onClick: function () { shareText('Kodhane\'de şirketimi halka arz ettim, borsa zili çaldı! ' + shareLink(CFG.utm.ipo)); } },
                 { label: 'Tamam', cls: 'primary' }

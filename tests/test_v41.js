@@ -15,26 +15,31 @@ const CFG = K.CFG, H = CFG.halkaArz, SC = CFG.sectors;
 const near = (a, b) => Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
 
 // ---------------------------------------------------------------- ayarlar
-check('Halka Arz settings: stage mode, pays by stage, bonus 1%', H.mode === 'stage' && H.stagePays.length === K.STAGES.length && H.unspentBonus === 0.01 && H.firstMin === 1);
-check('stage pays: none before Global Holding, non-decreasing, max 12 (SQL ipo_maxpay)', H.stagePays.slice(0, 5).every((x) => x === 0) && H.stagePays.every((x, i) => i === 0 || x >= H.stagePays[i - 1]) && Math.max(...H.stagePays) === 12, H.stagePays);
+// v4.4: aşama payları aşama ID'sine bağlı (araya aşama girince sıra kaymaz)
+const PAYS = K.STAGES.map((st, i) => K.stagePay(i));
+check('Halka Arz settings: stage mode, pays by stage ID, bonus 1%', H.mode === 'stage' && Object.keys(H.stagePays).every((id) => K.STAGE_BY_ID[id]) && H.unspentBonus === 0.01 && H.firstMin === 1);
+check('stage pays: none before Global Holding, non-decreasing, max 12 (SQL ipo_maxpay)', PAYS.slice(0, 5).every((x) => x === 0) && PAYS.every((x, i) => i === 0 || x >= PAYS[i - 1]) && Math.max(...PAYS) === 12, PAYS);
+check('v4.4 stage pays (E100cd12): GH 2, Unicorn 3, ŞG 4, TD 5, YZ Lab 8, Mars 12', PAYS.join(',') === '0,0,0,0,0,2,3,4,5,8,12', PAYS);
 check('tree total stays 40', K.TREE.reduce((a, b) => a + b.nodes.reduce((x, n) => x + K.nodeCost(n), 0), 0) === 40);
 
 // ---------------------------------------------------------------- aşamaya göre pay
 fresh();
 const stagePay = (st, ipoCount) => { K.state.cycleStage = st; K.state.ipoCount = ipoCount; return K.ipoGain(); };
 check('first IPO: 1 pay minimum before Global Holding', stagePay(3, 0) === 1 && stagePay(0, 0) === 1);
-check('first IPO at Global Holding: 2, at Teknoloji Devi: 5', stagePay(5, 0) === 2 && stagePay(6, 0) === 5);
-check('later IPOs: nothing below repeatMinStage (no Global Holding pay farm), then 5/8/12', H.repeatMinStage === 6 && stagePay(4, 2) === 0 && stagePay(5, 2) === 0 && [6, 7, 8].map((i) => stagePay(i, 2)).join(',') === '5,8,12');
-check('hint stage for repeat IPOs is Teknoloji Devi', (() => { K.state.ipoCount = 1; const r = K.ipoPayStage() === 6; K.state.ipoCount = 0; return r; })());
+const R = K.stageRank;
+check('first IPO at Global Holding: 2, Unicorn: 3, Şirketler Grubu: 4, Teknoloji Devi: 5', stagePay(R('global_holding'), 0) === 2 && stagePay(R('unicorn'), 0) === 3 && stagePay(R('sirketler_grubu'), 0) === 4 && stagePay(R('teknoloji_devi'), 0) === 5);
+check('later IPOs: nothing below repeatMinStage = Teknoloji Devi (no GH/Unicorn/ŞG pay farm), then 5/8/12', H.repeatMinStage === 'teknoloji_devi' && stagePay(4, 2) === 0 && stagePay(R('global_holding'), 2) === 0 && stagePay(R('unicorn'), 2) === 0 && stagePay(R('sirketler_grubu'), 2) === 0 &&
+  ['teknoloji_devi', 'yapay_zeka_lab', 'mars_ofisi'].map((id) => stagePay(R(id), 2)).join(',') === '5,8,12');
+check('hint stage for repeat IPOs is Teknoloji Devi', (() => { K.state.ipoCount = 1; const r = K.ipoPayStage() === R('teknoloji_devi'); K.state.ipoCount = 0; return r; })());
 check('gain does not depend on total earnings', (() => { K.state.cycleEarned = 1e30; K.state.cycleStage = 5; K.state.ipoCount = 0; return K.ipoGain() === 2; })());
 check('pay stage for the hint is Global Holding', K.ipoPayStage() === 5);
 fresh();
 K.earn(3e9);
 check('cycleStage follows run earnings', K.state.cycleStage === 5);
 K.earn(1e15);
-check('cycleStage reaches Teknoloji Devi', K.state.cycleStage === 6);
+check('cycleStage reaches Teknoloji Devi', K.state.cycleStage === R('teknoloji_devi'));
 K.state.cycleRounds = 3; K.doPrestige();
-check('Yatırım Turu keeps cycleStage (highest this cycle)', K.state.cycleStage === 6 && K.state.runEarned === 0);
+check('Yatırım Turu keeps cycleStage (highest this cycle)', K.state.cycleStage === R('teknoloji_devi') && K.state.runEarned === 0);
 K.state.cycleRounds = 3; const g = K.doIpo();
 check('IPO pays by cycleStage and resets it', g === 5 && K.state.cycleStage === 0 && K.state.ipoShares === 5);
 
@@ -53,15 +58,16 @@ check('unspent bonus capped at unspentCap (50 -> +50%)', H.unspentCap === 50 && 
 // ---------------------------------------------------------------- metinler
 const up = K.UPGRADES.find((u) => u.name === 'Yönetim Kurulu Odası');
 check('upgrade renamed: Yönetim Kurulu Odası / Tüm üretim +%50', up && up.desc === 'Tüm üretim +%50' && !K.UPGRADES.some((u) => u.name === 'Halka Arz Hazırlığı'));
-check('Global Holding description', K.STAGES[5].desc === 'Üç kıtada ofis, her saat diliminde bir toplantı.');
+check('Global Holding description', K.STAGE_BY_ID.global_holding.desc === 'Üç kıtada ofis, her saat diliminde bir toplantı.');
 const A = (id) => K.ACHIEVEMENTS.find((a) => a.id === id);
 check('new achievements (copy)', A('asama_6').name === 'Acil Kuyruğu' && A('asama_6').desc === 'Teknoloji Devi aşamasına ulaş' &&
   A('asama_7').name === 'Model Eğitildi' && A('asama_7').desc === 'Yapay Zekâ Laboratuvarı aşamasına ulaş' &&
   A('asama_8').name === 'Kızıl Tabela' && A('asama_8').desc === 'Mars Ofisi aşamasına ulaş');
-check('achievement count 34, ids unique', K.ACHIEVEMENTS.length === 34 && new Set(K.ACHIEVEMENTS.map((a) => a.id)).size === 34);
-check('new achievements follow Kıtalar Arası', K.ACHIEVEMENTS.findIndex((a) => a.id === 'asama_6') === K.ACHIEVEMENTS.findIndex((a) => a.id === 'asama_5') + 1);
-fresh(); K.state.stageBest = 7; K.state.stage = 2; K.checkAchievements();
-check('players who already passed stages get them (stageBest, even after a reset)', ['asama_6', 'asama_7'].every((x) => K.state.achievements.includes(x)) && !K.state.achievements.includes('asama_8'));
+check('achievement count 36 (v4.4: +Unicorn, +Şirketler Grubu), ids unique', K.ACHIEVEMENTS.length === 36 && new Set(K.ACHIEVEMENTS.map((a) => a.id)).size === 36);
+const AI = (id) => K.ACHIEVEMENTS.findIndex((a) => a.id === id);
+check('stage achievements in stage order after Kıtalar Arası', AI('asama_unicorn') === AI('asama_5') + 1 && AI('asama_grup') === AI('asama_5') + 2 && AI('asama_6') === AI('asama_5') + 3);
+fresh(); K.state.stageBest = R('yapay_zeka_lab'); K.state.stage = 2; K.checkAchievements();
+check('players who already passed stages get them (stageBest, even after a reset)', ['asama_unicorn', 'asama_grup', 'asama_6', 'asama_7'].every((x) => K.state.achievements.includes(x)) && !K.state.achievements.includes('asama_8'));
 
 // ---------------------------------------------------------------- sektörler
 check('4 sectors', K.SECTORS.map((x) => x.id + ':' + x.name).join(',') === 'esnaf:Mahalle Esnafı,eticaret:E-ticaret,oyun:Oyun şirketi,kamu:Kamu ihalesi');
@@ -74,15 +80,16 @@ check('card copy', T('eticaret_sunucu') === '“İndirim gecesi site yavaşladı
   T('esnaf_kafe') === '“Kafe: Menüyü siteye koyalım. Fiyatlar her hafta değişiyor ama.”' && T('esnaf_emlak') === '“Emlakçı: İlanları ben girerim, sen sadece şifremi hatırla.”');
 fresh();
 check('start: only Mahalle Esnafı open', K.sectorOpen('esnaf') && !K.sectorOpen('eticaret') && !K.sectorOpen('oyun') && !K.sectorOpen('kamu'));
-K.state.stageBest = SC.unlock.eticaret; check('E-ticaret opens at its stage', K.sectorOpen('eticaret') && !K.sectorOpen('oyun'));
-K.state.stageBest = SC.unlock.kamu; check('all open at Kamu stage', K.SECTORS.every((x) => K.sectorOpen(x.id)));
-check('unlock stages are settings, increasing', SC.unlock.esnaf === 0 && SC.unlock.eticaret < SC.unlock.oyun && SC.unlock.oyun < SC.unlock.kamu);
+K.state.stageBest = R(SC.unlock.eticaret); check('E-ticaret opens at its stage', K.sectorOpen('eticaret') && !K.sectorOpen('oyun'));
+K.state.stageBest = R(SC.unlock.kamu); check('all open at Kamu stage', K.SECTORS.every((x) => K.sectorOpen(x.id)));
+check('unlock stages are settings (stage IDs), increasing, unchanged ranks', SC.unlock.esnaf === 'freelancer' && R(SC.unlock.eticaret) < R(SC.unlock.oyun) && R(SC.unlock.oyun) < R(SC.unlock.kamu) &&
+  [SC.unlock.esnaf, SC.unlock.eticaret, SC.unlock.oyun, SC.unlock.kamu].map(R).join(',') === '0,2,3,4');
 fresh();
 const counts = (n) => { const c = {}; for (let i = 0; i < n; i++) { const e = K.EVENT_BY_ID[K.pickEvent()]; const k = e.sector || 'genel'; c[k] = (c[k] || 0) + 1; } return c; };
 let c = counts(3000);
 check('closed sectors never appear', !c.eticaret && !c.oyun && !c.kamu && c.esnaf > 0);
 check('follow-up cards need an accepted job', !c.esnaf || K.EVENTS.filter((e) => /_revize$|_destek$/.test(e.id)).every((e) => !K.cardAvailable(e)));
-K.state.stageBest = 8; c = counts(8000);
+K.state.stageBest = K.STAGES.length - 1; c = counts(8000);
 check('sector share ≈ CFG.sectors.share', Math.abs((8000 - c.genel) / 8000 - SC.share) < 0.04, c);
 // reddetme
 K.state.money = 1000; K.state.reputation = 12;
@@ -99,7 +106,7 @@ check('cooldown also ends offline', !('oyun' in K.state.sectorCool));
 check('Sektörde Tanınıyorsun achievement unchanged', K.ACHIEVEMENTS.some((a) => a.name === 'Sektörde Tanınıyorsun'));
 
 // kabul etkileri
-function prodSetup() { fresh(); K.state.stageBest = 8; K.state.gens.stajyer = 50; K.state.gens.junior = 20; K.state.money = 1e9; }
+function prodSetup() { fresh(); K.state.stageBest = K.STAGES.length - 1; K.state.gens.stajyer = 50; K.state.gens.junior = 20; K.state.money = 1e9; }
 prodSetup();
 let m0 = K.state.money, p = K.pay(1);
 K.resolveEvent('eticaret_sunucu', 0);
@@ -168,19 +175,21 @@ function v4Save(over) {
 const o = v4Save();
 K.deserialize(JSON.stringify(o));
 const s = K.state;
-check('v4 save: version 4, loadedVersion 3', s.version === 4 && K.loadedVersion === 3);
-check('v4 save: every v4 field kept (lossless)', ['money', 'runEarned', 'totalEarned', 'clicks', 'clickEarned', 'playTime', 'startedAt', 'shares', 'prestigeCount', 'stage', 'stageBest', 'reputation', 'ipoShares', 'ipoSharesEarned', 'ipoCount', 'cycleRounds', 'cycleEarned'].every((k) => s[k] === o[k]) &&
+check('v4 save: version 5, loadedVersion 3', s.version === 5 && K.loadedVersion === 3);
+// v4.4: eski kayıttaki aşama sırası (5 = Global Holding, 6 = Teknoloji Devi) ID üzerinden yeni sıraya çevrilir
+check('v4 save: stage fields converted from the old order', s.stage === R('global_holding') && s.stageBest === R('teknoloji_devi'), [s.stage, s.stageBest]);
+check('v4 save: every other v4 field kept (lossless)', ['money', 'runEarned', 'totalEarned', 'clicks', 'clickEarned', 'playTime', 'startedAt', 'shares', 'prestigeCount', 'reputation', 'ipoShares', 'ipoSharesEarned', 'ipoCount', 'cycleRounds', 'cycleEarned'].every((k) => s[k] === o[k]) &&
   JSON.stringify(s.gens) === JSON.stringify(Object.assign({}, s.gens, o.gens)) && JSON.stringify(s.tree) === JSON.stringify(o.tree) && JSON.stringify(s.upgrades) === JSON.stringify(o.upgrades) &&
   JSON.stringify(s.newsSeen) === JSON.stringify(o.newsSeen) && s.daily.streak === 2, s);
-check('v4 save after an IPO: cycleStage from this run only (no free pays)', s.cycleStage === 5 && K.ipoGain() === 0);
+check('v4 save after an IPO: cycleStage from this run only (no free pays; 7e14 is Şirketler Grubu in v4.4, below repeatMinStage)', s.cycleStage === R('sirketler_grubu') && K.ipoGain() === 0, [s.cycleStage, K.ipoGain()]);
 check('v4 save: new fields start empty', JSON.stringify(s.sectorCool) === '{}' && s.followUps.kafe === 0 && s.followUps.emlak === 0 && s.pendingPay.length === 0);
 K.deserialize(JSON.stringify(v4Save({ ipoCount: 0, ipoShares: 0, ipoSharesEarned: 0, tree: [], stage: 3, runEarned: 2e6, stageBest: 6 })));
-check('v4 save before any IPO: cycle = all time, cycleStage = stageBest', K.state.cycleStage === 6 && K.ipoGain() === 5);
+check('v4 save before any IPO: cycle = all time, cycleStage = stageBest', K.state.cycleStage === R('teknoloji_devi') && K.ipoGain() === 5);
 check('achievements granted on load for passed stages', (() => { K.checkAchievements(); return K.state.achievements.includes('asama_6') && !K.state.achievements.includes('asama_7'); })());
 K.deserialize(K.serialize());
-check('reload is stable', K.loadedVersion === 4 && K.state.cycleStage === 6);
+check('reload is stable', K.loadedVersion === 5 && K.state.cycleStage === R('teknoloji_devi'));
 K.deserialize(JSON.stringify(Object.assign(v4Save({ version: 4 }), { cycleStage: 99, sectorCool: { kamu: 1e9, yok: 5, oyun: -1 }, followUps: { kafe: 50, emlak: 'x' }, pendingPay: [{ amount: 5, left: 3, label: 'İhale ödemesi' }, { amount: -1, left: 3 }, { amount: 1e40, left: 1e9, label: 'x' }, 'bad'] })));
-check('v4.1 save sanitised', K.state.cycleStage === 8 && JSON.stringify(Object.keys(K.state.sectorCool)) === '["kamu"]' && K.state.sectorCool.kamu === SC.rejectSec &&
+check('v4.1 save sanitised', K.state.cycleStage === K.STAGES.length - 1 && JSON.stringify(Object.keys(K.state.sectorCool)) === '["kamu"]' && K.state.sectorCool.kamu === SC.rejectSec &&
   K.state.followUps.kafe === SC.esnaf_kafe.revisions && K.state.followUps.emlak === 1 && K.state.pendingPay.length <= 2 && K.state.pendingPay.every((q) => q.amount > 0 && q.left > 0), [K.state.cycleStage, K.state.sectorCool, K.state.followUps, K.state.pendingPay]);
 // real player shapes (read-only reproductions of the two live saves' counters)
 K.deserialize(JSON.stringify(v4Save({ ipoCount: 1, ipoShares: 0, ipoSharesEarned: 1, tree: ['kod_1'], stage: 1, stageBest: 4, runEarned: 5000, cycleEarned: 5000, cycleRounds: 0, prestigeCount: 3, shares: 0 })));
@@ -188,11 +197,11 @@ check('first account shape: loads, no retro pays', K.state.cycleStage === 1 && K
 
 
 // ---------------------------------------------------------------- v4.1.1: Yazı metin düzeltmeleri + B1 ayarları
-check('B1: sector unlock stages, stage pays, repeatMinStage, unspentCap live in CFG', SC.unlock && typeof SC.unlock.kamu === 'number' && Array.isArray(H.stagePays) && typeof H.repeatMinStage === 'number' && typeof H.unspentCap === 'number');
-{ const u = SC.unlock, k0 = u.kamu; fresh(); K.state.stageBest = k0 - 1; const closed = !K.sectorOpen('kamu'); u.kamu = k0 - 1; const moved = K.sectorOpen('kamu'); u.kamu = k0;
+check('B1: sector unlock stages, stage pays, repeatMinStage, unspentCap live in CFG', SC.unlock && K.STAGE_BY_ID[SC.unlock.kamu] && typeof H.stagePays === 'object' && K.STAGE_BY_ID[H.repeatMinStage] && typeof H.unspentCap === 'number');
+{ const u = SC.unlock, k0 = u.kamu; fresh(); K.state.stageBest = R(k0) - 1; const closed = !K.sectorOpen('kamu'); u.kamu = K.STAGES[R(k0) - 1].id; const moved = K.sectorOpen('kamu'); u.kamu = k0;
   check('B1: sectorOpen reads CFG.sectors.unlock', closed && moved); }
 check('sector card subtitle: icon + sector name only', K.EVENT_BY_ID.kamu_ihale.text === '🏛️ Kamu ihalesi' && K.EVENT_BY_ID.eticaret_sunucu.text === '🛒 E-ticaret', K.EVENT_BY_ID.kamu_ihale.text);
-fresh(); K.state.stageBest = 8;
+fresh(); K.state.stageBest = K.STAGES.length - 1;
 check('reject result text', K.resolveEvent('oyun_yama', 1) === 'Teklifi geri çevirdin. Oyun şirketi teklifleri bir süre seyrek gelecek.');
 check('reject hint text (m:ss)', K.EVENT_BY_ID.eticaret_buton.choices[1].hint() === 'E-ticaret teklifleri 10:00 seyrek gelir', K.EVENT_BY_ID.eticaret_buton.choices[1].hint());
 prodSetup(); { const k = K.tl(K.pay(SC.eticaret_sunucu.cost)), x = K.tl(K.pay(SC.eticaret_sunucu.pay)); const m = K.resolveEvent('eticaret_sunucu', 0);

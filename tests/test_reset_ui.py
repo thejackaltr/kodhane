@@ -163,6 +163,19 @@ class FakeSB:
         return self.reply(route, 404, {'message': 'not found'})
 
 
+SEED_LOG = [{'type': 'prestige', 'at': 1790000000000, 'sharesBefore': 1, 'sharesAfter': 2, 'paysBefore': 0, 'paysAfter': 0},
+            {'type': 'prestige', 'at': 1790000100000, 'sharesBefore': 2, 'sharesAfter': 3, 'paysBefore': 0, 'paysAfter': 0}]
+
+
+def reset_entry_ok(log, shares_before=3, pays_before=0):
+    if not isinstance(log, list) or len(log) != len(SEED_LOG) + 1 or log[:-1] != SEED_LOG:
+        return False
+    e = log[-1]
+    return (list(e.keys()) == ['type', 'at', 'sharesBefore', 'sharesAfter', 'paysBefore', 'paysAfter'] and e['type'] == 'reset'
+            and abs(e['at'] - time.time() * 1000) < 120000 and e['sharesBefore'] == shares_before and e['sharesAfter'] == 0
+            and e['paysBefore'] == pays_before and e['paysAfter'] == 0)
+
+
 def seed_save(clicks=40, total=4000.0):
     now = int(time.time() * 1000)
     yday = time.strftime('%Y-%m-%d', time.localtime(time.time() - 86400))  # dün tamamlanmış: seri 4 yüklemede korunur
@@ -170,7 +183,9 @@ def seed_save(clicks=40, total=4000.0):
             'playTime': 900, 'startedAt': now - 86400000, 'lastSaved': now,
             'gens': {'stajyer': 4, 'junior': 1}, 'upgrades': [], 'shares': 3, 'prestigeCount': 1, 'cycleRounds': 1, 'achievements': ['tik_1'],
             'reputation': 12, 'daily': {'date': None, 'tasks': [], 'streak': 4, 'best': 6, 'lastComplete': yday, 'allDone': False, 'daysCompleted': 5},
-            'newsSeen': ['siralama', 'acik_ofis', 'yeni_asama']}
+            'newsSeen': ['siralama', 'acik_ofis', 'yeni_asama'],
+            # v4.4: kayıt içi olay listesi ("Kaydı sıfırla" silmez, sıfırlama girdisi ekler; Geri al öncesini getirir)
+            'eventLog': SEED_LOG}
 
 
 # yüklemede açılan başarımlar (tik_1 tohumda; diğerleri 4000 ₺ / görev / seri / yatırımdan otomatik açılır)
@@ -315,6 +330,9 @@ with sync_playwright() as p:
     st = ev(pg, 'Kodhane.state')
     check('keyboard (Space) hold resets the save', st['clicks'] == 0 and st['achievements'] == [] and st['reputation'] == 0 and st['daily']['streak'] == 0 and st['shares'] == 0)
     check_pref('guest reset keeps the counter choice (off) and no band', pg, 'off')
+    check('v4.4 guest reset keeps the event log and appends a reset entry (shares 3 -> 0, pays 0 -> 0, time)', reset_entry_ok(st.get('eventLog')), st.get('eventLog'))
+    ev(pg, 'Kodhane.save()')
+    check('v4.4 guest reset: event log in the new local save', reset_entry_ok(json.loads(ev(pg, "localStorage.getItem('%s')" % SAVE_KEY)).get('eventLog')))
     check('settings kept after reset (separate key)', ev(pg, "localStorage.getItem('kodhane_ayarlar_v1') === null || typeof JSON.parse(localStorage.getItem('kodhane_ayarlar_v1')).sound === 'boolean'"))
     # misafir Geri al (sayfa yeniden açıldı; yerel kopyadan)
     check('guest: undo bar after reload with done text and countdown from config',
@@ -326,6 +344,7 @@ with sync_playwright() as p:
     st = ev(pg, 'Kodhane.state')
     check('guest undo restores the pre-reset save from the local snapshot', st['clicks'] == 40 and PRE_ACH <= set(st['achievements']) and st['reputation'] == 12
           and st['daily']['streak'] == 4 and st['shares'] == 3 and ev(pg, 'Kodhane.lastUndo') == 'local', json.dumps({k: st[k] for k in ('clicks', 'reputation', 'shares', 'achievements')} | {'streak': st['daily']['streak']}))
+    check('v4.4 guest undo: event log back to the pre-reset list (reset entry gone with the undone reset)', st.get('eventLog') == SEED_LOG, st.get('eventLog'))
     check('guest undo: toast undoDone, bar hidden, snapshot cleared', any(COPY['reset.undoDone'] in t for t in toasts(pg)) and pg.is_hidden('#undoBar')
           and ev(pg, "sessionStorage.getItem('kodhane_reset_undo')") is None, toasts(pg))
     ev(pg, 'Kodhane.save()')
@@ -403,6 +422,8 @@ with sync_playwright() as p:
     check('signed-in reset: row kept (fresh data, revision advanced, best_score kept, backup on server)',
           row['data']['clicks'] == 0 and row['revision'] >= 3 and row['best_score'] >= 3000 and fake.saves.backups[0]['reason'] == 'reset', json.dumps({k: row[k] for k in ('revision', 'best_score')}))
     check_pref('signed-in reset keeps the counter choice (on)', pg, 'on')
+    check('v4.4 signed-in reset: local event log kept + reset entry', reset_entry_ok(ev(pg, 'Kodhane.state.eventLog')), ev(pg, 'Kodhane.state.eventLog'))
+    check('v4.4 signed-in reset: cloud row (after reconcile) carries the same log', reset_entry_ok(row['data'].get('eventLog')), row['data'].get('eventLog'))
     check('signed-in: undo bar visible', not pg.is_hidden('#undoBar') and pg.inner_text('#undoText') == COPY['reset.done'])
     pg.click('#undoBtn')
     wait_js(pg, "Kodhane.lastUndo", 8000)
@@ -411,6 +432,7 @@ with sync_playwright() as p:
     check('signed-in undo restores the save (achievements, reputation, streak back)', st['clicks'] == 30 and PRE_ACH <= set(st['achievements']) and st['reputation'] == 12 and st['daily']['streak'] == 4,
           json.dumps({k: st[k] for k in ('clicks', 'reputation', 'achievements')} | {'streak': st['daily']['streak']}))
     check('signed-in undo: server row = restored payload', fake.rows[UID]['data']['clicks'] == 30)
+    check('v4.4 signed-in undo: event log back to the pre-reset list', st.get('eventLog') == SEED_LOG, st.get('eventLog'))
     check_pref('signed-in undo (cloud restore RPC) keeps the counter choice (on)', pg, 'on')
     pg.wait_for_timeout(300)
     check('signed-in undo: toast undoDone', any(COPY['reset.undoDone'] in t for t in toasts(pg)), toasts(pg))

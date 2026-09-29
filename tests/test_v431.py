@@ -37,6 +37,8 @@ SAFETY = ('MAP analiz.teserix.com 127.0.0.1:9, MAP kodhane-api.teserix.com 127.0
           'MAP kodhane.teserix.com 127.0.0.1:9, MAP thejackaltr.github.io 127.0.0.1:9, MAP cdn.jsdelivr.net 127.0.0.1:9, '
           'MAP acikofis.teserix.com 127.0.0.1:9, MAP *.supabase.co 127.0.0.1:9')
 GAME = open(os.path.join(ROOT, 'game.js'), encoding='utf-8').read()
+SV_CUR = int(re.search(r'var SAVE_VERSION = (\d+);', GAME).group(1))   # v4.4: 5
+SV_FUT = SV_CUR + 1
 CLOUD = open(os.path.join(ROOT, 'cloud.js'), encoding='utf-8').read()
 HTML = open(os.path.join(ROOT, 'index.html'), encoding='utf-8').read()
 SDK_URL = re.search(r"sdk: '([^']+)'", CLOUD).group(1)
@@ -64,11 +66,13 @@ def strip_tags(h):
 
 # ---------------------------------------------------------------- onaylı metinler (istekteki gibi, birebir)
 APPROVED = {
-    'intro': "Şirketini yatırımcılara sun: paran, çalışanların ve geliştirmelerin sıfırlanır, karşılığında Halka Arz'a kadar geçerli <b>üretim bonusu</b> kazanırsın. Her <b>Yatırımcı Hissesi</b> tüm kazançlara <b id=\"prPer\">+%10</b> ekler. Başarımların, itibarın ve günlük serin korunur.",
+    # v4.4: Yazı r3 metinleri (kodhane-v4.4-metinler-yazi-r3.md) v4.3.1 metinlerinin yerini aldı
+    'intro': "Şirketini yatırımcılara sun: paran, çalışanların ve geliştirmelerin sıfırlanır, karşılığında <b>üretim bonusu</b> kazanırsın. Her <b>Yatırımcı Hissesi</b> tüm kazançlara <b id=\"prPer\">+%10</b> ekler. Başarımların, itibarın ve günlük serin korunur. Hisselerin Halka Arz'da da silinmez.",
     'label': 'Yatırımcı bonusu',
-    'hint': "Başarımlarını, itibarını ve günlük serini korumak istiyorsan sıfırlamak yerine yatırım turuna çık. Yatırım turunda bunlar korunur, üstüne Halka Arz'a kadar geçerli bir üretim bonusu kazanırsın.",
-    'prestige': "Yatırımcılar şirketine <b>{g} hisse</b> karşılığında yatırım yapacak. Paran, çalışanların ve geliştirmelerin sıfırlanır; karşılığında Halka Arz'a kadar tüm kazançlara <b>+%{b}</b> bonus alırsın. Başarımların, itibarın ve günlük serin korunur.",
-    'ipo': "Kasa, çalışanlar, geliştirmeler ve yatırımcı hisselerin sıfırlanacak. Borsa Payı Ağacı, başarımların ve sıralamadaki puanın olduğu gibi kalır.<br>Şu anki +%{x} yatırımcı bonusun sıfırlanır, karşılığında <b>{n} Borsa Payı</b> kazanırsın.<br><small>Harcamadığın her Borsa Payı +%{u} üretim verir. İstersen payları hemen Borsa Payı Ağacı'nda kalıcı bonuslara harcayabilirsin.</small>",
+    'hint': "Başarımlarını, itibarını ve günlük serini korumak istiyorsan sıfırlamak yerine yatırım turuna çık. Yatırım turunda bunlar korunur, üstüne bir üretim bonusu kazanırsın. Bu bonus Halka Arz'da da silinmez.",
+    'prestige': "Yatırımcılar şirketine <b>{g} hisse</b> karşılığında yatırım yapacak. Paran, çalışanların ve geliştirmelerin sıfırlanır; karşılığında tüm kazançlara <b>+%{b}</b> bonus alırsın. Bu bonus Halka Arz'da da silinmez. Başarımların, itibarın ve günlük serin korunur.",
+    'ipo': "Kasa, çalışanlar ve geliştirmeler sıfırlanacak. Yatırımcı hisselerin korunur, bu turda biriken <b>{p} hisse</b> de eklenir. Borsa Payı Ağacı, başarımların ve sıralamadaki puanın da kalır.<br>Kazanacağın: <b>{n} Borsa Payı</b>. Sonraki Yatırım Turlarında hisselerin %{z} fazla gelir.<br><small>Harcamadığın her Borsa Payı +%{u} üretim verir. Sonraki Halka Arz için en az {h} beklemen gerekir.</small>",
+    'ipoBonus': "Yatırımcı bonusun +%{y} olur.",
     'newer': '✨ Yeni sürüm hazır, ilerlemen korunuyor. Devam etmek için yenile.',
     'newerShort': '✨ Yeni sürüm hazır, ilerlemen korunuyor.',
     'newerBtn': 'Yenile',
@@ -77,7 +81,7 @@ APPROVED = {
 # ---------------------------------------------------------------- statik kontroller
 check('[text] index.html: Yatırım Turu intro (approved copy, #prPer inside)', APPROVED['intro'] in HTML)
 check('[text] index.html: label "Yatırımcı bonusu" (old "Kalıcı bonus" gone)', '<dt>Yatırımcı bonusu</dt><dd id="prBonus">' in HTML and 'Kalıcı bonus' not in HTML)
-check('[text] old Halka Arz lines removed from game.js', 'Karşılığında kalıcı Borsa Payı kazanacaksın' not in GAME and 'Kazanacağın' not in GAME)
+check('[text] old Halka Arz lines removed from game.js', 'Karşılığında kalıcı Borsa Payı kazanacaksın' not in GAME and 'yatırımcı bonusun sıfırlanır' not in GAME)
 check('[text] untouched: achievements "kalıcı +%1", tree "Bu bonus artık kalıcı"', "kalıcı +%1 üretim" in GAME and 'Alındı! Bu bonus artık kalıcı.' in GAME)
 check('[text] confirm texts come from the UI_TEXT table (approved copy verbatim)',
       json.dumps(APPROVED['prestige'], ensure_ascii=False) in GAME and json.dumps(APPROVED['ipo'], ensure_ascii=False) in GAME)
@@ -190,7 +194,7 @@ def mk_save(version=4, save_version=None, **kw):
 
 
 def future_save():
-    d = mk_save(version=5, save_version=5)
+    d = mk_save(version=SV_FUT, save_version=SV_FUT)
     d['futureOnlyField'] = {'kept': True, 'list': [1, 2, 3]}   # bu istemcinin bilmediği alan: aynen kalmalı
     d['epoch'] = 1
     return d
@@ -306,15 +310,20 @@ with sync_playwright() as p:
         pg.click('#ipoBtn')
         pg.wait_for_selector('#modal:not(.hidden)')
         txt = pg.inner_text('#modalText')
-        m = re.search(r'Şu anki \+%([\d.,]+) yatırımcı bonusun sıfırlanır, karşılığında ([\d.,]+) Borsa Payı kazanırsın\.', txt)
-        check(tag + ' Halka Arz confirm: {x} = current production investor bonus, {n} = ipoGain',
-              m and abs(trnum(m.group(1)) - prod['x']) < 0.005 and trnum(m.group(2)) == n, [txt, prod, n])
+        # v4.4: hisseler korunur; {y} = Halka Arz sonrası (hisseler + bu turun {p} hissesi) üretim bonusu
+        pnd = ev('Kodhane.ipoPendingShares()')
+        prod_after = ev(PROD, 3 + pnd)
+        m = re.search(r'Yatırımcı bonusun \+%([\d.,]+) olur\. Kazanacağın: ([\d.,]+) Borsa Payı\.', txt)
+        check(tag + ' Halka Arz confirm: {y} = production investor bonus after the IPO (shares kept + pending), {n} = ipoGain',
+              m and abs(trnum(m.group(1)) - prod_after['b']) < 0.005 and trnum(m.group(2)) == n and pnd >= 1, [txt, prod_after, n, pnd])
         u = ev('Kodhane.CFG.halkaArz.unspentBonus * 100')
-        exp = strip_tags(APPROVED['ipo'].replace('{x}', ev('Kodhane.pctText(Kodhane.investorBonus())')).replace('{n}', ev('Kodhane.fmt(%d)' % n))
-                         .replace('{u}', ('%g' % u).replace('.', ',')))
-        check(tag + ' Halka Arz confirm: exact approved text, old lines gone', txt.strip() == exp.strip() and 'Kazanacağın' not in txt
-              and 'Karşılığında kalıcı' not in txt, [txt, exp])
-        note('%s {x}=%s production x=%.4f%%  {n}=%s' % (tag, m.group(1) if m else None, prod['x'], m.group(2) if m else None))
+        head, rest = APPROVED['ipo'].split('<br>', 1)
+        full = head + '<br>' + APPROVED['ipoBonus'] + ' ' + rest
+        exp = strip_tags(full.replace('{p}', ev('Kodhane.fmt(%d)' % pnd)).replace('{n}', ev('Kodhane.fmt(%d)' % n)).replace('{y}', ev('Kodhane.pctText(Kodhane.investorBonus(%d))' % (3 + pnd)))
+                         .replace('{z}', ev('Kodhane.num(%d * 10)' % n)).replace('{u}', ('%g' % u).replace('.', ',')).replace('{h}', '12 saat'))
+        check(tag + ' Halka Arz confirm: exact approved text (Yazı r3), old lines gone', txt.strip() == exp.strip()
+              and 'Karşılığında kalıcı' not in txt and 'sıfırlanır, karşılığında' not in txt, [txt, exp])
+        note('%s {y}=%s production after=%.4f%%  {n}=%s {p}=%s' % (tag, m.group(1) if m else None, prod_after['b'], m.group(2) if m else None, pnd))
         if tree_on:
             pg.wait_for_timeout(300); ev("document.getElementById('toast').innerHTML = ''")
             pg.screenshot(path=os.path.join(SHOTS, 'kodhane-v431-halkaarz-onay.png'))
@@ -386,8 +395,8 @@ with sync_playwright() as p:
         ok = ev('!Kodhane.writesBlocked()') and ev('Kodhane.state.clicks') == 77 and ev('Kodhane.state.totalEarned') >= 5e6
         pg.click('#clickBtn'); ev('Kodhane.save()')
         now = json.loads(ev("localStorage.getItem('%s')" % SAVE_KEY))
-        check('[newer][old] %s: loads as before, saves normally with saveVersion 4 / version 4' % label,
-              ok and now['clicks'] == 78 and now['saveVersion'] == 4 and now['version'] == 4 and pg.is_hidden('#updateBar'), [ok, now.get('clicks'), now.get('saveVersion')])
+        check('[newer][old] %s: loads as before, saves normally with saveVersion %d / version %d' % (label, SV_CUR, SV_CUR),
+              ok and now['clicks'] == 78 and now['saveVersion'] == SV_CUR and now['version'] == SV_CUR and pg.is_hidden('#updateBar'), [ok, now.get('clicks'), now.get('saveVersion')])
         if label.startswith('legacy'):
             check('[newer][old] legacy v2 save migrated like before (cycleRounds from prestigeCount)', ev('Kodhane.loadedVersion') == 2 and now['cycleRounds'] == 3)
         check('[newer][old] %s: no page errors' % label, not pg.errs, pg.errs)
@@ -401,7 +410,7 @@ with sync_playwright() as p:
     pg = open_page(ctx)
     ev = pg.evaluate
     pg.wait_for_timeout(300)
-    check('[newer][guest] future save detected: writesBlocked, futureSave.version 5', ev('Kodhane.writesBlocked()') and ev('Kodhane.futureSave.version') == 5)
+    check('[newer][guest] future save detected: writesBlocked, futureSave.version %d' % SV_FUT, ev('Kodhane.writesBlocked()') and ev('Kodhane.futureSave.version') == SV_FUT)
     bars = ev("Array.from(document.querySelectorAll('.update-bar')).filter(e => !e.classList.contains('hidden')).map(e => [e.dataset.test, e.innerText])")
     check('[newer][guest] one refresh band shown (long text at 1280, "Yenile")', len(bars) == 1 and bars[0][0] == 'newer-save-band'
           and pg.inner_text('#updateText') == APPROVED['newer'] and pg.inner_text('#updateBtn') == APPROVED['newerBtn'], bars)
@@ -478,7 +487,7 @@ with sync_playwright() as p:
           a.evaluate("localStorage.getItem('%s')" % SAVE_KEY) == FUT and a.evaluate('Kodhane.writesBlocked()'))
     ctx.close()
     # yalnızca version (saveVersion yok) ya da yalnızca saveVersion yüksek
-    for label, d in (('only version 5', mk_save(version=5)), ('only saveVersion 5', mk_save(version=4, save_version=5))):
+    for label, d in (('only version %d' % SV_FUT, mk_save(version=SV_FUT)), ('only saveVersion %d' % SV_FUT, mk_save(version=4, save_version=SV_FUT))):
         raw = json.dumps(d)
         ctx = new_ctx('1280x800', init=seed_script(raw))
         pg = open_page(ctx)
@@ -507,8 +516,8 @@ with sync_playwright() as p:
             ok = False
         post = getattr(fake, 'last_post', None) or {}
         post = post[0] if isinstance(post, list) else post
-        check('[newer][cloud] normal save: cloud write issued (mocked) with save_version 4, data.saveVersion 4, data.version 4',
-              ok and post.get('save_version') == 4 and post.get('data', {}).get('saveVersion') == 4 and post.get('data', {}).get('version') == 4,
+        check('[newer][cloud] normal save: cloud write issued (mocked) with save_version %d, data.saveVersion %d, data.version %d' % (SV_CUR, SV_CUR, SV_CUR),
+              ok and post.get('save_version') == SV_CUR and post.get('data', {}).get('saveVersion') == SV_CUR and post.get('data', {}).get('version') == SV_CUR,
               [ok, {k: post.get(k) for k in ('save_version', 'revision')}])
         pg.click('#clickBtn'); pg.evaluate('Kodhane.save()')
         check('[newer][cloud] normal save: local save written as before', json.loads(pg.evaluate("localStorage.getItem('%s')" % SAVE_KEY))['clicks'] == 78)
@@ -540,7 +549,7 @@ with sync_playwright() as p:
         # (c3) buluttaki kayıt daha yeni (save_version 5), yerel kayıt güncel biçim
         fake = FakeSB()
         cloud_future = future_save(); cloud_future['totalEarned'] = 9e9; cloud_future['runEarned'] = 9e9
-        fake.rows[UID] = cloud_row(cloud_future, 5)
+        fake.rows[UID] = cloud_row(cloud_future, SV_FUT)
         cloud_before = json.dumps(fake.rows[UID], sort_keys=True)
         local_raw = json.dumps(mk_save(version=4))
         ctx = new_ctx('1280x800', init=seed_script(local_raw, session=sess), fake=fake)
@@ -554,7 +563,7 @@ with sync_playwright() as p:
         pg.evaluate('Kodhane.save(); Kodhane.cloud.state.reconciled = true; Kodhane.cloud.push(true); Kodhane.cloud.flush()')
         pg.evaluate("window.dispatchEvent(new Event('pagehide')); window.dispatchEvent(new Event('beforeunload'));")
         pg.wait_for_timeout(10800)
-        check('[newer][cloud] cloud row newer (save_version 5): detected, band shown, cloud save NOT applied',
+        check('[newer][cloud] cloud row newer (save_version %d): detected,' % SV_FUT + ' band shown, cloud save NOT applied',
               ok and pg.is_visible('[data-test=newer-save-band]') and pg.evaluate('Kodhane.state.totalEarned') < 9e9)
         check('[newer][cloud] cloud row newer: 0 write requests, cloud row byte-identical', fake.writes() == [] and json.dumps(fake.rows[UID], sort_keys=True) == cloud_before, fake.writes())
         check('[newer][cloud] cloud row newer: nothing written locally from then on (save, autosave, pagehide)',
@@ -572,7 +581,7 @@ with sync_playwright() as p:
             ev("Kodhane.showUpdate({ postMessage: function () {} })")      # bekleyen servis çalışanı güncellemesi
             pg.wait_for_timeout(100)
             sw_txt = pg.inner_text('#updateText')
-            ev("Kodhane.guardFuture({ version: 5 }, 'test')")               # daha yeni kayıt okundu
+            ev("Kodhane.guardFuture({ version: %d }, 'test')" % SV_FUT)               # daha yeni kayıt okundu
             pg.wait_for_timeout(300)
             vis_bars = ev("Array.from(document.querySelectorAll('.update-bar, [data-test=newer-save-band], [data-test=update-band]')).filter(e => !e.classList.contains('hidden') && e.offsetParent !== null || getComputedStyle(e).position === 'fixed' && !e.classList.contains('hidden')).length")
             txt = pg.inner_text('#updateText')
