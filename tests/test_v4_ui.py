@@ -251,7 +251,7 @@ with sync_playwright() as p:
     with c.expect_page(timeout=5000) as newp:
         pg.click('#modalActions button:has-text("Açık Ofis\'i dene")')
     popup = newp.value
-    check('"Açık Ofis\'i dene" opens the game in a new tab (UTM link)', popup.url.startswith('https://thejackaltr.github.io/kodhane-acik-ofis/?utm_source=kodhane&utm_medium=news&utm_campaign=acikofis_v1'), popup.url)
+    check('"Açık Ofis\'i dene" opens the game in a new tab (UTM link)', popup.url.startswith('https://acikofis.teserix.com/?utm_source=kodhane&utm_medium=news&utm_campaign=acikofis_v1'), popup.url)
     popup.close()
     pg.wait_for_timeout(300)
     check('Açık Ofis shown + click counted anonymously', [e[0] for e in events][2:] == ['news_acikofis_shown', 'news_acikofis_click'] and all(e[1] == 'Bearer sb_publishable_test' for e in events), events)
