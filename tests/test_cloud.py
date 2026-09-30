@@ -29,6 +29,7 @@ BASE = 'http://127.0.0.1:%d' % PORT
 URL = BASE + '/index.html'
 SS = os.path.join(ROOT, 'screenshots') + os.sep
 OUT_SHOTS = os.environ.get('KODHANE_V44_SHOTS', '/workspace')   # v4.4 ekran görüntüleri (repoya girmez)
+BAND_SHOTS = os.environ.get('KODHANE_V44_BAND_SHOTS', OUT_SHOTS)   # 426 bandı dar/kısa ekran görüntüleri (repoya girmez)
 os.makedirs(SS, exist_ok=True)
 FAKE = 'https://kodhane-test.supabase.co'
 PROD_URL = 'https://kodhane-api.teserix.com'
@@ -1160,6 +1161,20 @@ with sync_playwright() as p:
     check('overlap: olderTab + newerSave + SW update -> ONE band, olderTab text only', page.locator('.update-bar:not(.hidden)').count() == 1
           and page.get_attribute('#updateBar', 'data-test') == 'older-tab-band' and page.inner_text('#updateBar .ub-title') == TT['title']
           and 'ilerlemen korunuyor' not in page.inner_text('#updateBar') and 'Yeni sürüm hazır' not in page.inner_text('#updateBar'), page.inner_text('#updateBar'))
+    # dar / kısa ekranlar: 568x320 (yatay telefon) dahil kısa metin, kesilme yok (style.css .ub-text overflow kuralı kaldırıldı)
+    BAND = """(() => { const b = document.getElementById('updateBar'), t = document.getElementById('updateText'), s = b.querySelector('.ub-text'), btn = document.getElementById('updateBtn');
+      const r = b.getBoundingClientRect(), br = btn.getBoundingClientRect(), rg = document.createRange(); rg.selectNodeContents(btn);
+      const lines = new Set([...rg.getClientRects()].map(x => Math.round(x.top))).size;
+      return {test: b.dataset.test, short: b.classList.contains('ub-short'), text: s.textContent, tClip: t.scrollWidth > t.clientWidth + 1, sClip: s.scrollWidth > s.clientWidth + 1,
+              btnLines: lines, btnInside: br.left >= r.left - 0.5 && br.right <= r.right + 0.5 && br.top >= r.top - 0.5 && br.bottom <= r.bottom + 0.5,
+              hscroll: document.documentElement.scrollWidth > innerWidth, count: (b.innerText.match(/Sayfayı yenile/g) || []).length, h: Math.round(r.height)}; })()"""
+    for w, h in ((568, 320), (360, 640), (390, 844)):
+        page.set_viewport_size({'width': w, 'height': h}); page.wait_for_timeout(250)
+        bi = page.evaluate(BAND)
+        check('426 band %dx%d: olderTab textShort, no clipping (band text + .ub-text), button one line inside band, no horizontal scroll, "Sayfayı yenile" once' % (w, h),
+              bi['test'] == 'older-tab-band' and bi['short'] and bi['text'] == TT['textShort'] and not bi['tClip'] and not bi['sClip'] and bi['btnLines'] == 1
+              and bi['btnInside'] and not bi['hscroll'] and bi['count'] == 1, bi)
+        page.screenshot(path=os.path.join(BAND_SHOTS, 'eski-sekme-bandi-%dx%d.png' % (w, h)))
     page.set_viewport_size({'width': 1280, 'height': 800}); page.wait_for_timeout(200)
     check('426 band (wide screen): title + full text', page.inner_text('#updateBar .ub-text') == TT['text'], page.inner_text('#updateBar'))
     check('426: no page errors', not perrs, '; '.join(perrs))

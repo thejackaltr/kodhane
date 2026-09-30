@@ -273,7 +273,6 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .update-bar.newer-save { border-color: var(--gold); }
 .update-bar .ub-title, .update-bar .ub-text { display: block; min-width: 0; }
 .update-bar .ub-title { color: var(--gold); }
-.update-bar > span > .ub-text { overflow: hidden; }
 .update-bar.ub-flash { animation: ubFlash .6s ease-out 1; }
 @keyframes ubFlash { 0% { box-shadow: 0 0 0 0 #ffd16680, 0 10px 30px #0009; } 100% { box-shadow: 0 0 0 14px #ffd16600, 0 10px 30px #0009; } }
 
