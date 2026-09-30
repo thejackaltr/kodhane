@@ -178,7 +178,7 @@ check('v4 save sanitised: tree order/prefix, known news, no negatives, cycle <= 
 fresh();
 check('news order: Global Holding, Sıralama, then Açık Ofis', K.NEWS.map((n) => n.id).join(',') === 'yeni_asama,siralama,acik_ofis');
 check('Açık Ofis news copy + link', K.NEWS[2].title === 'Kodhane ailesine yeni oyun: Açık Ofis!' && K.NEWS[2].text() === 'Kendi ofisini kur, masaları yerleştir, ekibini büyüt. E-postana gelen 6 haneli kodla giriş yap, ilerlemen buluta kaydolsun.' &&
-  K.NEWS[2].action === "Açık Ofis'i dene" && K.NEWS[2].count === 'news_acikofis' && K.NEWS[2].url === 'https://thejackaltr.github.io/kodhane-acik-ofis/?utm_source=kodhane&utm_medium=news&utm_campaign=acikofis_v1');
+  K.NEWS[2].action === "Açık Ofis'i dene" && K.NEWS[2].count === 'news_acikofis' && K.NEWS[2].url === 'https://acikofis.teserix.com/?utm_source=kodhane&utm_medium=news&utm_campaign=acikofis_v1');
 check('news copy', K.NEWS[1].title === 'Yeni: Sıralama!' && K.NEWS[1].text() === 'Toplam kazancınla listeye gir. Yatırım turu yapsan da yerin korunur.' && K.NEWS[1].action === 'Sıralamaya bak' &&
   K.NEWS[0].title === 'Global Holding son durak değilmiş.' && K.NEWS[0].text() === 'Yeni aşama açıldı: Teknoloji Devi.');
 check('no Sıralama news when the leaderboard is not configured (Açık Ofis still)', K.nextNews().id === 'acik_ofis');
