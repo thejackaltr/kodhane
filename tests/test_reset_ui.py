@@ -45,7 +45,7 @@ if not os.path.exists(SDK_FILE):
 SDK_BYTES = open(SDK_FILE, 'rb').read()
 RESTORE_SENTENCE = 'Yanlışlıkla olduysa yedeği geri yükleyebilirsin.'
 GUEST_OTHER = 'Kaydın başka bir cihazda sıfırlandı. Bu cihazda da oyun baştan başlıyor.'
-SIGNED_ONLY = [COPY['reset.backup'].split('{d}')[0], COPY['reset.restoreTitle'], COPY['reset.restoreBody'], COPY['reset.restoreDone'], RESTORE_SENTENCE]
+SIGNED_ONLY = [COPY['reset.backup'], COPY['reset.restoreTitle'], COPY['reset.restoreBody'], COPY['reset.restoreDone'], RESTORE_SENTENCE]
 
 
 class Quiet(SimpleHTTPRequestHandler):
@@ -426,7 +426,7 @@ with sync_playwright() as p:
     check('signed in, no backup yet: restore row hidden (list RPC called)', pg.is_hidden('#restoreBox') and any(n == RPC['listBackups'] for n, _ in fake.saves.rpc_log))
     open_dialog(pg)
     txt = pg.inner_text('#modal')
-    check('signed-in dialog shows backup text with {d} from config (30)', COPY['reset.backup'].replace('{d}', '30') in txt, txt)
+    check('signed-in dialog shows the duration-free backup text (no day count)', COPY['reset.backup'] in txt and not re.search(r'\d+ gün', txt), txt)
     hold_reset(pg)
     check('signed-in reset: kodhane_reset_save RPC (constant, no params), no DELETE', RPC['reset'] == 'kodhane_reset_save' and (RPC['reset'], {}) in fake.saves.rpc_log and ('DELETE', '/rest/v1/kodhane_saves') not in fake.log)
     wait_js(pg, 'Kodhane.cloud.state.reconciled && Kodhane.cloud.state.lastPushAt > 0')
@@ -520,7 +520,7 @@ with sync_playwright() as p:
     wait_js(pg, "!document.getElementById('restoreBox').classList.contains('hidden')", 5000)
     box = pg.inner_text('#restoreBox')
     check('restore box (signed in): title, body, backup note, button', COPY['reset.restoreTitle'] in box and COPY['reset.restoreBody'] in box
-          and COPY['reset.backup'].replace('{d}', '30') in box and COPY['reset.restoreBtn'] in box, box)
+          and COPY['reset.backup'] in box and not re.search(r'\d+ gün', box) and COPY['reset.restoreBtn'] in box, box)
     pg.click('#restoreBtn'); pg.wait_for_timeout(200)
     check('restore confirm dialog', pg.inner_text('#modalTitle') == COPY['reset.restoreTitle'] and COPY['reset.restoreBody'] in pg.inner_text('#modal'))
     # geri yükleme RPC'si başarısız -> yalnız onaylı reset.restoreFailed metni, kayıt değişmez

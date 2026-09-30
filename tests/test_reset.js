@@ -32,10 +32,11 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
   check('old hardcoded reset texts removed', !/kalıcı olarak silinecek|buluttaki kaydın da silinecek|Kaydı sıfırla\?|Evet, sıfırla/.test(src));
   check('copy strings appear only once in game.js (single RESET_TEXT object)', Object.keys(copy).every((k) => typeof copy[k] !== 'string' || copy[k].length < 20 || src.split(copy[k]).length === 2));
   check('default config: undo 10 s, backup 30 days', K.CFG.reset.undoSeconds === 10 && K.CFG.reset.backupDays === 30);
-  check('{s} and {d} substituted from default config', K.resetText('reset.undo') === 'Geri al (10)' &&
-    K.resetText('reset.backup') === 'Silinen kayıt 30 gün boyunca yedekte kalır. Bu süre içinde geri yükleyebilirsin.');
+  check('{s} substituted from default config; reset.backup has no duration (Yazı süresiz r1)', K.resetText('reset.undo') === 'Geri al (10)' &&
+    K.resetText('reset.backup') === 'Sıfırlamadan önce kaydının yedeği alınır. Yedek kalıcı değildir, durduğu sürece geri yükleyebilirsin.');
   K.CFG.reset.undoSeconds = 7; K.CFG.reset.backupDays = 14;
-  check('{s} and {d} follow config changes', K.resetText('reset.undo') === 'Geri al (7)' && K.resetText('reset.backup').startsWith('Silinen kayıt 14 gün '));
+  check('{s} follows config; backupDays never appears in reset.backup', K.resetText('reset.undo') === 'Geri al (7)' && K.resetText('reset.backup') === 'Sıfırlamadan önce kaydının yedeği alınır. Yedek kalıcı değildir, durduğu sürece geri yükleyebilirsin.'
+    && !/\d/.test(K.resetText('reset.backup')) && !Object.keys(K.RESET_TEXT).some((k) => JSON.stringify(K.RESET_TEXT[k]).includes('{d}')));
   check('countdown value overrides {s}', K.resetText('reset.undo', { s: 3 }) === 'Geri al (3)');
   K.CFG.reset.undoSeconds = 10; K.CFG.reset.backupDays = 30;
   check('no unsubstituted placeholder in any text', Object.keys(T).every((k) => typeof T[k] !== 'string' || !/\{[sd]\}/.test(K.resetText(k))));

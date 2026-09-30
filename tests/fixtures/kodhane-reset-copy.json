@@ -7,7 +7,7 @@
   "reset.keepList": ["Tüm Zamanlar puanın ve sıradaki yerin", "Takma adın", "Kodhane hesabın", "Son olayların listesi", "Ses, titreşim ve gizlilik ayarların"],
   "reset.prestigeHint": "Başarımlarını, itibarını ve günlük serini korumak istiyorsan sıfırlamak yerine yatırım turuna çık. Yatırım turunda bunlar korunur, üstüne bir üretim bonusu kazanırsın. Bu bonus Halka Arz'da da silinmez.",
   "reset.prestigeBtn": "Yatırım turuna git",
-  "reset.backup": "Silinen kayıt {d} gün boyunca yedekte kalır. Bu süre içinde geri yükleyebilirsin.",
+  "reset.backup": "Sıfırlamadan önce kaydının yedeği alınır. Yedek kalıcı değildir, durduğu sürece geri yükleyebilirsin.",
   "reset.hold": "Sıfırlamak için basılı tut",
   "reset.holding": "Sıfırlanıyor… Vazgeçmek için bırak.",
   "reset.cancel": "Vazgeç",

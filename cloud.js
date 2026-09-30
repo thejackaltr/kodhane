@@ -38,7 +38,7 @@
  *  rpc kodhane_list_save_backups()          -> [{id, revision, reason, score, best_score, stage, best_stage, created_at, expires_at}]
  *    (yeniden eskiye)
  *  best_score / best_stage istemci tarafından yazılamaz (42501); sıralama bunlardan okunur (sıralama istemcisi değişmedi).
- *  Yedek saklama süresi: kodhane_game_config.backup_retention_days (varsayılan 30 gün) = game.js CFG.reset.backupDays ({d}).
+ *  Yedek saklama süresi: kodhane_game_config.backup_retention_days (varsayılan 30 gün) = game.js CFG.reset.backupDays (v4.4: oyuncu metinlerinde gösterilmez).
  *  Diğer hatalar: 42501 not_authenticated.
  *
  *  CFG.transport: 'supabase' (varsayılan, gerçek sunucu) | 'mock' (yalnızca test/geliştirme: aynı kuralları ve aynı

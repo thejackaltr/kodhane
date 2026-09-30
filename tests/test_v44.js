@@ -215,7 +215,8 @@ check('reset.prestigeHint (r3)', K.RESET_TEXT['reset.prestigeHint'] === "Başar�
   const LOGP = "Kaydın, son 20 önemli olayı da kendi içinde tutar: Halka Arz, Yatırım turu ve sıfırlama, ayrıca bu olaylardan önceki ve sonraki hisse ve Borsa Payı sayıların. Bu liste yalnızca kaydının içinde durur. Bulut kaydı kullanıyorsan kaydınla birlikte buluta gider, başka hiçbir yere gönderilmez. Bir destek talebinde neyin ne zaman olduğunu görmek için kullanılır. Kaydını sıfırlasan da bu liste kalır. Hesabın silinirse liste sunucudan silinir, bu cihazdaki kaydınla birlikte cihazında kalır.";
   const iLog = DET.indexOf(LOGP), iCtl = DET.findIndex((x) => x.startsWith('Bu bilgilerin veri sorumlusu'));
   check('privacy: event-log paragraph (Yazı r1 cümle 1 + reset/deletion sentences) right before the data-controller paragraph, no server-copies paragraph', iLog > 0 && iCtl === iLog + 1 && !DET.some((x) => x.includes('kopyaları')), [iLog, iCtl]);
-  check('privacy: "çerez kullanmaz" sentence untouched (pending decision)', DET.some((x) => x.includes("Cloudflare'in açıklamasına göre bu araç çerez kullanmaz ve ziyaretçileri tanımaya çalışmaz.")));
+  check('privacy: Cloudflare paragraph = one sentence (Yazı süresiz r1), no "çerez kullanmaz" / "tanımaya" claim', DET[2] === 'Site Cloudflare üzerinden sunulduğu için sayfa açılışlarını Cloudflare de kendi aracıyla ayrıca sayar.'
+    && !DET.some((x) => /çerez|tanımaya/.test(x)));
   check('CFG.eventLog.max = 20 (matches "son 20" in the privacy text)', K.CFG.eventLog.max === 20 && LOGP.includes('son 20'));
   const KEYS = '["type","at","sharesBefore","sharesAfter","paysBefore","paysAfter"]';
   fresh();

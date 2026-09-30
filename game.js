@@ -87,7 +87,8 @@
       esnaf_kafe: { pay: 20, revisions: 3, revPay: 10, revSec: 15, revMult: 0.95 },
       esnaf_emlak: { pay: 15, returnChance: 0.35, supportPay: 5, supportSec: 10, supportMult: 0.95 }
     },
-    // v4.2: Kaydı sıfırla. Metinlerdeki {s} = undoSeconds, {d} = backupDays (metinlere sayı yazılmaz).
+    // v4.2: Kaydı sıfırla. Metinlerdeki {s} = undoSeconds. v4.4: backupDays hiçbir oyuncu metninde kullanılmaz (reset.backup süresiz, Yazı süresiz-metin r1);
+    // yalnızca yapılandırma (Backend'in saklama süresiyle aynı tutulur).
     reset: {
       undoSeconds: 10,           // sıfırladıktan sonra "Geri al" düğmesinin kalma süresi (sn)
       backupDays: 30             // YER TUTUCU (onay bekliyor): silinen bulut kaydının yedekte kalma süresi (gün); Backend'in saklama süresiyle aynı olmalı
@@ -104,7 +105,7 @@
   }
 
   // v4.2: "Kaydı sıfırla" metinlerinin tamamı (anahtarlar ve yazım, metin yazarının kodhane-reset-copy.json dosyasından birebir).
-  // {s} ve {d} yer tutucuları resetText() ile CFG.reset'ten doldurulur.
+  // {s} (ve eski {d}) yer tutucuları resetText() ile CFG.reset'ten doldurulur; v4.4'te hiçbir metin {d} içermez.
   var RESET_TEXT = {
     "reset.title": "Kaydın sıfırlansın mı?",
     "reset.body": "Oyuna en baştan başlarsın. Kalacaklar dışında her şey silinir, silinecekleri seçemezsin.",
@@ -114,7 +115,7 @@
     "reset.keepList": ["Tüm Zamanlar puanın ve sıradaki yerin", "Takma adın", "Kodhane hesabın", "Son olayların listesi", "Ses, titreşim ve gizlilik ayarların"],
     "reset.prestigeHint": "Başarımlarını, itibarını ve günlük serini korumak istiyorsan sıfırlamak yerine yatırım turuna çık. Yatırım turunda bunlar korunur, üstüne bir üretim bonusu kazanırsın. Bu bonus Halka Arz'da da silinmez.",
     "reset.prestigeBtn": "Yatırım turuna git",
-    "reset.backup": "Silinen kayıt {d} gün boyunca yedekte kalır. Bu süre içinde geri yükleyebilirsin.",
+    "reset.backup": "Sıfırlamadan önce kaydının yedeği alınır. Yedek kalıcı değildir, durduğu sürece geri yükleyebilirsin.",
     "reset.hold": "Sıfırlamak için basılı tut",
     "reset.holding": "Sıfırlanıyor… Vazgeçmek için bırak.",
     "reset.cancel": "Vazgeç",
@@ -195,7 +196,7 @@
     "telemetry.details": [
       "Oyunu geliştirmek için sayfa ziyaretlerini ve bazı oyun olaylarını Teserix'in kendi analiz sunucusunda sayıyoruz. Sayılan olaylar şunlar: oyuna başlama, giriş, oturumdaki ilk bulut kaydı, sıfırlama, Yatırım turu, Halka Arz, Borsa Payı ağacının dolması, paylaşım ve Açık Ofis haberine tıklama. Çoğu olayda bizim gönderdiğimiz yalnızca olayın adı. İki olayda oyundaki ilerlemenden birkaç bilgi de gider: Halka Arz'da ulaştığın aşama, kazandığın Borsa Payı ve kaçıncı Halka Arz olduğu; ağaç dolduğunda oyuna başladığından bu yana geçen süre (tam saat olarak), kaçıncı Halka Arz olduğu ve oyuna v4.4 güncellemesinden önce mi, sonra mı başladığın. Bunların dışında hesabın ya da kaydının içeriği gönderilmez. Analiz aracı her kayda standart olarak şunları da ekler: sayfa adresi (? ve # işaretinden sonrası hariç), sayfa başlığı, geldiğin site, alan adı, ekran boyutu, tarayıcı dili, tarayıcın, işletim sistemin ve cihaz türün. Konum yalnızca ülke düzeyinde tutulur, IP adresi istatistik kayıtlarına yazılmaz. Ziyaret kayıtları 13 ay sonra silinir.",
       "Ayrıca sıralama ve Açık Ofis haberlerinin kaç kez gösterildiğini ve tıklandığını Teserix'in kendi sunucusunda sayıyoruz. Bu sayımda yalnızca olayın adı gider. Sunucu olayları tek tek kaydetmez, yalnızca o günün toplamını bir artırır. Hesap bilgisi, IP adresi ya da cihaz bilgisi bu sayıma yazılmaz.",
-      "Site Cloudflare üzerinden sunulduğu için Cloudflare de sayfa açılışlarını kendi aracıyla ayrıca sayar. Cloudflare'in açıklamasına göre bu araç çerez kullanmaz ve ziyaretçileri tanımaya çalışmaz.",
+      "Site Cloudflare üzerinden sunulduğu için sayfa açılışlarını Cloudflare de kendi aracıyla ayrıca sayar.",
       "Bu iki sayaç da yalnızca bu bildirime “Tamam” dedikten sonra çalışır. “Tamam” demeden hiçbiri bir şey göndermez. İstediğin zaman İstatistik sekmesindeki Gizlilik bölümünden kapatabilirsin. Kapattığın anda ikisi de durur. Cloudflare'in sayımı bunun dışındadır ve sayfa açıldığında çalışır.",
       "Kaydın, son 20 önemli olayı da kendi içinde tutar: Halka Arz, Yatırım turu ve sıfırlama, ayrıca bu olaylardan önceki ve sonraki hisse ve Borsa Payı sayıların. Bu liste yalnızca kaydının içinde durur. Bulut kaydı kullanıyorsan kaydınla birlikte buluta gider, başka hiçbir yere gönderilmez. Bir destek talebinde neyin ne zaman olduğunu görmek için kullanılır. Kaydını sıfırlasan da bu liste kalır. Hesabın silinirse liste sunucudan silinir, bu cihazdaki kaydınla birlikte cihazında kalır.",
       "Bu bilgilerin veri sorumlusu Teserix Bilişim ve Dijital Çözümler. KVKK'nın 11. maddesindeki haklarını kullanmak için info@teserix.com adresine yazabilirsin."
