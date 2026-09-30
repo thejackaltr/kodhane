@@ -729,7 +729,9 @@ with sync_playwright() as p:
     rev0 = fake.rows[UID_A]['revision']
     page.click('[data-tab="stats"]')
     page.click('#resetBtn')
-    check('reset: dialog mentions the backup (signed in)', 'gün boyunca yedekte kalır' in page.inner_text('#modal'))
+    modal_txt = page.inner_text('#modal')
+    check('reset: dialog mentions the backup (signed in; v4.4 süresiz metin, gün sayısı yok)',
+          'Sıfırlamadan önce kaydının yedeği alınır.' in modal_txt and not re.search(r'\d+\s*gün', modal_txt), modal_txt[:300])
     with page.expect_navigation():
         page.hover('#resetHold'); page.mouse.down(); page.wait_for_timeout(2300); page.mouse.up()
     page.wait_for_selector('#clickBtn')
