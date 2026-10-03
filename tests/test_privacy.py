@@ -28,7 +28,7 @@ COUNT_PATH = '/rest/v1/rpc/kodhane_count_event'
 BASES = [('root', 'https://kodhane.teserix.com/'), ('subpath', 'https://thejackaltr.github.io/kodhane/')]
 results = []
 COPY = json.load(open(os.path.join(ROOT, 'tests', 'fixtures', 'kodhane-telemetry-copy.json'), encoding='utf-8'))
-KG = json.load(open(os.path.join(ROOT, 'tests', 'fixtures', 'kodhane-kazanc-kaydi-copy.json'), encoding='utf-8'))   # v4.4.3 (Yazı kazanç kaydı r2)
+KG = json.load(open(os.path.join(ROOT, 'tests', 'fixtures', 'kodhane-kazanc-kaydi-copy.json'), encoding='utf-8'))   # v4.4.3 (Yazı kazanç kaydı r4)
 
 
 def check(name, cond, info=''):
@@ -562,7 +562,7 @@ with sync_playwright() as p:
             check('[prefs] on: prestige/IPO events (investment_round, ipo_complete) reached Umami', c['umami_send'] >= 3, c)
         ctx.close()
 
-    # ================================================================ 6) [kazanç] v4.4.3: kazanç kaydı paragrafı gizlilik metninde (Yazı kazanç kaydı r2)
+    # ================================================================ 6) [kazanç] v4.4.3: kazanç kaydı paragrafı gizlilik metninde (Yazı kazanç kaydı r4)
     # Paragraf İsimsiz sayaç ayrıntılarında (Gizlilik > Ayrıntılar), olay listesi paragrafından sonra, veri sorumlusundan önce.
     # Temel dalda yok; çeşit yaması (A-tam / A-c6siz / B-tam / B-c6siz) ekler, test çeşidi metinden bulur. Hesap penceresinde metin yok.
     # 360x640 ve 568x320: yatay taşma 0, paragraf kesilmiyor, kaydırınca tamamı kartın içinde okunuyor; okunabilirlik ölçüleri + ekran görüntüsü.
@@ -594,9 +594,12 @@ with sync_playwright() as p:
         texts = [x['text'] for x in m['ps']]
         found = [n for n, t in KG['variants'].items() if t in texts]
         variant = found[0] if len(found) == 1 else ('temel' if not found else None)
-        check(tagk + ' privacy text: no kazanç kaydı paragraph (base) or exactly one Yazı r2 variant, verbatim (%s)' % variant, variant is not None, found)
+        check(tagk + ' privacy text: no kazanç kaydı paragraph (base) or exactly one Yazı r4 variant, verbatim (%s)' % variant, variant is not None, found)
         check(tagk + ' the 6 approved paragraphs still shown, in order', [t for t in texts if t in COPY['telemetry.details']] == COPY['telemetry.details'], texts)
-        check(tagk + ' no backup sentence ("yedek") in the privacy text', not any('yedek' in t.lower() for t in texts))
+        tam = bool(variant) and variant.endswith('-tam')
+        check(tagk + ' backup sentence (C7, "yedek") only in the *-tam paragraph, right after C6 (%s)' % ('var' if tam else 'yok'),
+              all('yedek' not in t.lower() or (tam and t == KG['variants'][variant]) for t in texts)
+              and (not tam or KG['variants'][variant].endswith(KG['sentences']['C6'] + ' ' + KG['sentences']['C7'])), [t[:80] for t in texts if 'yedek' in t.lower()])
         ok_w = m['doc'] <= vp['viewport']['width'] and m['cardSW'] <= m['cardCW'] + 1 and all(x['sw'] <= x['cw'] + 1 and x['inside'] for x in m['ps'])
         check(tagk + ' no horizontal overflow (page %d / %d, card %d / %d, every paragraph inside the card)' % (m['doc'], vp['viewport']['width'], m['cardSW'], m['cardCW']), ok_w,
               [x for x in m['ps'] if not (x['sw'] <= x['cw'] + 1 and x['inside'])])

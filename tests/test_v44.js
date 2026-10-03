@@ -214,7 +214,7 @@ check('reset.prestigeHint (r3)', K.RESET_TEXT['reset.prestigeHint'] === "Başar�
 {
   const LOGP = "Kaydın, son 20 önemli olayı da kendi içinde tutar: Halka Arz, Yatırım turu ve sıfırlama, ayrıca bu olaylardan önceki ve sonraki hisse ve Borsa Payı sayıların. Bu liste yalnızca kaydının içinde durur. Bulut kaydı kullanıyorsan kaydınla birlikte buluta gider, başka hiçbir yere gönderilmez. Bir destek talebinde neyin ne zaman olduğunu görmek için kullanılır. Kaydını sıfırlasan da bu liste kalır. Hesabın silinirse liste sunucudan silinir, bu cihazdaki kaydınla birlikte cihazında kalır.";
   const iLog = DET.indexOf(LOGP), iCtl = DET.findIndex((x) => x.startsWith('Bu bilgilerin veri sorumlusu'));
-  // v4.4.3: aralarında yalnız kazanç kaydı paragrafı (Yazı kazanç kaydı r2, çeşit yaması) olabilir
+  // v4.4.3: aralarında yalnız kazanç kaydı paragrafı (Yazı kazanç kaydı r4, çeşit yaması) olabilir
   const KGV = Object.values(JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'kodhane-kazanc-kaydi-copy.json'), 'utf8')).variants);
   check('privacy: event-log paragraph (Yazı r1 cümle 1 + reset/deletion sentences) right before the data-controller paragraph (v4.4.3: or only the kazanç kaydı paragraph between), no server-copies paragraph',
     iLog > 0 && (iCtl === iLog + 1 || (iCtl === iLog + 2 && KGV.includes(DET[iLog + 1]))) && !DET.some((x) => x.includes('kopyaları')), [iLog, iCtl]);
@@ -405,7 +405,7 @@ check('reset.prestigeHint (r3)', K.RESET_TEXT['reset.prestigeHint'] === "Başar�
   }
 }
 
-// ---------------------------------------------------------------- v4.4.3: gizlilik metnine kazanç kaydı paragrafı (Yazı kazanç kaydı r2)
+// ---------------------------------------------------------------- v4.4.3: gizlilik metnine kazanç kaydı paragrafı (Yazı kazanç kaydı r4)
 // Paragraf İsimsiz sayaç ayrıntılarına (TEL_TEXT['telemetry.details']) girer: olay listesi paragrafından sonra, veri sorumlusu
 // paragrafından önce. Temel dalda yok; çeşit yaması (A-tam / A-c6siz / B-tam / B-c6siz) tek satır ekler. Hesap penceresinde metin yok.
 { const FX = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'kodhane-kazanc-kaydi-copy.json'), 'utf8'));
@@ -413,11 +413,16 @@ check('reset.prestigeHint (r3)', K.RESET_TEXT['reset.prestigeHint'] === "Başar�
   const names = Object.keys(FX.variants), det = K.TEL_TEXT['telemetry.details'];
   check('fixture: 4 variants A-tam / A-c6siz / B-tam / B-c6siz', JSON.stringify(names) === '["A-tam","A-c6siz","B-tam","B-c6siz"]');
   const has = (v, c) => v.includes(FX.sentences[c]);
-  check('fixture structure: C1-C3, C5 in all; C4 (12 ay) only in A; C6 (silme) only in *-tam, last sentence',
+  check('fixture: 7 sentences C1-C7; each variant = its sentences joined by one space, in order (r4)', JSON.stringify(Object.keys(FX.sentences)) === '["C1","C2","C3","C4","C5","C6","C7"]'
+    && names.every((n) => FX.variants[n] === ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7'].filter((c) => (c !== 'C4' || n.startsWith('A')) && (!['C6', 'C7'].includes(c) || n.endsWith('-tam'))).map((c) => FX.sentences[c]).join(' ')));
+  check('fixture structure: C1-C3, C5 in all; C4 (12 ay) only in A; C6 (silme) + C7 (yedek) only in *-tam, C7 right after C6, last sentence',
     names.every((n) => ['C1', 'C2', 'C3', 'C5'].every((c) => has(FX.variants[n], c)) && has(FX.variants[n], 'C4') === n.startsWith('A') && has(FX.variants[n], 'C6') === n.endsWith('-tam')
-      && (n.endsWith('-tam') ? FX.variants[n].endsWith(FX.sentences.C6) : FX.variants[n].endsWith(FX.sentences.C5))));
-  check('fixture: *-c6siz = *-tam without the last sentence; B = A without C4', names.filter((n) => n.endsWith('-tam')).every((n) => FX.variants[n.replace('-tam', '-c6siz')] === FX.variants[n].replace(' ' + FX.sentences.C6, ''))
+      && has(FX.variants[n], 'C7') === n.endsWith('-tam')
+      && (n.endsWith('-tam') ? FX.variants[n].endsWith(FX.sentences.C6 + ' ' + FX.sentences.C7) : FX.variants[n].endsWith(FX.sentences.C5))));
+  check('fixture: *-c6siz = *-tam without C6 + C7; B = A without C4', names.filter((n) => n.endsWith('-tam')).every((n) => FX.variants[n.replace('-tam', '-c6siz')] === FX.variants[n].replace(' ' + FX.sentences.C6 + ' ' + FX.sentences.C7, ''))
     && FX.variants['B-tam'] === FX.variants['A-tam'].replace(' ' + FX.sentences.C4, ''));
+  check('fixture: C2 = Yazı r4 (hangi oyun öğesi, ekibimizin mi (örneğin bir telafi), varsa telafi numarası; e-posta yok)', /olayın adı, hangi oyun öğesiyle ilgili olduğu,/.test(FX.sentences.C2)
+    && FX.sentences.C2.includes('oyunun mu yoksa ekibimizin mi (örneğin bir telafi) yaptığı, varsa telafi numarası,') && !FX.sentences.C2.includes('bir telafinin mi') && FX.sentences.C2.endsWith('e-posta adresin tutulmaz.'));
   const extra = det.filter((x) => !APPROVED.includes(x));
   const active = names.filter((n) => extra.length === 1 && extra[0] === FX.variants[n]);
   console.log('NOTE kazanç kaydı çeşidi: ' + (extra.length ? (active[0] || 'BİLİNMEYEN METİN') : 'yok (temel dal)'));
@@ -428,7 +433,9 @@ check('reset.prestigeHint (r3)', K.RESET_TEXT['reset.prestigeHint'] === "Başar�
     check('kazanç kaydı paragraph right after the event-log paragraph ("Kaydın, son 20 ...") and before the data controller paragraph (last)',
       det[i - 1] === APPROVED[4] && /^Kaydın, son 20/.test(det[i - 1]) && det[i + 1] === APPROVED[5] && /veri sorumlusu/.test(det[i + 1]) && i === det.length - 2, i);
   }
-  check('no backup sentence ("güvenlik yedeklerinde"/"yedek") in the privacy text (Yazı decides)', det.every((x) => !/yedek/i.test(x)));
+  const tam = active.length === 1 && active[0].endsWith('-tam');
+  check('backup sentence (C7, "yedek") only in the *-tam paragraph, right after C6; nowhere else in the privacy text (Yazı r3/r4)',
+    det.every((x) => !/yedek/i.test(x) || (tam && x === extra[0])) && (!tam || extra[0].endsWith(FX.sentences.C6 + ' ' + FX.sentences.C7)) && (tam || !extra.some((x) => x.includes(FX.sentences.C7))), active);
   check('kazanç kaydı paragraph: no e-mail address / service name / other game name', extra.every((l) => !/@|Supabase|Açık Ofis|Teserix/.test(l)));
   check('account panel text gone: no ACC_TEXT / accText / accProgressLog in game.js or index.html',
     !('ACC_TEXT' in K) && !('accText' in K) && !/ACC_TEXT|accProgressLog|privacyDetails/.test(fs.readFileSync(path.join(__dirname, '..', 'game.js'), 'utf8') + fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8')));
