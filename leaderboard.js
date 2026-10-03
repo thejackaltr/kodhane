@@ -271,8 +271,12 @@
     if (text != null) n.textContent = text;
     return n;
   }
+  // v4.4.1: v4.4.0'daki en uzun puan metni "999,99 Kent TL" (14 karakter). Daha uzun puanlı satır 'lb-long' alır: dar ekranda
+  // yalnız o satırda puan alt satıra geçer (style.css); diğer satırlar v4.4.0 ile aynı görünür.
+  var LB_LONG_SCORE = 14;
   function rowNode(r) {
-    var li = node('li', 'lb-row' + (r.is_me ? ' me' : '') + (r.rank <= 3 ? ' top' + r.rank : ''));
+    var score = K.tl(r.score);
+    var li = node('li', 'lb-row' + (r.is_me ? ' me' : '') + (r.rank <= 3 ? ' top' + r.rank : '') + (score.length > LB_LONG_SCORE ? ' lb-long' : ''));
     li.appendChild(node('span', 'lb-rank', rankBadge(r.rank)));
     var who = node('div', 'lb-who');
     var nm = node('div', 'lb-name', r.nickname);
@@ -281,7 +285,7 @@
     var st = rowStageLabel(r);
     if (st) who.appendChild(node('div', 'lb-stage', st));
     li.appendChild(who);
-    li.appendChild(node('span', 'lb-score', K.tl(r.score)));
+    li.appendChild(node('span', 'lb-score', score));
     return li;
   }
   function renderList() {

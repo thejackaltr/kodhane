@@ -194,8 +194,8 @@ check('telemetry.body (final)', K.TEL_TEXT['telemetry.body'] === 'Oyunu gelişti
 const DET = K.TEL_TEXT['telemetry.details'];
 const P_EVENTS = DET.find((x) => x.includes('Sayılan olaylar şunlar')) || '';
 check('events paragraph (found by content) is still the first details paragraph', DET.indexOf(P_EVENTS) === 0);
-check('events paragraph lists the tree event and the exact event fields (final sentence)', P_EVENTS.includes("Halka Arz, Borsa Payı ağacının dolması, paylaşım") &&
-  P_EVENTS.includes("İki olayda oyundaki ilerlemenden birkaç bilgi de gider: Halka Arz'da ulaştığın aşama, kazandığın Borsa Payı ve kaçıncı Halka Arz olduğu; ağaç dolduğunda oyuna başladığından bu yana geçen süre (tam saat olarak), kaçıncı Halka Arz olduğu ve oyuna v4.4 güncellemesinden önce mi, sonra mı başladığın."));
+check('events paragraph lists the tree event and the exact event fields (v4.4.1, Yazı telemetry-details r1: üç olay)', P_EVENTS.includes("Halka Arz, Borsa Payı ağacının dolması, paylaşım") &&
+  P_EVENTS.includes("Üç olayda oyundaki ilerlemenden birkaç bilgi de gider: Yatırım turunda ulaştığın aşama; Halka Arz'da ulaştığın aşama, kazandığın Borsa Payı ve kaçıncı Halka Arz olduğu; ağaç dolduğunda oyuna başladığından bu yana geçen süre (tam saat olarak), kaçıncı Halka Arz olduğu ve oyuna v4.4 güncellemesinden önce mi, sonra mı başladığın."));
 check('reset.prestigeHint (r3)', K.RESET_TEXT['reset.prestigeHint'] === "Başarımlarını, itibarını ve günlük serini korumak istiyorsan sıfırlamak yerine yatırım turuna çık. Yatırım turunda bunlar korunur, üstüne bir üretim bonusu kazanırsın. Bu bonus Halka Arz'da da silinmez.");
 
 // onay penceresi birleşimi

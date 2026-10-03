@@ -3,8 +3,11 @@
 En uzun değer "999,99 Septendesilyon TL" (24 karakter, tl(999.99e54)). 360x640 ve 568x320'de şu yerler ölçülür
 (her öğe için scrollWidth / clientWidth ve sayfa genişliği; OVERFLOW = test_v44_ui.py ile aynı ölçüm):
   kasa (üst sayaç), fiyat düğmeleri (Ekip + Geliştirme), sıralama satırı (leaderboard.js lb-score), Yatırım Turu paneli,
-  bulut bildirimi (cloud.js "Çevrimdışı kazanç: +..." toast'ı), başarım metinleri.
-Ekran görüntüleri: KODHANE_V441_SHOTS (varsayılan /workspace/kodhane-v44-audit). Ağ yok: oyun Playwright route ile depo
+  bulut bildirimi (cloud.js "Çevrimdışı kazanç: +..." toast'ı), başarım metinleri, telemetri ayrıntı paneli (Gizlilik).
+Sıralama satır bazlı (v4.4.1 r2): v4.4.0'daki en uzun puan metninden (14 karakter) uzun puanlı satırda dar ekranda puan alt satıra
+geçer; normal puanlı satır v4.4.0 (879f67b, git archive ile geçici klasöre açılır; KODHANE_V440_ROOT ile verilebilir) ile aynı
+konum ve genişlikte ölçülür. Aynı listede uzun ve normal puanlı satırlar birlikte.
+Ekran görüntüleri: KODHANE_V441_SHOTS (varsayılan /workspace/kodhane-v44-audit), adlar v441b-<alan>-<görünüm>.png. Ağ yok: oyun Playwright route ile depo
 dosyalarından, Supabase/Umami sahte; gerçek adlar --host-resolver-rules ile kapalı porta yönlenir.
     python3 tests/test_v441_ui.py
 """
@@ -12,7 +15,9 @@ import json
 import mimetypes
 import os
 import re
+import subprocess
 import sys
+import tempfile
 from urllib.parse import urlsplit
 
 from playwright.sync_api import sync_playwright
@@ -50,12 +55,42 @@ def file_route(root):
     return handler
 
 
+# Aynı listede uzun puanlı (1-3: Vigintilyon / Novemdesilyon / Septendesilyon) ve normal puanlı (4-6) satırlar.
+# 4: uzun takma ad + "1,23 Milyar TL" (v4.4.0: "1,23 Mr TL"), 5: kısa takma ad + "1,23 Milyar TL",
+# 6: uzun takma ad + "950 TL" (iki sürümde metin aynı: yerleşim birebir karşılaştırılır).
 LB_ROWS = [
-    {'rank': 1, 'nickname': 'Septendesilyoner2026', 'score': LONG, 'stage': 8, 'stage_id': 'mars_ofisi', 'is_me': False, 'status': 'ok'},
-    {'rank': 2, 'nickname': 'ÇokUzunTakmaAdımVar', 'score': 999.99e51, 'stage': 7, 'stage_id': 'yapay_zeka_lab', 'is_me': False, 'status': 'ok'},
-    {'rank': 3, 'nickname': 'Novemdesilyon Ajansı', 'score': 999.99e60, 'stage': 8, 'stage_id': 'mars_ofisi', 'is_me': False, 'status': 'ok'},
-    {'rank': 4, 'nickname': 'ben', 'score': 999.99e63, 'stage': 8, 'stage_id': 'mars_ofisi', 'is_me': True, 'status': 'ok'},
+    {'rank': 1, 'nickname': 'ben', 'score': 999.99e63, 'stage': 8, 'stage_id': 'mars_ofisi', 'is_me': True, 'status': 'ok'},
+    {'rank': 2, 'nickname': 'Novemdesilyon Ajansı', 'score': 999.99e60, 'stage': 8, 'stage_id': 'mars_ofisi', 'is_me': False, 'status': 'ok'},
+    {'rank': 3, 'nickname': 'Septendesilyoner2026', 'score': LONG, 'stage': 8, 'stage_id': 'mars_ofisi', 'is_me': False, 'status': 'ok'},
+    {'rank': 4, 'nickname': 'ÇokUzunTakmaAdımVar', 'score': 1.23e9, 'stage': 7, 'stage_id': 'yapay_zeka_lab', 'is_me': False, 'status': 'ok'},
+    {'rank': 5, 'nickname': 'Aryen', 'score': 1.23e9, 'stage': 5, 'stage_id': 'global_holding', 'is_me': False, 'status': 'ok'},
+    {'rank': 6, 'nickname': 'UzunTakmaAdıOlanOyuncu', 'score': 950, 'stage': 0, 'stage_id': 'freelancer', 'is_me': False, 'status': 'ok'},
 ]
+LONG_RANKS, NORMAL_RANKS = (1, 2, 3), (4, 5, 6)
+
+# satır başına: takma ad (sol, üst: satıra göre; kutu genişliği; görünen metin genişliği = min(metin, kutu); kısaldı mı),
+# puan (sol, üst: satıra göre; genişlik; takma adın altında mı), satır yüksekliği, lb-long sınıfı
+LB_MEASURE = """() => [...document.querySelectorAll('#lbList .lb-row')].map((row, i) => {
+  const R = row.getBoundingClientRect(), nm = row.querySelector('.lb-name'), sc = row.querySelector('.lb-score');
+  const N = nm.getBoundingClientRect(), C = sc.getBoundingClientRect();
+  const rg = document.createRange(); rg.selectNodeContents(nm.firstChild); const tw = rg.getBoundingClientRect().width;
+  return { rank: i + 1, nick: nm.firstChild.textContent, score: sc.textContent,
+    long: row.classList.contains('lb-long'), rowH: Math.round(R.height * 10) / 10,
+    nameL: Math.round((N.left - R.left) * 10) / 10, nameT: Math.round((N.top - R.top) * 10) / 10, nameW: nm.clientWidth,
+    nameVis: Math.round(Math.min(tw, nm.clientWidth) * 10) / 10, textW: Math.round(tw * 10) / 10, cut: tw > nm.clientWidth + 0.5,
+    scoreL: Math.round((C.left - R.left) * 10) / 10, scoreT: Math.round((C.top - R.top) * 10) / 10, scoreW: Math.round(C.width * 10) / 10,
+    scoreBelow: C.top >= N.bottom - 1, scoreRight: Math.round((R.right - C.right) * 10) / 10 };
+})"""
+
+
+def v440_root():
+    r = os.environ.get('KODHANE_V440_ROOT')
+    if r:
+        return r
+    d = tempfile.mkdtemp(prefix='k440-')
+    tar = subprocess.run(['git', '-C', ROOT, 'archive', '879f67b'], check=True, capture_output=True).stdout
+    subprocess.run(['tar', '-x', '-C', d], input=tar, check=True)
+    return d
 
 
 def supabase(route):
@@ -118,10 +153,12 @@ MEASURE = """([sel, targets, VW]) => {
   return { doc, W, iw: innerWidth, bad: out.slice(0, 12), n: out.length, targets: tg.slice(0, 12), wide: wide.slice(0, 8), nw: wide.length };
 }"""
 
+V440 = v440_root()
+lb = {}
 with sync_playwright() as p:
     b = p.chromium.launch(args=['--host-resolver-rules=' + SAFETY])
 
-    def new_ctx(vp):
+    def new_ctx(vp, root=None):
         opts = dict(locale='tr-TR', service_workers='block')
         opts.update(VP[vp])
         ctx = b.new_context(**opts)
@@ -130,7 +167,7 @@ with sync_playwright() as p:
                             "localStorage.setItem('kodhane_tel_notice', '1'); localStorage.setItem('kodhane_tel', 'off');"
                             "localStorage.setItem(%s, %s); })();" % (json.dumps(SAVE_KEY), json.dumps(json.dumps(save()))))
         ctx.route(re.compile(r'^https?://(?!kodhane\.teserix\.com/|analiz\.teserix\.com/|kodhane-api\.teserix\.com/|supabase\.teserix\.com/).*'), lambda r: r.abort('blockedbyclient'))
-        ctx.route('https://kodhane.teserix.com/**', file_route(ROOT))
+        ctx.route('https://kodhane.teserix.com/**', file_route(root or ROOT))
         ctx.route('https://analiz.teserix.com/**', lambda r: r.fulfill(status=404, body=''))
         ctx.route('https://kodhane-api.teserix.com/**', supabase)
         ctx.route('https://supabase.teserix.com/**', supabase)
@@ -171,14 +208,14 @@ with sync_playwright() as p:
         pg.wait_for_timeout(600)
         check('[%s][kasa] counter shows the longest value' % vp, pg.inner_text('#money') == '999,99 Septendesilyon TL', pg.inner_text('#money'))
         oneline(pg, vp, '#money')
-        measure(pg, '%s/kasa' % vp, 'header.topbar', ['#money', '#rate', '.money-box'], 'v441-kasa-%s.png' % vp)
+        measure(pg, '%s/kasa' % vp, 'header.topbar', ['#money', '#rate', '.money-box'], 'v441b-kasa-%s.png' % vp)
         # (b) üretim satırı = en uzun değer + "/sn" ("999,99 Septendesilyon TL/sn", 27 karakter)
         pg.evaluate("(L) => { const K = Kodhane, g = K.GENERATORS[0]; g.tps = 1; const per = K.baseTps(); g.tps = L / per; K.renderAll(); }", LONG)
         pg.wait_for_timeout(600)
         rate = pg.inner_text('#rate')
         check('[%s][kasa] rate line shows the longest value + /sn' % vp, rate == '999,99 Septendesilyon TL/sn', rate)
         oneline(pg, vp, '#money'); oneline(pg, vp, '#rate')
-        measure(pg, '%s/kasa-uretim' % vp, 'header.topbar', ['#money', '#rate', '.money-box'], 'v441-kasa-uretim-%s.png' % vp)
+        measure(pg, '%s/kasa-uretim' % vp, 'header.topbar', ['#money', '#rate', '.money-box'], 'v441b-kasa-uretim-%s.png' % vp)
         pg.evaluate("Kodhane.GENERATORS.forEach(g => { g.tps = g._tps; })")
 
         # 2) fiyat düğmeleri: her çalışanın ve görünen geliştirmelerin fiyatı en uzun değer (yalnız bu sayfada, test için)
@@ -187,26 +224,81 @@ with sync_playwright() as p:
         pg.wait_for_timeout(300)
         gl = pg.inner_text('#genList')
         check('[%s][fiyat] employee buttons show "999,99 Septendesilyon"' % vp, '999,99 Septendesilyon' in gl, gl[:200])
-        measure(pg, '%s/fiyat-ekip' % vp, '#panelEkip', ['#genList button', '#genList .price', '#genList [class*=cost]'], 'v441-fiyat-ekip-%s.png' % vp)
+        measure(pg, '%s/fiyat-ekip' % vp, '#panelEkip', ['#genList button', '#genList .price', '#genList [class*=cost]'], 'v441b-fiyat-ekip-%s.png' % vp)
         pg.evaluate("Kodhane.setView('upgrades'); Kodhane.renderAll(); window.scrollTo(0, 0)")
         pg.wait_for_timeout(300)
         up = pg.inner_text('#panelSide')
         check('[%s][fiyat] upgrade buttons show "999,99 Septendesilyon"' % vp, '999,99 Septendesilyon' in up, up[:200])
-        measure(pg, '%s/fiyat-gelistirme' % vp, '#panelSide', ['#panelSide button'], 'v441-fiyat-gelistirme-%s.png' % vp)
+        measure(pg, '%s/fiyat-gelistirme' % vp, '#panelSide', ['#panelSide button'], 'v441b-fiyat-gelistirme-%s.png' % vp)
 
-        # 3) sıralama satırı (leaderboard.js rowNode -> .lb-score)
+        # 3) sıralama satırı (leaderboard.js rowNode -> .lb-score): uzun ve normal puanlı satırlar aynı listede
         pg.evaluate("Kodhane.setView('siralama'); Kodhane.leaderboard.refresh()")
         try:
-            pg.wait_for_function("document.querySelectorAll('#lbList .lb-row').length >= 3", timeout=8000)
+            pg.wait_for_function("document.querySelectorAll('#lbList .lb-row').length >= 6", timeout=8000)
             got = pg.evaluate("[...document.querySelectorAll('.lb-score')].map(e => e.textContent)")
         except Exception as e:  # noqa: BLE001
             got = ['(sıralama yüklenmedi: %s)' % e]
-        check('[%s][siralama] rows show full names incl. the longest value' % vp, '999,99 Septendesilyon TL' in got and '999,99 Vigintilyon TL' in ' '.join(got), got)
+        check('[%s][siralama] rows show full names: long (Vigintilyon / Novemdesilyon / Septendesilyon) and normal (1,23 Milyar / 950) in one list' % vp,
+              got == ['999,99 Vigintilyon TL', '999,99 Novemdesilyon TL', '999,99 Septendesilyon TL', '1,23 Milyar TL', '1,23 Milyar TL', '950 TL'], got)
         pg.evaluate("document.getElementById('lbList').scrollIntoView({ block: 'start' })")
-        r = measure(pg, '%s/siralama' % vp, '#panelSide', ['.lb-row', '.lb-score', '.lb-name'], 'v441-siralama-%s.png' % vp)
-        names_w = [t['cw'] for t in r['targets'] if t['sel'] == '.lb-name']
-        note('[%s][siralama] nickname visible widths (px, ellipsis): %s; score widths: %s' % (vp, names_w, [t['cw'] for t in r['targets'] if t['sel'] == '.lb-score']))
-        check('[%s][siralama] nickname keeps >= 80 px next to the longest score' % vp, names_w and min(names_w) >= 80, names_w)
+        r = measure(pg, '%s/siralama' % vp, '#panelSide', ['.lb-row', '.lb-score'], 'v441b-siralama-%s.png' % vp)
+        rows = {x['rank']: x for x in pg.evaluate(LB_MEASURE)}
+        lb[vp] = {'v441': rows}
+        for k in sorted(rows):
+            x = rows[k]
+            note('[%s][siralama] #%d %-24s %-26s long=%s nick: left %.1f top %.1f box %d visible %.1f%s | score: left %.1f top %.1f w %.1f %s | row h %.1f' % (
+                vp, k, x['nick'], x['score'], x['long'], x['nameL'], x['nameT'], x['nameW'], x['nameVis'], ' (…)' if x['cut'] else '',
+                x['scoreL'], x['scoreT'], x['scoreW'], 'BELOW' if x['scoreBelow'] else 'inline', x['rowH']))
+        narrow = vp == '360x640'
+        check('[%s][siralama] row-based: only long-score rows (> 14 chars) get lb-long' % vp,
+              all(rows[k]['long'] for k in LONG_RANKS) and not any(rows[k]['long'] for k in NORMAL_RANKS), {k: rows[k]['long'] for k in rows})
+        if narrow:
+            check('[360x640][siralama] long-score rows: score moves below the nickname, right-aligned inside the row',
+                  all(rows[k]['scoreBelow'] and rows[k]['scoreRight'] >= 0 for k in LONG_RANKS), {k: (rows[k]['scoreBelow'], rows[k]['scoreRight']) for k in LONG_RANKS})
+            check('[360x640][siralama] long-score rows: nickname not cut (full width of the row)', not any(rows[k]['cut'] for k in LONG_RANKS),
+                  {k: (rows[k]['nameVis'], rows[k]['textW']) for k in LONG_RANKS})
+        else:
+            check('[568x320][siralama] all rows single line (score inline, right of the nickname)', not any(rows[k]['scoreBelow'] for k in rows), {k: rows[k]['scoreBelow'] for k in rows})
+        check('[%s][siralama] normal-score rows: score inline (same line as the nickname)' % vp, not any(rows[k]['scoreBelow'] for k in NORMAL_RANKS))
+        check('[%s][siralama] a cut ("…") nickname still shows >= 80 px' % vp, all(x['nameVis'] >= 80 for x in rows.values() if x['cut']),
+              {k: (rows[k]['nameVis'], rows[k]['cut']) for k in rows})
+
+        # 3b) aynı liste v4.4.0 (879f67b) ile: normal puanlı satırlarda takma ad konumu / genişliği karşılaştırması
+        c0 = new_ctx(vp, V440)
+        p0 = c0.new_page()
+        p0.goto(BASE)
+        p0.wait_for_selector('#clickBtn')
+        p0.wait_for_timeout(400)
+        p0.evaluate("document.querySelectorAll('#modal:not(.hidden) .ghost, #modal:not(.hidden) .primary').forEach(b => b.click())")
+        p0.evaluate("Kodhane.setView('siralama'); Kodhane.leaderboard.refresh()")
+        p0.wait_for_function("document.querySelectorAll('#lbList .lb-row').length >= 6", timeout=8000)
+        p0.evaluate("document.getElementById('lbList').scrollIntoView({ block: 'start' })")
+        p0.wait_for_timeout(250)
+        check('[%s][siralama] reference is v4.4.0' % vp, p0.evaluate('Kodhane.VERSION') == '4.4.0')
+        p0.screenshot(path=os.path.join(SHOTS, 'v441b-siralama-v440-%s.png' % vp))
+        rows0 = {x['rank']: x for x in p0.evaluate(LB_MEASURE)}
+        lb[vp]['v440'] = rows0
+        c0.close()
+        for k in sorted(rows0):
+            x = rows0[k]
+            note('[%s][siralama v4.4.0] #%d %-24s %-14s nick: left %.1f top %.1f box %d visible %.1f%s | score: left %.1f top %.1f w %.1f | row h %.1f' % (
+                vp, k, x['nick'], x['score'], x['nameL'], x['nameT'], x['nameW'], x['nameVis'], ' (…)' if x['cut'] else '', x['scoreL'], x['scoreT'], x['scoreW'], x['rowH']))
+        same_pos = all(rows[k]['nameL'] == rows0[k]['nameL'] and rows[k]['nameT'] == rows0[k]['nameT'] for k in NORMAL_RANKS)
+        check('[%s][siralama] normal-score rows: nickname position (left/top in row) identical to v4.4.0' % vp, same_pos,
+              {k: [(rows[k]['nameL'], rows0[k]['nameL']), (rows[k]['nameT'], rows0[k]['nameT'])] for k in NORMAL_RANKS})
+        check('[%s][siralama] same score text (950 TL): nickname box / visible width, row height and score position identical to v4.4.0 (%d / %d px)' % (vp, rows[6]['nameW'], rows0[6]['nameW']),
+              all(rows[6][f] == rows0[6][f] for f in ('nameW', 'nameVis', 'rowH', 'scoreL', 'scoreT', 'score')), (rows[6], rows0[6]))
+        if rows[4]['rowH'] != rows0[4]['rowH']:
+            note('[%s][siralama] #4 row height %.1f vs v4.4.0 %.1f: the stage label ("Yapay Zekâ Laboratuvarı") wraps in the %d px column (v4.4.0: %d px)' % (
+                vp, rows[4]['rowH'], rows0[4]['rowH'], rows[4]['nameW'], rows0[4]['nameW']))
+        check('[%s][siralama] short nickname with "1,23 Milyar TL": visible nickname width identical to v4.4.0 (%.1f / %.1f px)' % (vp, rows[5]['nameVis'], rows0[5]['nameVis']),
+              rows[5]['nameVis'] == rows0[5]['nameVis'] and not rows[5]['cut'])
+        d4 = (rows[4]['scoreW'] - rows0[4]['scoreW'])
+        check('[%s][siralama] long nickname with "1,23 Milyar TL": nickname box = v4.4.0 box minus only the longer score text ("%s" vs "%s", %+.1f px): %d / %d px' % (
+              vp, rows[4]['score'], rows0[4]['score'], d4, rows[4]['nameW'], rows0[4]['nameW']), abs((rows0[4]['nameW'] - rows[4]['nameW']) - d4) <= 1.5)
+        if narrow:
+            check('[360x640][siralama] long-score rows: nickname box at least as wide as v4.4.0 for the same rows (%s vs %s)' % (
+                  [rows[k]['nameW'] for k in LONG_RANKS], [rows0[k]['nameW'] for k in LONG_RANKS]), all(rows[k]['nameW'] >= rows0[k]['nameW'] for k in LONG_RANKS))
 
         # 4) Yatırım Turu paneli (prShares, prBonus, prGain, prNext)
         pg.evaluate("Kodhane.setView('prestige'); Kodhane.renderAll(); window.scrollTo(0, 0)")
@@ -214,7 +306,7 @@ with sync_playwright() as p:
         pr = pg.evaluate("['prShares', 'prBonus', 'prGain', 'prNext'].map(id => document.getElementById(id).textContent)")
         note('[%s][yatirim] %s' % (vp, json.dumps(pr, ensure_ascii=False)))
         check('[%s][yatirim] panel values use full names' % vp, all(not re.search(r'\d\s*(Mn|Mr|Tn|Kat|Kent)\b', x) for x in pr) and any(re.search(r'[a-zçğıöşü]ilyon', x) for x in pr), pr)
-        measure(pg, '%s/yatirim' % vp, '#panelSide', ['#prShares', '#prBonus', '#prGain', '#prNext', '.stats dd'], 'v441-yatirim-turu-%s.png' % vp)
+        measure(pg, '%s/yatirim' % vp, '#panelSide', ['#prShares', '#prBonus', '#prGain', '#prNext', '.stats dd'], 'v441b-yatirim-turu-%s.png' % vp)
 
         # 5) bulut bildirimi (cloud.js: '☁️ Buluttaki kaydın yüklendi ... Çevrimdışı kazanç: +' + K.tl(gain))
         pg.evaluate("Kodhane.setView('kod'); window.scrollTo(0, 0); document.getElementById('toast').innerHTML = '';"
@@ -222,7 +314,7 @@ with sync_playwright() as p:
         pg.wait_for_timeout(400)
         tt = pg.inner_text('#toast')
         check('[%s][bulut] toast shows "+999,99 Septendesilyon TL"' % vp, '+999,99 Septendesilyon TL' in tt, tt)
-        measure(pg, '%s/bulut-bildirim' % vp, '#toast', ['#toast > *'], 'v441-bulut-bildirim-%s.png' % vp)
+        measure(pg, '%s/bulut-bildirim' % vp, '#toast', ['#toast > *'], 'v441b-bulut-bildirim-%s.png' % vp)
         pg.evaluate("document.getElementById('toast').innerHTML = ''")
 
         # 6) başarım metinleri (tümü açık): açıklamalarda kısaltma yok, taşma yok
@@ -234,12 +326,26 @@ with sync_playwright() as p:
         el = pg.query_selector('#achGrid [title*="Trilyon"], #achGrid :text("Trilyon Kulübü")')
         if el:
             el.scroll_into_view_if_needed()
-        measure(pg, '%s/basarim' % vp, '#panelSide', ['#achGrid > *'], 'v441-basarim-%s.png' % vp)
+        measure(pg, '%s/basarim' % vp, '#panelSide', ['#achGrid > *'], 'v441b-basarim-%s.png' % vp)
+
+        # 7) telemetri ayrıntı paneli (Gizlilik -> ayrıntılar): v4.4.1 metni (Yazı telemetry-details r1, "Üç olayda"), taşma yok
+        pg.evaluate("Kodhane.setView('stats'); Kodhane.renderAll(); document.getElementById('telDetailsBtn').click()")
+        pg.wait_for_selector('.tel-details')
+        pg.wait_for_timeout(300)
+        det = pg.inner_text('.tel-details')
+        check('[%s][telemetri] details panel shows the new first paragraph ("Üç olayda ... Yatırım turunda ulaştığın aşama; Halka Arz\'da ...")' % vp,
+              "Üç olayda oyundaki ilerlemenden birkaç bilgi de gider: Yatırım turunda ulaştığın aşama; Halka Arz'da ulaştığın aşama" in det and 'İki olayda' not in det, det[:300])
+        measure(pg, '%s/telemetri-ayrinti' % vp, '#modal', ['.tel-details p', '#modalCard'], 'v441b-telemetri-ayrinti-%s.png' % vp)
+        pg.evaluate("document.querySelector('[data-test=tel-details-close]').scrollIntoView({ block: 'end' })")
+        measure(pg, '%s/telemetri-ayrinti-son' % vp, '#modal', ['.tel-details p', '#modalCard'], 'v441b-telemetri-ayrinti-son-%s.png' % vp)
+        pg.click('[data-test=tel-details-close]')
+        pg.wait_for_timeout(200)
         check('[%s] no page errors' % vp, not errs, errs)
         ctx.close()
     b.close()
 
 note('measurements: ' + json.dumps(measures, ensure_ascii=False))
+note('leaderboard rows: ' + json.dumps(lb, ensure_ascii=False))
 passed = sum(r[1] for r in results)
 print('\nSUMMARY: %d/%d passed' % (passed, len(results)))
 sys.exit(0 if passed == len(results) else 1)

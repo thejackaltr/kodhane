@@ -404,6 +404,9 @@ with sync_playwright() as p:
           len(tree_ev) == 1 and tree_ev[0].get('data') == {'hours_since_start': 50, 'ipo_number': 3, 'started_v44': 'yes'}, tree_ev)
     allkeys = sorted(set(k for x in ipo_ev + tree_ev for k in x.keys()))
     check('[net][Tamam] event payloads carry only the standard fields + name + data', allkeys == sorted(['website', 'hostname', 'url', 'title', 'name', 'data']), allkeys)
+    for e_ in ipo_ev + tree_ev:
+        note('[net] payload: ' + json.dumps(e_, ensure_ascii=False))
+    note('[net] all sent: ' + json.dumps([(x.get('type'), x.get('payload', {}).get('name'), x.get('payload', {}).get('data')) for x in ctx.net.sent], ensure_ascii=False))
     check('[net][Tamam] v4.4.1: Halka Arz no longer sends reset_or_prestige (split into investment_round / ipo_complete / hard_reset)',
           not any(x.get('payload', {}).get('name') == 'reset_or_prestige' for x in ctx.net.sent), [x.get('payload', {}).get('name') for x in ctx.net.sent])
     check('[net][Tamam] no page errors', not pg.errs, pg.errs)
@@ -511,6 +514,9 @@ with sync_playwright() as p:
           not re.search(r'@|nick|email|user|uid|totalEarned|money|"id"', blob), blob[:300])
     check('[net3][Tamam] no page errors', not pg.errs, pg.errs)
     note('[net3] sent names: ' + json.dumps(names_sent))
+    note('[net3] all sent: ' + json.dumps([(x.get('type'), x.get('payload', {}).get('name'), x.get('payload', {}).get('data')) for x in ctx.net.sent], ensure_ascii=False))
+    for e_ in ev_r + ev_i + ev_h:
+        note('[net3] payload: ' + json.dumps(e_, ensure_ascii=False))
     ctx.close()
 
     # ============================================================ [guard] v4.3.1 istemcisi v5 kaydını yazmaz

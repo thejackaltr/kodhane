@@ -413,14 +413,20 @@ button { font: inherit; color: inherit; cursor: pointer; }
 /* v4.4.1: tam sayı adları (Bin ... Vigintilyon; en uzun değer "999,99 Septendesilyon TL") dar ekranda taşmasın.
    Üst sayaç: 20 karakter ve üstü metne game.js 'long' (sayaç) ve 'long-num' (üst çubuk) sınıfı ekler; yalnız dar ekranda
    sayaç tek satırda biraz küçülür ve marka yazısı (Kodhane / Ajans Tycoon) gizlenir, logo kalır.
-   Fiyat ve sıralama puanı: sayı ile ad arasında satır kırılabilir (kısa değerler tek satırda kalır). */
+   Fiyat: sayı ile ad arasında satır kırılabilir (kısa değerler tek satırda kalır).
+   Sıralama (satır bazlı): puan metni v4.4.0'daki en uzun puandan ("999,99 Kent TL", 14 karakter) uzunsa leaderboard.js satıra
+   'lb-long' ekler; yalnız o satırda puan takma adın altına (alt satıra) geçer, takma ad satırın tüm genişliğini kullanır ve
+   gerekirse yalnız o satırda "…" ile kısalır. Diğer satırlar v4.4.0 ile aynı (puan sağda, tek satır). */
 @media (max-width: 480px) {
   .topbar.long-num .brand > div { display: none; }
   .money.long { font-size: 1.1rem; white-space: nowrap; }
   .rate.long { font-size: .74rem; white-space: nowrap; }
-  .gen-cost, .upg-cost, .lb-score { white-space: normal; text-align: right; }
+  .gen-cost, .upg-cost { white-space: normal; text-align: right; }
   .gen-right { max-width: 42vw; }
-  .upg-cost, .lb-score { max-width: 40vw; }
+  .upg-cost { max-width: 40vw; }
+  .lb-row.lb-long { grid-template-columns: 40px minmax(0, 1fr); row-gap: 2px; }
+  .lb-row.lb-long .lb-rank { grid-row: span 2; }
+  .lb-row.lb-long .lb-score { grid-column: 2; justify-self: end; text-align: right; white-space: normal; max-width: 100%; }
 }
 
 /* Azaltılmış hareket tercihi */
