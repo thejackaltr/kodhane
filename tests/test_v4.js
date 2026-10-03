@@ -13,7 +13,7 @@ function fresh() { K.state = K.newState(); return K.state; }
 const CFG = K.CFG, H = CFG.halkaArz, T = CFG.tree;
 
 // ---------------------------------------------------------------- sürüm, aşamalar
-check('version 4.4.0 / save version 5', K.VERSION === '4.4.0' && K.SAVE_VERSION === 5 && fresh().version === 5);
+check('version 4.4.1 / save version 5', K.VERSION === '4.4.1' && K.SAVE_VERSION === 5 && fresh().version === 5);
 const names = K.STAGES.map((s) => s.name);
 check('11 stages: Unicorn and Şirketler Grubu between Global Holding and Teknoloji Devi (v4.4)', names.length === 11 && names.slice(5).join('|') === 'Global Holding|Unicorn|Şirketler Grubu|Teknoloji Devi|Yapay Zekâ Laboratuvarı|Mars Ofisi', names);
 check('stage thresholds strictly increasing', K.STAGES.every((s, i) => i === 0 || s.at > K.STAGES[i - 1].at));
@@ -41,9 +41,38 @@ K.state.stageBest = K.stageRank('mars_ofisi');
 check('Mars Ofisi unlocks all', newGens.every((g) => K.genUnlocked(g)));
 
 // ---------------------------------------------------------------- büyük sayılar
-check('suffixes up to Kentilyon', [1e15, 2.5e18, 9.99e20].map(K.fmt).join('|') === '1 Kat|2,5 Kent|999 Kent', [1e15, 2.5e18, 9.99e20].map(K.fmt));
-check('scientific beyond Kentilyon', [1e21, 1.234e24, 5e100].map(K.fmt).join('|') === '1e21|1,23e24|5e100', [1e21, 1.234e24, 5e100].map(K.fmt));
-check('rounding at the top suffix goes scientific', K.fmt(999.999e18) === '1e21', K.fmt(999.999e18));
+// v4.4.1: tam adlar Bin ... Vigintilyon (1e63), Yazı r2 (kodhane-v4.5-sayi-adlari-yazi-r2.md) ile birebir; 1e66 ve ötesi bilimsel
+const R2 = ['', 'Bin', 'Milyon', 'Milyar', 'Trilyon', 'Katrilyon', 'Kentilyon', 'Sekstilyon', 'Septilyon', 'Oktilyon', 'Nonilyon', 'Desilyon', 'Undesilyon', 'Dodesilyon', 'Tredesilyon', 'Katordesilyon', 'Kendesilyon', 'Seksdesilyon', 'Septendesilyon', 'Oktodesilyon', 'Novemdesilyon', 'Vigintilyon'];
+check('v4.4.1 SUFFIXES = Yazı r2 list exactly (22 items, k = 21 is Vigintilyon)', JSON.stringify(K.SUFFIXES) === JSON.stringify(R2) && K.SUFFIXES.length === 22 && K.SUFFIXES[21] === 'Vigintilyon', K.SUFFIXES);
+check('no abbreviation left in SUFFIXES (full names only)', K.SUFFIXES.slice(1).every((x) => !/^(Mn|Mr|Tn|Kat|Kent)$/.test(x) && x.length >= 3));
+{ const got = R2.map((nm, k) => k ? K.fmt(Math.pow(10, 3 * k)) : null).slice(1), want = R2.slice(1).map((nm) => '1 ' + nm);
+  check('every step 1e3 ... 1e63 shows "1 <ad>"', JSON.stringify(got) === JSON.stringify(want), got); }
+check('names with decimals (Turkish comma)', [2.5e6, 3.75e9, 1.2e12, 1e15, 2.5e18, 9.99e20, 1.234e24, 4.56e36, 7e45].map(K.fmt).join('|') ===
+  '2,5 Milyon|3,75 Milyar|1,2 Trilyon|1 Katrilyon|2,5 Kentilyon|999 Kentilyon|1,23 Septilyon|4,56 Undesilyon|7 Katordesilyon', [2.5e6, 3.75e9, 1.2e12, 1e15, 2.5e18, 9.99e20, 1.234e24, 4.56e36, 7e45].map(K.fmt));
+check('1e21 Sekstilyon, 1e36 Undesilyon, 1e45 Katordesilyon (Product kararı)', K.fmt(1e21) === '1 Sekstilyon' && K.fmt(1e36) === '1 Undesilyon' && K.fmt(1e45) === '1 Katordesilyon');
+check('boundary: fmt(999.99e63) = "999,99 Vigintilyon"', K.fmt(999.99e63) === '999,99 Vigintilyon', K.fmt(999.99e63));
+check('boundary: fmt(1e63) = "1 Vigintilyon", fmt(1.5e65) = "150 Vigintilyon"', K.fmt(1e63) === '1 Vigintilyon' && K.fmt(1.5e65) === '150 Vigintilyon', [K.fmt(1e63), K.fmt(1.5e65)]);
+check('boundary: fmt(1e66) = "1e66" (sciTR unchanged)', K.fmt(1e66) === '1e66', K.fmt(1e66));
+check('scientific beyond Vigintilyon (format unchanged: comma, no "+")', [1.234e70, 5e100, 1.5e300].map(K.fmt).join('|') === '1,23e70|5e100|1,5e300', [1.234e70, 5e100, 1.5e300].map(K.fmt));
+check('rounding at the top name goes scientific: 999.999e63 -> "1e66"', K.fmt(999.999e63) === '1e66', K.fmt(999.999e63));
+check('rounding at a lower name goes to the next name: 999.999e18 -> "1 Sekstilyon"', K.fmt(999.999e18) === '1 Sekstilyon', K.fmt(999.999e18));
+check('tl(): "999,99 Septendesilyon TL" is 24 characters (longest value)', K.tl(999.99e54) === '999,99 Septendesilyon TL' && K.tl(999.99e54).length === 24, K.tl(999.99e54));
+{ // her kademede 999,995 x 10^(3k) ve hemen altı/üstü: hiçbir zaman "1000" / "1.000" görünmez
+  const bad = [];
+  for (let k = 0; k <= 22; k++) for (const m of [999.5, 999.9, 999.99, 999.994, 999.995, 999.9951, 999.999, 999.99999999]) {
+    const f = K.fmt(m * Math.pow(10, 3 * k)); if (/^1\.?000\b|1000/.test(f)) bad.push([m, k, f]); }
+  check('rounding boundary 999,995 x 10^(3k), k = 0..22: never "1000 <ad>" or "1.000"', bad.length === 0, bad); }
+check('v4.4.1 fix: 999,5 ... 999,99 TL shows "1 Bin" (was "1.000")', K.fmt(999.5) === '1 Bin' && K.fmt(999.99) === '1 Bin' && K.fmt(999.4) === '999' && K.fmt(9.5) === '9,5', [K.fmt(999.5), K.fmt(999.99), K.fmt(999.4)]);
+check('small numbers unchanged', [0, 5, 12.4, 999, 1000, 1234.5, -2.5e6].map(K.fmt).join('|') === '0|5|12|999|1 Bin|1,23 Bin|-2,5 Milyon', [0, 5, 12.4, 999, 1000, 1234.5, -2.5e6].map(K.fmt));
+{ const d = (id) => K.ACHIEVEMENTS.find((a) => a.id === id).desc;
+  check('achievement texts: full names (Yazı r2)', d('kazanc_1k') === 'Toplam 1 Bin TL kazan' && d('kazanc_1m') === 'Toplam 1 Milyon TL kazan' &&
+    d('kazanc_1b') === 'Toplam 1 Milyar TL kazan' && d('kazanc_1t') === 'Toplam 1 Trilyon TL kazan', ['kazanc_1k', 'kazanc_1m', 'kazanc_1b', 'kazanc_1t'].map(d));
+  check('no abbreviation in any achievement / upgrade text', ![...K.ACHIEVEMENTS, ...K.UPGRADES].some((a) => /\d\s*(Mn|Mr|Tn|Kat|Kent)\b/.test(a.desc + ' ' + a.name))); }
+{ const fs = require('fs'), html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  check('index.html Yatırım Turu note: "100 Milyon TL" (= tl(PRESTIGE 1e8)), no Mn/Mr/Tn', html.includes('İlk hisse için bu turda en az ' + K.tl(1e8) + ' kazanmalısın.') &&
+    K.tl(1e8) === '100 Milyon TL' && !/\d\s*(Mn|Mr|Tn)\b/.test(html));
+  const sw = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
+  check('sw.js cache name moves forward with the version (v4.4.1)', /var CACHE_VERSION = 'v4\.4\.1';/.test(sw)); }
 
 // ---------------------------------------------------------------- Halka Arz
 fresh();

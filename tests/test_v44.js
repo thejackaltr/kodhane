@@ -18,7 +18,7 @@ function fresh() { K.state = K.newState(); return K.state; }
 function round(earn) { K.earn(earn); return K.doPrestige(); }
 
 // ---------------------------------------------------------------- ayarlar = denge simülasyonu E100cd12
-check('version 4.4.0, save version 5', K.VERSION === '4.4.0' && K.SAVE_VERSION === 5);
+check('version 4.4.1, save version 5 (unchanged)', K.VERSION === '4.4.1' && K.SAVE_VERSION === 5);
 check('Halka Arz balance = E100cd12 (keep 1.0 floor, bankPending, +10%/pay, cap 40, 12 h)',
   H.keepShares === 1.0 && H.keepMode === 'floor' && H.bankPending === true && H.shareGainPerEarned === 0.10 && H.accelCap === 40 && H.cooldownSec === 43200, H);
 check('stage pays by ID = [0,0,0,0,0,2,3,4,5,8,12]', K.STAGES.map((s, i) => K.stagePay(i)).join(',') === '0,0,0,0,0,2,3,4,5,8,12');
@@ -147,7 +147,7 @@ check('legacyStageIndex for every rank', K.STAGES.map((s, i) => K.legacyStageInd
 
 // ---------------------------------------------------------------- startedVersion / startedAt
 fresh();
-check('new game: startedVersion = VERSION, startedAt set', K.state.startedVersion === '4.4.0' && K.state.startedAt > 0);
+check('new game: startedVersion = VERSION, startedAt set', K.state.startedVersion === K.VERSION && K.state.startedAt > 0);
 { K.deserialize(JSON.stringify({ version: 4, saveVersion: 4, startedAt: NOW - 10 * HOUR }));
   check('old save: startedVersion empty', K.state.startedVersion === '');
   K.state.cycleRounds = 3; K.state.ipoCount = 0; K.earn(3e9); K.state.cycleStage = R('global_holding'); K.state.cycleRounds = 3;
@@ -156,7 +156,7 @@ check('new game: startedVersion = VERSION, startedAt set', K.state.startedVersio
   K.state.cycleRounds = 0; K.earn(1e9); K.doPrestige();
   check('startedVersion + startedAt kept on Yatırım Turu', K.state.startedVersion === '' && K.state.startedAt === NOW - 10 * HOUR);
   K.state = K.newState();
-  check('Kaydı sıfırla (fresh newState): startedVersion set again, startedAt now', K.state.startedVersion === '4.4.0' && Math.abs(K.state.startedAt - Date.now()) < 5000); }
+  check('Kaydı sıfırla (fresh newState): startedVersion set again, startedAt now', K.state.startedVersion === K.VERSION && Math.abs(K.state.startedAt - Date.now()) < 5000); }
 { K.deserialize(JSON.stringify({ version: 5, saveVersion: 5, startedVersion: '4.4.0', startedAt: NOW - 30 * HOUR }));
   const s2 = JSON.parse(K.serialize()); check('startedVersion saved', s2.startedVersion === '4.4.0' && s2.startedAt === NOW - 30 * HOUR); }
 [['missing', undefined], ['zero', 0], ['negative', -1], ['string', 'x'], ['NaN-ish', null]].forEach(([n, v]) => {
@@ -311,6 +311,52 @@ check('reset.prestigeHint (r3)', K.RESET_TEXT['reset.prestigeHint'] === "Başar�
   check('olderTab texts verbatim (update.olderTab.title/text/btn/textShort)', Object.keys(T).every((k) => K2.UI_TEXT['update.olderTab.' + k] === T[k]));
   const keys = Object.keys(K2.UI_TEXT), i = keys.indexOf('update.newerSave.btn');
   check('olderTab keys placed right below update.newerSave.*', JSON.stringify(keys.slice(i + 1, i + 5)) === JSON.stringify(['update.olderTab.title', 'update.olderTab.text', 'update.olderTab.btn', 'update.olderTab.textShort']), keys.slice(i - 2, i + 5));
+}
+
+// ---------------------------------------------------------------- v4.4.1: investment_round alanları
+{ fresh();
+  const d = K.roundEventData(R('teknoloji_devi'));
+  check('v4.4.1 investment_round fields exactly {stage_id}', JSON.stringify(d) === '{"stage_id":"teknoloji_devi"}', d);
+  check('v4.4.1 investment_round: out-of-range rank clamps to a known stage ID', K.roundEventData(-3).stage_id === 'freelancer' && K.roundEventData(99).stage_id === 'mars_ofisi' && K.roundEventData(undefined).stage_id === 'freelancer'); }
+{ const fs = require('fs'), src = fs.readFileSync(path.join(__dirname, '..', 'game.js'), 'utf8');
+  const calls = [...src.matchAll(/\btrack\('([a-z_]+)'/g)].map((m) => m[1]);
+  check('v4.4.1: reset_or_prestige is gone; investment_round / ipo_complete / hard_reset wired once each',
+    !calls.includes('reset_or_prestige') && ['investment_round', 'ipo_complete', 'hard_reset'].every((n) => calls.filter((x) => x === n).length === 1), calls);
+  check('v4.4.1: investment_round carries roundEventData only, hard_reset name only',
+    /track\('investment_round', roundEventData\(roundStage\)\)/.test(src) && /track\('hard_reset'\);/.test(src)); }
+
+// ---------------------------------------------------------------- v4.4.1: kayıt biçimi değişmedi (v4.4.0 kaydı yükle + kaydet)
+{ // v4.4.0 (879f67b) serialize() anahtarları, sırasıyla
+  const KEYS440 = ["version","money","runEarned","totalEarned","clicks","clickEarned","playTime","startedAt","lastSaved","gens","upgrades","shares","prestigeCount","boostLeft","eventsClicked","offlineEarned","stage","buffs","achievements","critClicks","eventsResolved","logoAccepted","revisions","meetings","serverCrashes","reputation","noMeetingSec","daily","ipoShares","ipoSharesEarned","ipoCount","cycleEarned","cycleRounds","tree","stageBest","newsSeen","newsPending","cycleStage","sectorCool","followUps","pendingPay","ipoAt","startedVersion","eventLog","stageId","stageBestId","cycleStageId","saveVersion","epoch","resetAt"];
+  const keysDeep = (o, p = '') => Object.keys(o).flatMap((k) => { const v = o[k], q = p + k; return v && typeof v === 'object' && !Array.isArray(v) ? [q].concat(keysDeep(v, q + '.')) : [q]; });
+  const S = K.newState();
+  const fresh441 = (K.state = S, JSON.parse(K.serialize()));
+  check('v4.4.1 fresh save: same keys, same order as v4.4.0', JSON.stringify(Object.keys(fresh441)) === JSON.stringify(KEYS440), Object.keys(fresh441).filter((k) => !KEYS440.includes(k)));
+  check('v4.4.1: no clientVersion in the save', !('clientVersion' in fresh441));
+  // dolu bir v4.4.0 kaydı (gerçek 879f67b çıktısıyla aynı biçim): yükle -> kaydet; alan kümesi (iç içe) ve değerler aynı (lastSaved hariç)
+  let src440 = null;
+  try { src440 = require('child_process').execFileSync('git', ['show', '879f67b:game.js'], { cwd: path.join(__dirname, '..'), stdio: ['ignore', 'pipe', 'ignore'] }).toString(); } catch (e) { src440 = null; }
+  if (!src440) console.log('NOTE git show 879f67b:game.js yok: v4.4.0 çekirdeğiyle gidiş-dönüş testi atlandı (anahtar listesi testi yine koştu)');
+  else {
+    const m = { exports: {} }; new Function('module', 'exports', 'require', src440).call({}, m, m.exports, require); const K0 = m.exports;
+    check('reference core is v4.4.0', K0.VERSION === '4.4.0');
+    K0.state = K0.newState(); const s0 = K0.state;
+    Object.assign(s0, { money: 1.5e20, runEarned: 2e21, totalEarned: 3e22, cycleEarned: 2.5e21, clicks: 1234, shares: 77, prestigeCount: 12, cycleRounds: 4, reputation: 64,
+      ipoShares: 5, ipoSharesEarned: 30, ipoCount: 4, tree: ['kod_1', 'ekip_1'], achievements: ['tik_1', 'kazanc_1m'], upgrades: ['click_1', 'stajyer_1'], startedVersion: '4.4.0', ipoAt: NOW - 20 * HOUR,
+      buffs: [{ id: 'gece', kind: 'prod', mult: 0.8, left: 30, total: 60, label: 'Gece mesaisi' }], pendingPay: [{ amount: 5e9, left: 100, total: 300, label: 'İhale' }],
+      sectorCool: { kamu: 120 }, newsSeen: ['yeni_asama'], eventLog: [{ type: 'ipo', at: NOW - 20 * HOUR, sharesBefore: 70, sharesAfter: 70, paysBefore: 0, paysAfter: 5 }] });
+    s0.gens.stajyer = 150; s0.gens.veri = 12; s0.stageBest = 9; s0.stage = 9; s0.cycleStage = 9;
+    const raw0 = K0.serialize(), o0 = JSON.parse(raw0);
+    K.deserialize(raw0); const o1 = JSON.parse(K.serialize());
+    check('v4.4.0 save -> v4.4.1 load+save: identical nested key set and order', JSON.stringify(keysDeep(o1)) === JSON.stringify(keysDeep(o0)),
+      [keysDeep(o1).filter((k) => !keysDeep(o0).includes(k)), keysDeep(o0).filter((k) => !keysDeep(o1).includes(k))]);
+    const strip = (o) => { const c = JSON.parse(JSON.stringify(o)); delete c.lastSaved; return c; };
+    check('v4.4.0 save -> v4.4.1 load+save: all values identical (except lastSaved)', JSON.stringify(strip(o1)) === JSON.stringify(strip(o0)),
+      Object.keys(o0).filter((k) => k !== 'lastSaved' && JSON.stringify(o0[k]) !== JSON.stringify(o1[k])));
+    check('v4.4.0 save -> v4.4.1: still saveVersion 5 / version 5, no clientVersion', o1.saveVersion === 5 && o1.version === 5 && !('clientVersion' in o1));
+    K0.deserialize(K.serialize()); const o2 = JSON.parse(K0.serialize());
+    check('v4.4.1 save -> v4.4.0 load+save (rollback): identical (except lastSaved), not blocked as a future save', JSON.stringify(strip(o2)) === JSON.stringify(strip(o0)) && !K0.writesBlocked());
+  }
 }
 
 console.log(`\n${pass}/${pass + fail} passed`);

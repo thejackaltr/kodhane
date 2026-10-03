@@ -52,11 +52,11 @@ sw = open(os.path.join(ROOT, 'sw.js'), encoding='utf-8').read()
 check('sw.js: analiz.teserix.com is never cached/intercepted', "url.hostname === 'analiz.teserix.com') return;" in sw and 'analiz' not in sw.split('var ASSETS')[1].split(';')[0])
 src = ''.join(open(os.path.join(ROOT, f), encoding='utf-8').read() for f in ('game.js', 'cloud.js', 'leaderboard.js'))
 names = sorted(set(re.findall(r"\btrack\('([a-z_]+)'\)", src)))
-check('Umami events wired (name-only list unchanged)', names == sorted(['acikofis_news_click', 'cloud_save', 'game_start', 'login_success', 'reset_or_prestige', 'share_click']), str(names))
+check('Umami events wired (name-only list; v4.4.1: reset_or_prestige -> hard_reset, investment_round carries data)', names == sorted(['acikofis_news_click', 'cloud_save', 'game_start', 'hard_reset', 'login_success', 'share_click']), str(names))
 # v4.4: yalnızca iki olay veri taşır, verisi de yalnızca sabit alan üreten iki yardımcıdan gelir (gizlilik metninde yazılı)
 with_data = re.findall(r"\btrack\('([a-z_]+)'\s*,\s*([^)]*\))", src)
-check('only ipo_complete / tree_full carry data, from ipoEventData / treeEventData only',
-      sorted(x[0] for x in with_data) == ['ipo_complete', 'tree_full'] and all(re.match(r'(ipoEventData|treeEventData)\(', x[1]) for x in with_data), str(with_data))
+check('only investment_round / ipo_complete / tree_full carry data, from roundEventData / ipoEventData / treeEventData only (v4.4.1)',
+      sorted(x[0] for x in with_data) == ['investment_round', 'ipo_complete', 'tree_full'] and all(re.match(r'(roundEventData|ipoEventData|treeEventData)\(', x[1]) for x in with_data), str(with_data))
 check('leaderboard.js countEvent is gated by Kodhane.counterAllowed', "if (typeof K.counterAllowed !== 'function' || !K.counterAllowed()) return;" in src)
 
 FAKE_REAL = r"""(function () {
@@ -167,7 +167,7 @@ INTERACT = """async () => {
   const b = document.getElementById('clickBtn');
   for (let i = 0; i < 3; i++) b.click();
   Kodhane.shareText('x');
-  Kodhane.track('login_success'); Kodhane.track('cloud_save'); Kodhane.track('reset_or_prestige'); Kodhane.track('acikofis_news_click');
+  Kodhane.track('login_success'); Kodhane.track('cloud_save'); Kodhane.track('hard_reset'); Kodhane.track('acikofis_news_click');
   Kodhane.countEvent('news_leaderboard_shown'); Kodhane.countEvent('news_acikofis_click');
   const p0 = location.pathname;
   history.pushState({}, '', p0 + '?nav=1'); history.replaceState({}, '', p0 + '?nav=2');
@@ -556,9 +556,9 @@ with sync_playwright() as p:
         check('[prefs] Halka Arz via UI + reload keeps the choice (%s), no band' % pref, pg.evaluate('Kodhane.state.ipoCount') == 1 and st['pref'] == pref and not st['band'], st)
         c = net.counts()
         if pref == 'off':
-            check('[prefs] off: prestige/IPO sent nothing (reset_or_prestige dropped)', c['umami'] == 0 and c['counter'] == 0, c)
+            check('[prefs] off: prestige/IPO sent nothing (investment_round / ipo_complete dropped)', c['umami'] == 0 and c['counter'] == 0, c)
         else:
-            check('[prefs] on: prestige/IPO reset_or_prestige reached Umami', c['umami_send'] >= 3, c)
+            check('[prefs] on: prestige/IPO events (investment_round, ipo_complete) reached Umami', c['umami_send'] >= 3, c)
         ctx.close()
     b.close()
 

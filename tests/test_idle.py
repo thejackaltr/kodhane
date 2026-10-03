@@ -155,7 +155,7 @@ with sync_playwright() as p:
     check('click upgrade x2', abs(ev('Kodhane.clickValue()') - 2.2) < 1e-9, f"click={ev('Kodhane.clickValue()')}")
     ev('Kodhane.tick(100)')
     check('tick(100) production', ev('Kodhane.state.playTime') > 100)
-    check('TR format', ev("[Kodhane.tl(1234.5), Kodhane.tl(2.5e6), Kodhane.tl(3.75e9), Kodhane.tl(1.2e12)].join('|')") == '1,23 Bin TL|2,5 Mn TL|3,75 Mr TL|1,2 Tn TL')
+    check('TR format', ev("[Kodhane.tl(1234.5), Kodhane.tl(2.5e6), Kodhane.tl(3.75e9), Kodhane.tl(1.2e12)].join('|')") == '1,23 Bin TL|2,5 Milyon TL|3,75 Milyar TL|1,2 Trilyon TL')
     # yeni geliştirmeler
     check('tier-5 upgrade at 100 staff exists', ev("Kodhane.UPGRADES.some(u => u.id === 'stajyer_5' && u.req.count === 100)"))
     check('PM dev bonus upgrade', ev("(() => { const K=Kodhane, s=K.state; const g=K.GENERATORS[0]; const a=K.genTps(g); s.upgrades.push('sprint'); const r=K.genTps(g)/a; s.upgrades.pop(); return Math.abs(r-1.1)<1e-9; })()"))
@@ -241,10 +241,11 @@ with sync_playwright() as p:
     check('lb: empty view', ev("Kodhane.leaderboard.buildView([], 50).empty") is True)
     check('lb: share text', ev(LB + ".shareText(7, 'https://thejackaltr.github.io/kodhane/')") == 'Kodhane sıralamasında #7. sıradayım! Sen de ajansını kur: https://thejackaltr.github.io/kodhane/')
     check('lb: stage label + medal badges', ev(LB + '.stageLabel(5)') == '🌐 Global Holding' and ev(LB + '.stageLabel(null)') == '' and ev(LB + '.stageLabel(8)') == '🔴 Mars Ofisi' and ev(LB + '.stageLabel(12)') == 'Aşama 13' and ev("[1,2,3,4].map(Kodhane.leaderboard.rankBadge).join(' ')") == '🥇 🥈 🥉 #4')
-    check('lb: same number format as the game', ev("Kodhane.tl(9.25e9)") == '9,25 Mr TL')
-    big = ev("[1e30, 1.234e30, 9.99e32, 1e36, 1.2e36, 1.25e21, 9007199254740993, 1.7976931348623157e308, NaN].map(Kodhane.tl)")
-    check('huge numbers: suffixes up to Kentilyon, then scientific (no int overflow)',
-          big == ['1e30 TL', '1,23e30 TL', '9,99e32 TL', '1e36 TL', '1,2e36 TL', '1,25e21 TL', '9,01 Kat TL', '1,8e308 TL', '0 TL'] and ev("[1.5e18, 9.99e20].map(Kodhane.tl)") == ['1,5 Kent TL', '999 Kent TL'], str(big))
+    check('lb: same number format as the game', ev("Kodhane.tl(9.25e9)") == '9,25 Milyar TL')
+    big = ev("[1e30, 1.234e30, 9.99e32, 1e36, 1.2e36, 1.25e21, 9007199254740993, 1.7976931348623157e308, NaN, 1e66, 1.234e70].map(Kodhane.tl)")
+    check('huge numbers: full names up to Vigintilyon (v4.4.1), then scientific from 1e66 (no int overflow)',
+          big == ['1 Nonilyon TL', '1,23 Nonilyon TL', '999 Nonilyon TL', '1 Undesilyon TL', '1,2 Undesilyon TL', '1,25 Sekstilyon TL', '9,01 Katrilyon TL', '1,8e308 TL', '0 TL', '1e66 TL', '1,23e70 TL']
+          and ev("[1.5e18, 9.99e20, 999.99e63].map(Kodhane.tl)") == ['1,5 Kentilyon TL', '999 Kentilyon TL', '999,99 Vigintilyon TL'], str(big))
     check('huge numbers: leaderboard row with score 1e30 is valid', ev("Kodhane.leaderboard.buildView([{rank:1,nickname:'x',score:1e30,stage:5,is_me:false}], 50).top.length") == 1)
 
     # ---------------------------------------------------------------- olay kartları

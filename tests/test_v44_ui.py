@@ -8,6 +8,9 @@
              onay penceresi içindeki her öğe ölçülür).
   [net]      İki yeni olay (ipo_complete, tree_full): "Tamam" demeden ve "Kapat" dedikten sonra Umami'ye ve anonim sayaca 0 istek;
              "Tamam" sonrası sahte Umami'ye giden alanlar tam olarak beklenen kümeler.
+  [net3]     v4.4.1: reset_or_prestige üçe ayrıldı: investment_round (yalnız stage_id), ipo_complete, hard_reset (yalnız ad). Hepsi UI'dan
+             (Yatırım Turu, Halka Arz, "Kaydı sıfırla" basılı tutma); "Tamam" öncesi ve "Kapat" sonrası 0 istek; "Tamam" sonrası
+             sahte Umami'de üçü ayrı adla, birer kez, beklenen alanlarla; reset_or_prestige hiç gitmez.
   [guard]    v4.3.1 istemcisi (e37018c, git show) v5 kaydını görünce hiçbir şey yazmaz (yerel kayıt bayt bayt aynı).
 Oyun https://kodhane.teserix.com/ altında Playwright route ile depo dosyalarından sunulur; Umami/Supabase sahte (route);
 güvenlik ağı: gerçek adlar --host-resolver-rules ile 127.0.0.1:9'a (kapalı port) yönlenir.
@@ -401,7 +404,8 @@ with sync_playwright() as p:
           len(tree_ev) == 1 and tree_ev[0].get('data') == {'hours_since_start': 50, 'ipo_number': 3, 'started_v44': 'yes'}, tree_ev)
     allkeys = sorted(set(k for x in ipo_ev + tree_ev for k in x.keys()))
     check('[net][Tamam] event payloads carry only the standard fields + name + data', allkeys == sorted(['website', 'hostname', 'url', 'title', 'name', 'data']), allkeys)
-    check('[net][Tamam] reset_or_prestige still sent (dashboard continuity), name only', any(x.get('payload', {}).get('name') == 'reset_or_prestige' and 'data' not in x['payload'] for x in ctx.net.sent))
+    check('[net][Tamam] v4.4.1: Halka Arz no longer sends reset_or_prestige (split into investment_round / ipo_complete / hard_reset)',
+          not any(x.get('payload', {}).get('name') == 'reset_or_prestige' for x in ctx.net.sent), [x.get('payload', {}).get('name') for x in ctx.net.sent])
     check('[net][Tamam] no page errors', not pg.errs, pg.errs)
     ctx.close()
     # (d) eski kayıt (startedVersion yok, startedAt yok): süre alanı yok, started_v44 no
@@ -419,6 +423,94 @@ with sync_playwright() as p:
     check('[net][old save] tree_full data exactly {ipo_number: 3, started_v44: no} (no hours when startedAt unknown)',
           len(tree_ev) == 1 and tree_ev[0].get('data') == {'ipo_number': 3, 'started_v44': 'no'}, tree_ev)
     check('[net][old save] no page errors', not pg.errs, pg.errs)
+    ctx.close()
+
+    # ============================================================ [net3] v4.4.1: reset_or_prestige -> investment_round / ipo_complete / hard_reset
+    # beforeunload'da trackLog sessionStorage'a yazılır: "Kaydı sıfırla" sayfayı yeniden açtığı için son çağrı oradan okunur
+    KEEP_LOG = "window.addEventListener('beforeunload', function () { try { sessionStorage.setItem('kh_tl', JSON.stringify(window.Kodhane ? Kodhane.trackLog : [])); } catch (e) {} });"
+
+    def round_ui(pg):
+        pg.evaluate("Kodhane.setView('prestige'); Kodhane.renderAll()"); pg.wait_for_timeout(150)
+        st = pg.evaluate("Kodhane.STAGES[Kodhane.stageIndex(Kodhane.state.runEarned)].id")
+        pg.click('#prestigeBtn'); pg.wait_for_selector('#modal:not(.hidden)')
+        pg.click('#modalActions button:has-text("Anlaştık!")'); pg.wait_for_timeout(300)
+        return st
+
+    def ipo_ui(pg):
+        to_ipo(pg)
+        pg.click('#ipoBtn'); pg.wait_for_selector('#modal:not(.hidden)')
+        pg.click('#modalActions button:has-text("Halka arz et")')
+        pg.wait_for_selector('#modalTitle:has-text("Borsa zili")')
+        pg.click('#modalActions button:has-text("Tamam")'); pg.wait_for_timeout(200)
+
+    def hard_reset_ui(pg):
+        if pg.evaluate("document.getElementById('tab-stats').classList.contains('hidden')"):
+            pg.evaluate("Kodhane.selectTab('stats')")
+        pg.click('#resetBtn'); pg.wait_for_selector('#resetHold'); pg.wait_for_timeout(400)
+        with pg.expect_navigation(timeout=20000):
+            pg.hover('#resetHold'); pg.mouse.down(); pg.wait_for_timeout(2300); pg.mouse.up()
+        pg.wait_for_selector('#clickBtn'); pg.wait_for_timeout(500)
+
+    def three_events(pg):
+        st = round_ui(pg)
+        rounds = pg.evaluate('[Kodhane.state.prestigeCount, Kodhane.state.cycleRounds]')
+        ipo_ui(pg)
+        ic = pg.evaluate('Kodhane.state.ipoCount')
+        before = pg.evaluate('Kodhane.trackLog')
+        hard_reset_ui(pg)
+        last = json.loads(pg.evaluate("sessionStorage.getItem('kh_tl') || '[]'"))
+        fresh = pg.evaluate('[Kodhane.state.prestigeCount, Kodhane.state.ipoCount, Kodhane.state.totalEarned]')
+        return st, rounds, ic, before, last, fresh
+
+    N3SAVE = dict(NETSAVE)
+    names3 = ['investment_round', 'ipo_complete', 'hard_reset']
+    # (a) bildirim yanıtlanmadan: üç olay da olur, üçü de atılır ("off"); yeniden açılış dahil 0 istek
+    ctx = new_ctx('1280x800', init=seed(mk44(**N3SAVE), tel=None) + KEEP_LOG)
+    pg = open_page(ctx)
+    pg.wait_for_selector('[data-test=tel-banner]')
+    st, rounds, ic, before, last, fresh = three_events(pg)
+    calls = [x[:2] for x in last]
+    check('[net3][before Tamam] Yatırım Turu + Halka Arz + Kaydı sıfırla happened (rounds 10/4, IPO 3, then fresh save)',
+          st == 'teknoloji_devi' and rounds == [10, 4] and ic == 3 and fresh[0] == 0 and fresh[1] == 0, [st, rounds, ic, fresh])
+    check('[net3][before Tamam] the three events were called by name and dropped ("off"), no reset_or_prestige',
+          all([n, 'off'] in calls for n in names3) and not any(x[0] == 'reset_or_prestige' for x in last), calls)
+    c = ctx.net.counts()
+    check('[net3][before Tamam] 0 Umami requests, 0 counter requests (incl. the reset reload)', c['umami'] == 0 and c['counter'] == 0, c)
+    check('[net3][before Tamam] nothing queued', pg.evaluate('Kodhane.umamiQueue().length') == 0)
+    check('[net3][before Tamam] no page errors', not pg.errs, pg.errs)
+    ctx.close()
+    # (b) Kapat: yine 0 istek
+    ctx = new_ctx('1280x800', init=seed(mk44(**N3SAVE), tel='off') + KEEP_LOG)
+    pg = open_page(ctx)
+    st, rounds, ic, before, last, fresh = three_events(pg)
+    c = ctx.net.counts()
+    check('[net3][after Kapat] three events happened and dropped, 0 Umami / 0 counter requests',
+          all([n, 'off'] in [x[:2] for x in last] for n in names3) and c['umami'] == 0 and c['counter'] == 0, [c, [x[:2] for x in last]])
+    ctx.close()
+    # (c) Tamam: sahte Umami'ye üç ayrı ad, birer kez, alanlar birebir
+    ctx = new_ctx('1280x800', init=seed(mk44(**N3SAVE), tel=None) + KEEP_LOG)
+    pg = open_page(ctx)
+    pg.wait_for_selector('[data-test=tel-banner]')
+    c0 = ctx.net.counts()
+    check('[net3][Tamam] before clicking Tamam: 0 Umami requests', c0['umami'] == 0, c0)
+    pg.click('[data-test=tel-ok]')
+    pg.wait_for_function("typeof window.umami === 'object'", timeout=8000)
+    st, rounds, ic, before, last, fresh = three_events(pg)
+    pg.wait_for_timeout(800)
+    ev_r, ev_i, ev_h = ctx.net.events('investment_round'), ctx.net.events('ipo_complete'), ctx.net.events('hard_reset')
+    check('[net3][Tamam] investment_round once, data exactly {stage_id} = teknoloji_devi', len(ev_r) == 1 and ev_r[0].get('data') == {'stage_id': 'teknoloji_devi'}, ev_r)
+    check('[net3][Tamam] ipo_complete once, data exactly {stage_id, pays, ipo_number} = teknoloji_devi / 5 / 3',
+          len(ev_i) == 1 and ev_i[0].get('data') == {'stage_id': 'teknoloji_devi', 'pays': 5, 'ipo_number': 3}, ev_i)
+    check('[net3][Tamam] hard_reset once, name only (no data)', len(ev_h) == 1 and 'data' not in ev_h[0], ev_h)
+    names_sent = [x.get('payload', {}).get('name') for x in ctx.net.sent if x.get('payload', {}).get('name')]
+    check('[net3][Tamam] reset_or_prestige never sent; events seen by name', 'reset_or_prestige' not in names_sent and all(n in names_sent for n in names3), names_sent)
+    keys3 = sorted(set(k for x in ev_r + ev_i + ev_h for k in x.keys()))
+    check('[net3][Tamam] payloads: only standard fields + name (+ data)', keys3 == sorted(['website', 'hostname', 'url', 'title', 'name', 'data']), keys3)
+    blob = json.dumps(ev_r + ev_i + ev_h)
+    check('[net3][Tamam] no personal data in the three payloads (no email / nick / id / save fields)',
+          not re.search(r'@|nick|email|user|uid|totalEarned|money|"id"', blob), blob[:300])
+    check('[net3][Tamam] no page errors', not pg.errs, pg.errs)
+    note('[net3] sent names: ' + json.dumps(names_sent))
     ctx.close()
 
     # ============================================================ [guard] v4.3.1 istemcisi v5 kaydını yazmaz

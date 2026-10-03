@@ -1,4 +1,4 @@
-/* Kodhane: Ajans Tycoon — v4.4.0 (Halka Arz hisseleri korur + hızlandırıcı + 12 sa bekleme + Unicorn / Şirketler Grubu aşamaları + aşama ID'leri, isimsiz sayaç izni + gizlilik ayarı + güvenli kayıt sıfırlama + yeni aşamalar + Halka Arz + Borsa Payı Ağacı + müşteri sektörleri)
+/* Kodhane: Ajans Tycoon — v4.4.1 (sayı adları Vigintilyon'a kadar tam yazım + Umami olay ayrımı; v4.4.0: Halka Arz hisseleri korur + hızlandırıcı + 12 sa bekleme + Unicorn / Şirketler Grubu aşamaları + aşama ID'leri, isimsiz sayaç izni + gizlilik ayarı + güvenli kayıt sıfırlama + yeni aşamalar + Halka Arz + Borsa Payı Ağacı + müşteri sektörleri)
  * Vanilla JS, derleme adımı yok. Tüm oyun metinleri Türkçe.
  * v1 kayıtları ('kodhane_ajans_save_v1') ilk açılışta otomatik olarak taşınır; v2/v3/v4 kayıtları kayıpsız yeni alanları alır.
  * Denge sayıları CFG (ayarlar) ve tablolarda durur; açıklama metinleri sayıları bu ayarlardan okur.
@@ -10,7 +10,7 @@
   // ------------------------------------------------------------------
   // Tanımlar (denge değerleri)
   // ------------------------------------------------------------------
-  var VERSION = '4.4.0';
+  var VERSION = '4.4.1';
   // kayıt biçimi (3 = oyun v4, 4 = v4.1, 5 = v4.4: aşamalar ID ile). Kayda 'version' ve (v4.3.1'den beri) 'saveVersion' olarak yazılır.
   var SAVE_VERSION = 5;
   var SAVE_KEY = 'kodhane_ajans_save_v2';
@@ -371,8 +371,10 @@
   // ------------------------------------------------------------------
   // Sayı biçimlendirme (Türkçe)
   // ------------------------------------------------------------------
-  // Kısaltmalar Katrilyon (Kat) ve Kentilyon'a (Kent) kadar; ötesi bilimsel gösterim (1,23e21)
-  var SUFFIXES = ['', 'Bin', 'Mn', 'Mr', 'Tn', 'Kat', 'Kent'];
+  // v4.4.1: sayı adları TEK YERDE (Yazı r2, kodhane-v4.5-sayi-adlari-yazi-r2.md): kısaltmasız tam adlar, 1e3 Bin ... 1e63 Vigintilyon
+  // (SUFFIXES[k] = 10^(3k)). Vigintilyon 1e63-1e66 arasını gösterir; 1e66 ve ötesi bilimsel gösterim (1e66, 1,23e70).
+  // Başarım açıklamaları ve diğer metinlerdeki sayılar da tl()/fmt() ile bu listeden yazılır (ad değişikliği yalnız burada).
+  var SUFFIXES = ['', 'Bin', 'Milyon', 'Milyar', 'Trilyon', 'Katrilyon', 'Kentilyon', 'Sekstilyon', 'Septilyon', 'Oktilyon', 'Nonilyon', 'Desilyon', 'Undesilyon', 'Dodesilyon', 'Tredesilyon', 'Katordesilyon', 'Kendesilyon', 'Seksdesilyon', 'Septendesilyon', 'Oktodesilyon', 'Novemdesilyon', 'Vigintilyon'];
   function groupTR(intStr) { return intStr.replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
   function fixedTR(n, d) {
     var s = n.toFixed(d);
@@ -381,7 +383,7 @@
     if (parts[1] && /[1-9]/.test(parts[1])) out += ',' + parts[1].replace(/0+$/, '');
     return out;
   }
-  // En büyük sonekin (Kent = 1e18) ötesi bilimsel gösterim: 1,2e21 (Türkçe ondalık virgülü, '+' yok)
+  // En büyük adın (Vigintilyon = 1e63) kademesi bittikten sonra (1e66 ve ötesi) bilimsel gösterim: 1,2e66 (Türkçe ondalık virgülü, '+' yok)
   function sciTR(n) {
     var p = n.toExponential(2).split('e');
     var m = p[0].replace(/\.?0+$/, '').replace('.', ',');
@@ -391,8 +393,9 @@
     if (typeof n !== 'number' || n !== n) return '0';
     if (!isFinite(n)) return '∞';
     if (n < 0) return '-' + fmt(-n);
-    if (n < 1000) return fixedTR(n, n < 10 ? 1 : 0);
-    var k = Math.floor(Math.log10(n) / 3);
+    // v4.4.1: 999,5 ve üstü tam sayıya yuvarlanınca "1.000" olurdu; "1 Bin" yazılır (her kademe sınırı gibi bir üst ada geçer)
+    if (n < 999.5) return fixedTR(n, n < 10 ? 1 : 0);
+    var k = Math.max(1, Math.floor(Math.log10(n) / 3));
     if (k >= SUFFIXES.length) return sciTR(n);
     var v = n / Math.pow(1000, k);
     if (v >= 999.995) { k++; v = v / 1000; if (k >= SUFFIXES.length) return sciTR(n); }
@@ -428,7 +431,7 @@
   }
   function pct(x) { return Math.round(x * 100); }
   function num(x) { return fixedTR(x, 2); } // ayar sayılarını metne yazar: 1.5 -> "1,5"
-  // v4.3.1: bonus oranını yüzde metnine çevirir (0,125 -> "12,5"; büyük değerler kısaltmalı: 1250 -> "1,25 Bin")
+  // v4.3.1: bonus oranını yüzde metnine çevirir (0,125 -> "12,5"; büyük değerler sayı adıyla: 1250 -> "1,25 Bin", 2,5e6 -> "2,5 Milyon")
   function pctText(frac) { var x = frac * 100; return x < 1000 ? num(x) : fmt(x); }
   // Türkçe ek uyumu (sayılar için): %1'ini, %15'ten, %14'e ...
   function numWord(n) {
@@ -993,10 +996,10 @@
     { id: 'tik_10000', icon: '🦾', name: 'Mekanik Klavye Tutkunu', desc: '10.000 kez kod yaz', test: function () { return S.clicks >= 10000; } },
     { id: 'kritik_1', icon: '💥', name: 'Kritik Satır', desc: 'İlk kritik tıkını yap', test: function () { return S.critClicks >= 1; } },
     { id: 'kritik_50', icon: '🎯', name: 'Tesadüf Değil', desc: '50 kritik tık yap', test: function () { return S.critClicks >= 50; } },
-    { id: 'kazanc_1k', icon: '🧾', name: 'İlk Fatura', desc: 'Toplam 1 Bin TL kazan', test: function () { return S.totalEarned >= 1e3; } },
-    { id: 'kazanc_1m', icon: '💰', name: 'Milyonluk Proje', desc: 'Toplam 1 Mn TL kazan', test: function () { return S.totalEarned >= 1e6; } },
-    { id: 'kazanc_1b', icon: '🏦', name: 'Milyar Değerleme', desc: 'Toplam 1 Mr TL kazan', test: function () { return S.totalEarned >= 1e9; } },
-    { id: 'kazanc_1t', icon: '👑', name: 'Trilyon Kulübü', desc: 'Toplam 1 Tn TL kazan', test: function () { return S.totalEarned >= 1e12; } },
+    { id: 'kazanc_1k', icon: '🧾', name: 'İlk Fatura', desc: 'Toplam ' + tl(1e3) + ' kazan', test: function () { return S.totalEarned >= 1e3; } },
+    { id: 'kazanc_1m', icon: '💰', name: 'Milyonluk Proje', desc: 'Toplam ' + tl(1e6) + ' kazan', test: function () { return S.totalEarned >= 1e6; } },
+    { id: 'kazanc_1b', icon: '🏦', name: 'Milyar Değerleme', desc: 'Toplam ' + tl(1e9) + ' kazan', test: function () { return S.totalEarned >= 1e9; } },
+    { id: 'kazanc_1t', icon: '👑', name: 'Trilyon Kulübü', desc: 'Toplam ' + tl(1e12) + ' kazan', test: function () { return S.totalEarned >= 1e12; } },
     { id: 'ekip_10', icon: '👥', name: 'Küçük Ekip', desc: 'Aynı anda 10 çalışanın olsun', test: function () { return totalOwned() >= 10; } },
     { id: 'ekip_50', icon: '🏢', name: 'Kat Doldu', desc: 'Aynı anda 50 çalışanın olsun', test: function () { return totalOwned() >= 50; } },
     { id: 'ekip_150', icon: '🧍', name: 'Kalabalık Stand-up', desc: 'Aynı anda 150 çalışanın olsun', test: function () { return totalOwned() >= 150; } },
@@ -1337,10 +1340,17 @@
     if (capped) html = html.replace(uiText('ipo.confirm.accel', v), uiText('ipo.confirm.accelMax', v));
     return html;
   }
-  // v4.4: iki Umami olayının alanları (yalnız bunlar; kişisel veri ya da ek kimlik yok). Gönderim track() ile, izin kapısından.
+  // v4.4: veri taşıyan Umami olaylarının alanları (yalnız bunlar; kişisel veri ya da ek kimlik yok). Gönderim track() ile, izin kapısından.
+  // v4.4.1: eski 'reset_or_prestige' üçe ayrıldı: investment_round (Yatırım Turu, roundEventData), ipo_complete (Halka Arz) ve
+  // hard_reset (Kaydı sıfırla; yalnız ad). Halka Arz artık ayrıca reset_or_prestige göndermez.
+  //  investment_round: stage_id (turun, sıfırlamadan önce ulaştığı aşamanın ID'si)
   //  ipo_complete: stage_id (bu döngüde ulaşılan, payı belirleyen aşamanın ID'si), pays (kazanılan Borsa Payı), ipo_number (kaçıncı Halka Arz)
   //  tree_full:    hours_since_start (startedAt'ten bu yana tam saat; startedAt yok/geçersizse alan HİÇ yok), ipo_number,
   //                started_v44 ('yes' = kayıt v4.4 ya da sonrasında başladı / sıfırlandı, startedVersion dolu; 'no' = boş)
+  function roundEventData(stageRank) {
+    var st = STAGES[Math.max(0, Math.min(STAGES.length - 1, stageRank | 0))];
+    return { stage_id: st.id };
+  }
   function ipoEventData(stageRankBefore, pays) {
     var st = STAGES[Math.max(0, Math.min(STAGES.length - 1, stageRankBefore | 0))];
     return { stage_id: st.id, pays: pays, ipo_number: S.ipoCount };
@@ -1360,7 +1370,7 @@
     VERSION: VERSION, SAVE_VERSION: SAVE_VERSION, CFG: CFG, TREE: TREE, NEWS: NEWS, STAGE_TINTS: STAGE_TINTS,
     STAGE_BY_ID: STAGE_BY_ID, LEGACY_STAGE_IDS: LEGACY_STAGE_IDS, stageRank: stageRank, stageAtLeast: stageAtLeast, legacyStageIndex: legacyStageIndex,
     ipoCooldownLeft: ipoCooldownLeft, ipoRoundsOk: ipoRoundsOk, ipoPendingShares: ipoPendingShares, ipoKeptShares: ipoKeptShares, stagePay: stagePay,
-    shareAccel: shareAccel, accelEarned: accelEarned, nextShareAt: nextShareAt, fmtDur: fmtDur, num: num, ipoEventData: ipoEventData, treeEventData: treeEventData, treeFull: treeFull, ipoConfirmHtml: ipoConfirmHtml, cleanEventLog: cleanEventLog, EVENT_TYPES: EVENT_TYPES, resetCarryLog: resetCarryLog,
+    shareAccel: shareAccel, accelEarned: accelEarned, nextShareAt: nextShareAt, fmtDur: fmtDur, num: num, ipoEventData: ipoEventData, roundEventData: roundEventData, SUFFIXES: SUFFIXES.slice(), treeEventData: treeEventData, treeFull: treeFull, ipoConfirmHtml: ipoConfirmHtml, cleanEventLog: cleanEventLog, EVENT_TYPES: EVENT_TYPES, resetCarryLog: resetCarryLog,
     hasNode: hasNode, nodeState: nodeState, nodeCost: nodeCost, buyNode: buyNode, ipoUnlocked: ipoUnlocked, ipoGain: ipoGain, doIpo: doIpo,
     costGrowth: costGrowth, offlineCapSec: offlineCapSec, shareBonus: shareBonus, investorBonus: investorBonus, pctText: pctText, offerSec: offerSec, offerFreq: offerFreq, offerPayMult: offerPayMult,
     genUnlocked: genUnlocked, unspentMult: unspentMult, ipoPayStage: ipoPayStage, globalMult: globalMult,
@@ -1757,7 +1767,7 @@
         localStorage.setItem(LOG_CARRY_KEY, JSON.stringify({ epoch: epoch, log: carryLog }));
         localStorage.removeItem(SAVE_KEY); LEGACY_KEYS.forEach(function (k) { localStorage.removeItem(k); });
       } catch (e) {}
-      track('reset_or_prestige'); // Umami isteği keepalive ile gider; yeniden açılış onu kesmez
+      track('hard_reset'); // v4.4.1: yalnız olay adı. Umami isteği keepalive ile gider; yeniden açılış onu kesmez
       location.reload();
     }
   }
@@ -1860,7 +1870,15 @@
     rate: { shown: 0, from: 0, to: 0, t0: 0, fmt: function (v) { return tl(v) + '/sn'; } }
   };
   var rafId = 0;
-  function paintCounter(key) { el[key].textContent = counters[key].fmt(counters[key].shown); }
+  // v4.4.1: uzun tam sayı adları (en uzun "999,99 Septendesilyon TL") dar ekranda üst çubuğa sığsın: sayaçta 'long', üst çubukta
+  // 'long-num' sınıfı (style.css; yalnız dar ekranda etkili: yazı küçülür, marka yazısı gizlenir, logo kalır)
+  var LONG_COUNTER = 20;
+  function paintCounter(key) {
+    var t = counters[key].fmt(counters[key].shown), n = el[key];
+    n.textContent = t; n.classList.toggle('long', t.length >= LONG_COUNTER);
+    var tb = n.closest ? n.closest('.topbar') : null;
+    if (tb) tb.classList.toggle('long-num', el.money.classList.contains('long') || el.rate.classList.contains('long'));
+  }
   function setCounter(key, value, instant) {
     var c = counters[key];
     if (value === c.to && !instant) return;
@@ -2437,8 +2455,8 @@
   // istekten, otomatik sayfa görüntülemesi dahil, önce onu çağırır; izin yoksa istek düşer); betiğin kendi kapatma
   // anahtarı localStorage 'umami.disabled' kapalıyken konur, açılınca kaldırılır.
   // Gizlilik: çerezsiz Umami, Do Not Track'e uyulur (data-do-not-track), sorgu dizesi ve # asla gönderilmez
-  // (data-exclude-search / data-exclude-hash). Olay adı gider; v4.4'ten beri yalnızca ipo_complete ve tree_full olaylarında
-  // sabit, kişisel olmayan birkaç oyun alanı da gider (ipoEventData / treeEventData). E-posta, takma ad, kimlik asla.
+  // (data-exclude-search / data-exclude-hash). Olay adı gider; v4.4'ten beri ipo_complete ve tree_full, v4.4.1'den beri
+  // investment_round olaylarında sabit, kişisel olmayan birkaç oyun alanı da gider (ipoEventData / treeEventData / roundEventData). E-posta, takma ad, kimlik asla.
   // ------------------------------------------------------------------
   var TEL_KEYS = { pref: 'kodhane_tel', notice: 'kodhane_tel_notice', umamiOff: 'umami.disabled' };
   var UMAMI_SRC = 'https://analiz.teserix.com/script.js';
@@ -2505,8 +2523,8 @@
     umamiScript = s;
     return s;
   }
-  // Olay adı (ve v4.4'te iki olayda sabit alanlı veri) gönderir. İzin yoksa hiçbir şey yapmaz ve atar (kuyruğa almaz).
-  // Asla hata fırlatmaz. data yalnız ipo_complete / tree_full için (ipoEventData / treeEventData); başka alan eklenmez.
+  // Olay adı (ve v4.4.1'de üç olayda sabit alanlı veri: investment_round, ipo_complete, tree_full) gönderir. İzin yoksa hiçbir şey yapmaz ve atar (kuyruğa almaz).
+  // Asla hata fırlatmaz. data yalnız investment_round / ipo_complete / tree_full için (roundEventData / ipoEventData / treeEventData); başka alan eklenmez.
   function track(name, data) {
     var st, d = data && typeof data === 'object' ? JSON.parse(JSON.stringify(data)) : null;
     try {
@@ -2900,8 +2918,9 @@
           { label: 'Vazgeç', cls: 'ghost' },
           { label: 'Anlaştık!', cls: 'primary', onClick: function () {
             if (blockedAction()) return;
+            var roundStage = stageIndex(S.runEarned); // turun ulaştığı aşama (sıfırlamadan önce)
             doPrestige(); lastStageShown = 0; upgSig = ''; save(); renderAll();
-            track('reset_or_prestige');
+            track('investment_round', roundEventData(roundStage));   // v4.4.1: yalnız aşama ID'si
             toast('🚀 Yatırım turu tamamlandı! Yeni bir başlangıç.'); sfx('stage');
           } }
         ]
@@ -2924,7 +2943,6 @@
             var got = doIpo();
             if (!got) return;
             lastStageShown = 0; upgSig = ''; treeSig = ''; checkAchievements(); save(); renderAll();
-            track('reset_or_prestige');
             track('ipo_complete', ipoEventData(stageBefore, got));   // v4.4: aşama ID'si, pay, kaçıncı Halka Arz
             sfx('stage'); vibrate([20, 60, 20]);
             modal({
