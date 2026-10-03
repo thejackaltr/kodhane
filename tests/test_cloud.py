@@ -897,9 +897,12 @@ with sync_playwright() as p:
     fake = FakeSupabase()
     fake.v7 = True
     fake.others = [('Unicornçu', 3.1e11, 5), ('GrupBaşkanı', 2.2e13, 5), ('TeknoDev', 4.4e15, 6), ('GlobalH', 5e9, 5), ('Marslı', 8.2e17, 8),
-                   ('GelecekSürüm', 1e9, 5), ('Freelancer1', 500, 0)]
+                   ('GelecekSürüm', 1e9, 5), ('Freelancer1', 500, 0),
+                   # v4.5: skor kuralıyla 'asama_1e21', bilinmeyen kimlik, string olmayan kimlik ve HTML gibi görünen kimlik
+                   ('Rekortmen', 9e21, 8), ('Bilinmez', 2e8, 5), ('SayıKimlik', 1e8, 5), ('HtmlKimlik', 5e7, 5)]
     fake.others.sort(key=lambda r: -r[1])
-    fake.stage_ids = {'Unicornçu': 'unicorn', 'GrupBaşkanı': 'sirketler_grubu', 'GelecekSürüm': 'uzay_istasyonu'}
+    fake.stage_ids = {'Unicornçu': 'unicorn', 'GrupBaşkanı': 'sirketler_grubu', 'GelecekSürüm': 'uzay_istasyonu',
+                      'Rekortmen': 'asama_1e21', 'Bilinmez': 'asama_bilinmeyen_x', 'SayıKimlik': 5, 'HtmlKimlik': '<img src=x onerror="window.__xss2=1">'}
     ctx = b.new_context(locale='tr-TR', service_workers='block', viewport={'width': 360, 'height': 640}, device_scale_factor=1, is_mobile=True, has_touch=True)
     ctx.add_init_script(cfg_script(None, True))
     ctx.add_init_script(seed_script(tel='off'))   # isimsiz sayaç bandı kapalı (ekran görüntüsü)
@@ -908,14 +911,21 @@ with sync_playwright() as p:
     page, errs, perrs = open_page(ctx)
     check('v7: client legacy stage ids = fake / Backend legacy mapping', page.evaluate('Kodhane.LEGACY_STAGE_IDS') == LEGACY_IDS, page.evaluate('Kodhane.LEGACY_STAGE_IDS'))
     page.tap('#bottomNav [data-view="siralama"]')
-    ok = wait_until(page, "document.querySelectorAll('#lbList .lb-row').length === 7")
+    ok = wait_until(page, "document.querySelectorAll('#lbList .lb-row').length === 11")
     lab = dict(zip(page.evaluate("[...document.querySelectorAll('#lbList .lb-name')].map(e => e.textContent)"),
                    page.evaluate("[...document.querySelectorAll('#lbList .lb-stage')].map(e => e.textContent)")))
     check('v7: Unicorn and Şirketler Grubu shown with their own names (stage_id), not Global Holding', ok and lab.get('Unicornçu') == '🦄 Unicorn'
           and lab.get('GrupBaşkanı') == '🏬 Şirketler Grubu', json.dumps(lab, ensure_ascii=False))
     check('v7: other ids rendered from stage_id (Teknoloji Devi, Global Holding, Mars Ofisi, Freelancer)', lab.get('TeknoDev') == '🛰️ Teknoloji Devi'
           and lab.get('GlobalH') == '🌐 Global Holding' and lab.get('Marslı') == '🔴 Mars Ofisi' and lab.get('Freelancer1') == '🏠 Freelancer', json.dumps(lab, ensure_ascii=False))
-    check('v7: unknown stage_id (newer server) falls back to the legacy stage label', lab.get('GelecekSürüm') == '🌐 Global Holding', lab.get('GelecekSürüm'))
+    st_txt = page.evaluate('Kodhane.leaderboard.stageText')
+    gen, e21 = st_txt.get('leaderboard.stage.unknown'), st_txt.get('leaderboard.stage.asama_1e21')
+    check('v4.5: unknown stage_id (newer server) -> generic placeholder (no longer the legacy stage label), raw id not shown',
+          gen and lab.get('GelecekSürüm') == gen and lab.get('Bilinmez') == gen and 'uzay' not in json.dumps(lab) and 'bilinmeyen' not in json.dumps(lab), json.dumps(lab, ensure_ascii=False))
+    check('v4.5: stage_id asama_1e21 -> its own placeholder (not Mars Ofisi / raw id)', e21 and e21 != gen and lab.get('Rekortmen') == e21, [lab.get('Rekortmen'), e21])
+    check('v4.5: numeric stage_id -> generic placeholder, list still drawn (11 rows)', ok and lab.get('SayıKimlik') == gen, lab.get('SayıKimlik'))
+    check('v4.5: HTML-looking stage_id stays text: generic label, no <img> in the list, onerror never ran',
+          lab.get('HtmlKimlik') == gen and page.locator('#lbList img').count() == 0 and page.evaluate('window.__xss2') is None and '<img' not in page.inner_html('#lbList'), lab.get('HtmlKimlik'))
     check('v7: called once with exactly {p_limit: 50} (no p_game), v6 not called', fake.v7_calls == [(False, {'p_limit': 50})] and fake.rpc_calls == []
           and page.evaluate('Kodhane.leaderboard.v7.api') == 'v7', [fake.v7_calls, fake.rpc_calls])
     check('v7: 360px, no horizontal overflow', page.evaluate('document.documentElement.scrollWidth') <= 360)
