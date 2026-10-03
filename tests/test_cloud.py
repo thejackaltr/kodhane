@@ -733,6 +733,10 @@ with sync_playwright() as p:
     modal_txt = page.inner_text('#modal')
     check('reset: dialog mentions the backup (signed in; v4.4 süresiz metin, gün sayısı yok)',
           'Sıfırlamadan önce kaydının yedeği alınır.' in modal_txt and not re.search(r'\d+\s*gün', modal_txt), modal_txt[:300])
+    # Pencerenin açılış animasyonu (pop: scale .6 -> 1, 250 ms) bitmeden fare konumu alınırsa basış düğmenin üstündeki metne
+    # (.reset-backup) düşer, basılı tutma hiç başlamaz, expect_navigation 30 sn'de zaman aşımına uğrar. Yük altında görülen
+    # oynaklığın nedeni buydu (v4.4.2 incelemesi: 150 denemede 7 kez; bu bekleme ile 90/90). test_reset_ui / test_v44_ui 400 ms bekliyor.
+    page.wait_for_function("() => document.getAnimations().every((a) => a.playState !== 'running')", timeout=5000)
     with page.expect_navigation():
         page.hover('#resetHold'); page.mouse.down(); page.wait_for_timeout(2300); page.mouse.up()
     page.wait_for_selector('#clickBtn')
