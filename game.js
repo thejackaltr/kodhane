@@ -1,4 +1,4 @@
-/* Kodhane: Ajans Tycoon — v4.4.1 (sayı adları Vigintilyon'a kadar tam yazım + Umami olay ayrımı; v4.4.0: Halka Arz hisseleri korur + hızlandırıcı + 12 sa bekleme + Unicorn / Şirketler Grubu aşamaları + aşama ID'leri, isimsiz sayaç izni + gizlilik ayarı + güvenli kayıt sıfırlama + yeni aşamalar + Halka Arz + Borsa Payı Ağacı + müşteri sektörleri)
+/* Kodhane: Ajans Tycoon — v4.4.2 (kayda data.clientVersion yazılır; v4.4.1: sayı adları Vigintilyon'a kadar tam yazım + Umami olay ayrımı; v4.4.0: Halka Arz hisseleri korur + hızlandırıcı + 12 sa bekleme + Unicorn / Şirketler Grubu aşamaları + aşama ID'leri, isimsiz sayaç izni + gizlilik ayarı + güvenli kayıt sıfırlama + yeni aşamalar + Halka Arz + Borsa Payı Ağacı + müşteri sektörleri)
  * Vanilla JS, derleme adımı yok. Tüm oyun metinleri Türkçe.
  * v1 kayıtları ('kodhane_ajans_save_v1') ilk açılışta otomatik olarak taşınır; v2/v3/v4 kayıtları kayıpsız yeni alanları alır.
  * Denge sayıları CFG (ayarlar) ve tablolarda durur; açıklama metinleri sayıları bu ayarlardan okur.
@@ -10,7 +10,11 @@
   // ------------------------------------------------------------------
   // Tanımlar (denge değerleri)
   // ------------------------------------------------------------------
-  var VERSION = '4.4.1';
+  var VERSION = '4.4.2';
+  // v4.4.2: kaydın 'data.clientVersion' alanı = oyunun sürüm etiketi (VERSION ile birebir, Stats'taki "v4.4.2" ile aynı). Sunucunun
+  // kazanç günlüğü (kodhane_progress_log.client_version) ve B paketi okur; biçim ^[0-9A-Za-z._-]{1,32}$. Oyun durumunda (S) tutulmaz:
+  // her yazmada saveData() ekler, yüklemede okunmaz (alan yoksa ya da başka sürümün değeri varsa kayıt aynen yüklenir).
+  var CLIENT_VERSION = VERSION;
   // kayıt biçimi (3 = oyun v4, 4 = v4.1, 5 = v4.4: aşamalar ID ile). Kayda 'version' ve (v4.3.1'den beri) 'saveVersion' olarak yazılır.
   var SAVE_VERSION = 5;
   var SAVE_KEY = 'kodhane_ajans_save_v2';
@@ -1164,7 +1168,7 @@
       var r = Math.max(0, Math.min(STAGES.length - 1, S[k] | 0));
       o[k + 'Id'] = STAGES[r].id; o[k] = legacyStageIndex(r);
     });
-    o.version = SAVE_VERSION; o.saveVersion = SAVE_VERSION; o.epoch = meta.epoch; o.resetAt = meta.resetAt; return o;
+    o.version = SAVE_VERSION; o.saveVersion = SAVE_VERSION; o.clientVersion = CLIENT_VERSION; o.epoch = meta.epoch; o.resetAt = meta.resetAt; return o;
   }
 
   // v4.3.1: İleri sürüm koruması. Kayıt biçimi sürümü kayıtta 'saveVersion' (v4.3.1'den beri) ve 'version' (eski ad, aynı
@@ -1367,7 +1371,7 @@
   }
 
   var Core = {
-    VERSION: VERSION, SAVE_VERSION: SAVE_VERSION, CFG: CFG, TREE: TREE, NEWS: NEWS, STAGE_TINTS: STAGE_TINTS,
+    VERSION: VERSION, CLIENT_VERSION: CLIENT_VERSION, SAVE_VERSION: SAVE_VERSION, CFG: CFG, TREE: TREE, NEWS: NEWS, STAGE_TINTS: STAGE_TINTS,
     STAGE_BY_ID: STAGE_BY_ID, LEGACY_STAGE_IDS: LEGACY_STAGE_IDS, stageRank: stageRank, stageAtLeast: stageAtLeast, legacyStageIndex: legacyStageIndex,
     ipoCooldownLeft: ipoCooldownLeft, ipoRoundsOk: ipoRoundsOk, ipoPendingShares: ipoPendingShares, ipoKeptShares: ipoKeptShares, stagePay: stagePay,
     shareAccel: shareAccel, accelEarned: accelEarned, nextShareAt: nextShareAt, fmtDur: fmtDur, num: num, ipoEventData: ipoEventData, roundEventData: roundEventData, SUFFIXES: SUFFIXES.slice(), treeEventData: treeEventData, treeFull: treeFull, ipoConfirmHtml: ipoConfirmHtml, cleanEventLog: cleanEventLog, EVENT_TYPES: EVENT_TYPES, resetCarryLog: resetCarryLog,

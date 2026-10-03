@@ -13,7 +13,7 @@ function fresh() { K.state = K.newState(); return K.state; }
 const CFG = K.CFG, H = CFG.halkaArz, T = CFG.tree;
 
 // ---------------------------------------------------------------- sürüm, aşamalar
-check('version 4.4.1 / save version 5', K.VERSION === '4.4.1' && K.SAVE_VERSION === 5 && fresh().version === 5);
+check('version 4.4.2 / save version 5', K.VERSION === '4.4.2' && K.SAVE_VERSION === 5 && fresh().version === 5);
 const names = K.STAGES.map((s) => s.name);
 check('11 stages: Unicorn and Şirketler Grubu between Global Holding and Teknoloji Devi (v4.4)', names.length === 11 && names.slice(5).join('|') === 'Global Holding|Unicorn|Şirketler Grubu|Teknoloji Devi|Yapay Zekâ Laboratuvarı|Mars Ofisi', names);
 check('stage thresholds strictly increasing', K.STAGES.every((s, i) => i === 0 || s.at > K.STAGES[i - 1].at));
@@ -72,7 +72,7 @@ check('small numbers unchanged', [0, 5, 12.4, 999, 1000, 1234.5, -2.5e6].map(K.f
   check('index.html Yatırım Turu note: "100 Milyon TL" (= tl(PRESTIGE 1e8)), no Mn/Mr/Tn', html.includes('İlk hisse için bu turda en az ' + K.tl(1e8) + ' kazanmalısın.') &&
     K.tl(1e8) === '100 Milyon TL' && !/\d\s*(Mn|Mr|Tn)\b/.test(html));
   const sw = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
-  check('sw.js cache name moves forward with the version (v4.4.1)', /var CACHE_VERSION = 'v4\.4\.1';/.test(sw)); }
+  check('sw.js cache name moves forward with the version (v4.4.2)', /var CACHE_VERSION = 'v4\.4\.2';/.test(sw)); }
 
 // ---------------------------------------------------------------- Halka Arz
 fresh();

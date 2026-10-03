@@ -18,7 +18,7 @@ function fresh() { K.state = K.newState(); return K.state; }
 function round(earn) { K.earn(earn); return K.doPrestige(); }
 
 // ---------------------------------------------------------------- ayarlar = denge simülasyonu E100cd12
-check('version 4.4.1, save version 5 (unchanged)', K.VERSION === '4.4.1' && K.SAVE_VERSION === 5);
+check('version 4.4.2, save version 5 (unchanged)', K.VERSION === '4.4.2' && K.SAVE_VERSION === 5);
 check('Halka Arz balance = E100cd12 (keep 1.0 floor, bankPending, +10%/pay, cap 40, 12 h)',
   H.keepShares === 1.0 && H.keepMode === 'floor' && H.bankPending === true && H.shareGainPerEarned === 0.10 && H.accelCap === 40 && H.cooldownSec === 43200, H);
 check('stage pays by ID = [0,0,0,0,0,2,3,4,5,8,12]', K.STAGES.map((s, i) => K.stagePay(i)).join(',') === '0,0,0,0,0,2,3,4,5,8,12');
@@ -325,14 +325,15 @@ check('reset.prestigeHint (r3)', K.RESET_TEXT['reset.prestigeHint'] === "Başar�
   check('v4.4.1: investment_round carries roundEventData only, hard_reset name only',
     /track\('investment_round', roundEventData\(roundStage\)\)/.test(src) && /track\('hard_reset'\);/.test(src)); }
 
-// ---------------------------------------------------------------- v4.4.1: kayıt biçimi değişmedi (v4.4.0 kaydı yükle + kaydet)
+// ---------------------------------------------------------------- v4.4.2: kayıt biçimi = v4.4.0 + yalnız clientVersion (saveVersion 5 kalır)
 { // v4.4.0 (879f67b) serialize() anahtarları, sırasıyla
   const KEYS440 = ["version","money","runEarned","totalEarned","clicks","clickEarned","playTime","startedAt","lastSaved","gens","upgrades","shares","prestigeCount","boostLeft","eventsClicked","offlineEarned","stage","buffs","achievements","critClicks","eventsResolved","logoAccepted","revisions","meetings","serverCrashes","reputation","noMeetingSec","daily","ipoShares","ipoSharesEarned","ipoCount","cycleEarned","cycleRounds","tree","stageBest","newsSeen","newsPending","cycleStage","sectorCool","followUps","pendingPay","ipoAt","startedVersion","eventLog","stageId","stageBestId","cycleStageId","saveVersion","epoch","resetAt"];
   const keysDeep = (o, p = '') => Object.keys(o).flatMap((k) => { const v = o[k], q = p + k; return v && typeof v === 'object' && !Array.isArray(v) ? [q].concat(keysDeep(v, q + '.')) : [q]; });
   const S = K.newState();
-  const fresh441 = (K.state = S, JSON.parse(K.serialize()));
-  check('v4.4.1 fresh save: same keys, same order as v4.4.0', JSON.stringify(Object.keys(fresh441)) === JSON.stringify(KEYS440), Object.keys(fresh441).filter((k) => !KEYS440.includes(k)));
-  check('v4.4.1: no clientVersion in the save', !('clientVersion' in fresh441));
+  const fresh441 = (K.state = S, JSON.parse(K.serialize()));   // (ad eski: v4.4.2 kaydı)
+  const KEYS442 = KEYS440.slice(); KEYS442.splice(KEYS442.indexOf('saveVersion') + 1, 0, 'clientVersion');   // tek ek alan, saveVersion'ın hemen arkasında
+  check('v4.4.2 fresh save: v4.4.0 keys in the same order + only clientVersion (after saveVersion)', JSON.stringify(Object.keys(fresh441)) === JSON.stringify(KEYS442), Object.keys(fresh441).filter((k) => !KEYS440.includes(k)));
+  check('v4.4.2: data.clientVersion = "4.4.2" (= VERSION), saveVersion still 5', fresh441.clientVersion === '4.4.2' && fresh441.clientVersion === K.VERSION && fresh441.saveVersion === 5 && fresh441.version === 5);
   // dolu bir v4.4.0 kaydı (gerçek 879f67b çıktısıyla aynı biçim): yükle -> kaydet; alan kümesi (iç içe) ve değerler aynı (lastSaved hariç)
   let src440 = null;
   try { src440 = require('child_process').execFileSync('git', ['show', '879f67b:game.js'], { cwd: path.join(__dirname, '..'), stdio: ['ignore', 'pipe', 'ignore'] }).toString(); } catch (e) { src440 = null; }
@@ -348,15 +349,43 @@ check('reset.prestigeHint (r3)', K.RESET_TEXT['reset.prestigeHint'] === "Başar�
     s0.gens.stajyer = 150; s0.gens.veri = 12; s0.stageBest = 9; s0.stage = 9; s0.cycleStage = 9;
     const raw0 = K0.serialize(), o0 = JSON.parse(raw0);
     K.deserialize(raw0); const o1 = JSON.parse(K.serialize());
-    check('v4.4.0 save -> v4.4.1 load+save: identical nested key set and order', JSON.stringify(keysDeep(o1)) === JSON.stringify(keysDeep(o0)),
+    const noCv = (o) => { const c = JSON.parse(JSON.stringify(o)); delete c.clientVersion; return c; };
+    check('v4.4.0 save (no clientVersion) -> v4.4.2 load+save: identical nested key set and order + clientVersion', JSON.stringify(keysDeep(noCv(o1))) === JSON.stringify(keysDeep(o0)) && o1.clientVersion === '4.4.2',
       [keysDeep(o1).filter((k) => !keysDeep(o0).includes(k)), keysDeep(o0).filter((k) => !keysDeep(o1).includes(k))]);
-    const strip = (o) => { const c = JSON.parse(JSON.stringify(o)); delete c.lastSaved; return c; };
-    check('v4.4.0 save -> v4.4.1 load+save: all values identical (except lastSaved)', JSON.stringify(strip(o1)) === JSON.stringify(strip(o0)),
+    const strip = (o) => { const c = noCv(o); delete c.lastSaved; return c; };
+    check('v4.4.0 save -> v4.4.2 load+save: all values identical (except lastSaved, + clientVersion)', JSON.stringify(strip(o1)) === JSON.stringify(strip(o0)),
       Object.keys(o0).filter((k) => k !== 'lastSaved' && JSON.stringify(o0[k]) !== JSON.stringify(o1[k])));
-    check('v4.4.0 save -> v4.4.1: still saveVersion 5 / version 5, no clientVersion', o1.saveVersion === 5 && o1.version === 5 && !('clientVersion' in o1));
+    check('v4.4.0 save -> v4.4.2: still saveVersion 5 / version 5', o1.saveVersion === 5 && o1.version === 5);
     K0.deserialize(K.serialize()); const o2 = JSON.parse(K0.serialize());
-    check('v4.4.1 save -> v4.4.0 load+save (rollback): identical (except lastSaved), not blocked as a future save', JSON.stringify(strip(o2)) === JSON.stringify(strip(o0)) && !K0.writesBlocked());
+    check('v4.4.2 save -> v4.4.0 load+save: identical (except lastSaved), clientVersion dropped, not blocked as a future save', JSON.stringify(strip(o2)) === JSON.stringify(strip(o0)) && !('clientVersion' in o2) && !K0.writesBlocked());
   }
+}
+
+// ---- v4.4.2: data.clientVersion (sunucu kazanç günlüğü / B paketi okur)
+{
+  // ayrı modül kopyası: önceki bölümlerin ileri sürüm / eski sekme bayrakları bu bölümü etkilemesin
+  const GP = path.join(__dirname, '..', 'game.js'); delete require.cache[require.resolve(GP)];
+  const K = require(GP); const fresh = () => { K.state = K.newState(); return K.state; };
+  const CV_RE = /^[0-9A-Za-z._-]{1,32}$/;   // kodhane_progress_log: 1..32 karakter [0-9A-Za-z._-], aksi halde NULL
+  check('CLIENT_VERSION = VERSION (oyunun sürüm etiketi), sunucu biçimine uygun', K.CLIENT_VERSION === K.VERSION && CV_RE.test(K.CLIENT_VERSION), K.CLIENT_VERSION);
+  fresh();
+  const out = JSON.parse(K.serialize());
+  check('serialize writes data.clientVersion (string) next to saveVersion', out.clientVersion === K.VERSION && typeof out.clientVersion === 'string' && out.saveVersion === K.SAVE_VERSION, out.clientVersion);
+  check('clientVersion is not part of the game state (newState / S)', !('clientVersion' in K.newState()) && !('clientVersion' in K.state));
+  const old = JSON.parse(K.serialize()); delete old.clientVersion;
+  let ok = true; try { K.deserialize(JSON.stringify(old)); } catch (e) { ok = false; }
+  check('old save without clientVersion loads (no throw, not treated as a newer save) and is written with the current value', ok && !K.futureSave && JSON.parse(K.serialize()).clientVersion === K.VERSION);
+  const odd = JSON.parse(K.serialize()); odd.clientVersion = '4.4.1-rollback'; odd.clicks = 4242;
+  K.deserialize(JSON.stringify(odd));
+  check('save written by another client version loads unchanged otherwise; next write carries this client version', K.state.clicks === 4242 && JSON.parse(K.serialize()).clientVersion === K.VERSION);
+  const broke = [null, 5, ['4.4'], '', '<script>'].filter((bad) => {
+    const b = JSON.parse(K.serialize()); b.clientVersion = bad; b.clicks = 77;
+    try { K.deserialize(JSON.stringify(b)); return !(K.state.clicks === 77 && JSON.parse(K.serialize()).clientVersion === K.VERSION); } catch (e) { return true; }
+  });
+  check('odd clientVersion values (null, number, array, empty, markup) do not break loading; rewritten with this version', broke.length === 0, broke);
+  const v3 = { version: 3, money: 10, runEarned: 50, totalEarned: 50, gens: { stajyer: 2 } };
+  K.deserialize(JSON.stringify(v3));
+  check('very old save (version 3, no clientVersion) migrates and writes clientVersion', K.state.gens.stajyer === 2 && JSON.parse(K.serialize()).clientVersion === K.VERSION);
 }
 
 console.log(`\n${pass}/${pass + fail} passed`);

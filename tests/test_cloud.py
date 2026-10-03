@@ -448,7 +448,8 @@ with sync_playwright() as p:
     check('login: URL cleaned', page.url == BASE + '/', page.url)
     check('login: session persisted', page.evaluate("!!localStorage.getItem('%s')" % STORAGE_KEY))
     row = fake.rows.get(UID_A)
-    check('first login: local save uploaded', row is not None and row['data']['clicks'] == 42 and row['data']['totalEarned'] >= 5000 and row['save_version'] == 5,
+    check('first login: local save uploaded', row is not None and row['data']['clicks'] == 42 and row['data']['totalEarned'] >= 5000 and row['save_version'] == 5
+          and row['data'].get('clientVersion') == page.evaluate('Kodhane.VERSION'),
           json.dumps(row)[:200] if row else 'no row')
     check('first login: no backup needed', page.evaluate("localStorage.getItem('%s')" % BACKUP_KEY) is None)
     check('login: header shows signed-in state', 'signed' in page.get_attribute('#accountBtn', 'class'))
