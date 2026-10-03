@@ -1,4 +1,4 @@
-/* Kodhane: Ajans Tycoon — v4.4.2 (kayda data.clientVersion yazılır; v4.4.1: sayı adları Vigintilyon'a kadar tam yazım + Umami olay ayrımı; v4.4.0: Halka Arz hisseleri korur + hızlandırıcı + 12 sa bekleme + Unicorn / Şirketler Grubu aşamaları + aşama ID'leri, isimsiz sayaç izni + gizlilik ayarı + güvenli kayıt sıfırlama + yeni aşamalar + Halka Arz + Borsa Payı Ağacı + müşteri sektörleri)
+/* Kodhane: Ajans Tycoon — v4.4.3 (gizlilik metnine (İsimsiz sayaç ayrıntıları) kazanç kaydı paragrafı, Yazı kazanç kaydı r2; v4.4.2: kayda data.clientVersion yazılır; v4.4.1: sayı adları Vigintilyon'a kadar tam yazım + Umami olay ayrımı; v4.4.0: Halka Arz hisseleri korur + hızlandırıcı + 12 sa bekleme + Unicorn / Şirketler Grubu aşamaları + aşama ID'leri, isimsiz sayaç izni + gizlilik ayarı + güvenli kayıt sıfırlama + yeni aşamalar + Halka Arz + Borsa Payı Ağacı + müşteri sektörleri)
  * Vanilla JS, derleme adımı yok. Tüm oyun metinleri Türkçe.
  * v1 kayıtları ('kodhane_ajans_save_v1') ilk açılışta otomatik olarak taşınır; v2/v3/v4 kayıtları kayıpsız yeni alanları alır.
  * Denge sayıları CFG (ayarlar) ve tablolarda durur; açıklama metinleri sayıları bu ayarlardan okur.
@@ -10,7 +10,7 @@
   // ------------------------------------------------------------------
   // Tanımlar (denge değerleri)
   // ------------------------------------------------------------------
-  var VERSION = '4.4.2';
+  var VERSION = '4.4.3';
   // v4.4.2: kaydın 'data.clientVersion' alanı = oyunun sürüm etiketi (VERSION ile birebir, Stats'taki "v4.4.2" ile aynı). Sunucunun
   // kazanç günlüğü (kodhane_progress_log.client_version) ve B paketi okur; biçim ^[0-9A-Za-z._-]{1,32}$. Oyun durumunda (S) tutulmaz:
   // her yazmada saveData() ekler, yüklemede okunmaz (alan yoksa ya da başka sürümün değeri varsa kayıt aynen yüklenir).
@@ -197,6 +197,10 @@
     "telemetry.off": "Kapat",
     "telemetry.detailsLink": "Ayrıntılar",
     "telemetry.detailsTitle": "İsimsiz sayaç hakkında",
+    // v4.4.3: kazanç kaydı paragrafı (Yazı, kazanç kaydı gizlilik satırı r2; tek kaynak o dosya) olay listesi paragrafından sonra,
+    // veri sorumlusu paragrafından önce tek eleman olarak girer. Çeşidi (A/B, C6'lı/C6'sız) seçim günü tek yama ile eklenir:
+    // /workspace/kodhane-v443-variants/<çeşit>.patch. Temel dalda paragraf yok. Hesap penceresinde bu metin (ya da özeti) yok;
+    // özet cümlesi gerekirse Yazı'dan gelir. Yedek cümlesi eklenmez (Yazı karar verecek).
     "telemetry.details": [
       "Oyunu geliştirmek için sayfa ziyaretlerini ve bazı oyun olaylarını Teserix'in kendi analiz sunucusunda sayıyoruz. Sayılan olaylar şunlar: oyuna başlama, giriş, oturumdaki ilk bulut kaydı, sıfırlama, Yatırım turu, Halka Arz, Borsa Payı ağacının dolması, paylaşım ve Açık Ofis haberine tıklama. Çoğu olayda bizim gönderdiğimiz yalnızca olayın adı. Üç olayda oyundaki ilerlemenden birkaç bilgi de gider: Yatırım turunda ulaştığın aşama; Halka Arz'da ulaştığın aşama, kazandığın Borsa Payı ve kaçıncı Halka Arz olduğu; ağaç dolduğunda oyuna başladığından bu yana geçen süre (tam saat olarak), kaçıncı Halka Arz olduğu ve oyuna v4.4 güncellemesinden önce mi, sonra mı başladığın. Bunların dışında hesabın ya da kaydının içeriği gönderilmez. Analiz aracı her kayda standart olarak şunları da ekler: sayfa adresi (? ve # işaretinden sonrası hariç), sayfa başlığı, geldiğin site, alan adı, ekran boyutu, tarayıcı dili, tarayıcın, işletim sistemin ve cihaz türün. Konum yalnızca ülke düzeyinde tutulur, IP adresi istatistik kayıtlarına yazılmaz. Ziyaret kayıtları 13 ay sonra silinir.",
       "Ayrıca sıralama ve Açık Ofis haberlerinin kaç kez gösterildiğini ve tıklandığını Teserix'in kendi sunucusunda sayıyoruz. Bu sayımda yalnızca olayın adı gider. Sunucu olayları tek tek kaydetmez, yalnızca o günün toplamını bir artırır. Hesap bilgisi, IP adresi ya da cihaz bilgisi bu sayıma yazılmaz.",

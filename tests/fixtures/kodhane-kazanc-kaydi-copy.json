@@ -1,0 +1,17 @@
+{
+  "_source": "plans/kodhane-kazanc-kaydi-gizlilik-satiri-yazi-r2.md (Yazı, 2026-10-03; oyuncu metinleri r1 ile aynı). Anahtar: account.privacyDetails[yeni, kazanç günlüğü]. Çeşit adları: A = 12 ay yazan, B = süre yazmayan; tam = C6 (silme cümlesi) dahil, c6siz = C6 çıkarılmış.",
+  "sentences": {
+    "C1": "Bulut kaydı kullanıyorsan oyundaki ilerleme olayların sunucuda ayrıca kaydedilir:",
+    "C2": "e-posta adresin tutulmaz.",
+    "C3": "Bu kayıtları yalnızca hileyi fark etmek ve kaybolan ilerlemeni geri vermek için kullanırız.",
+    "C4": "Kayıtlar 12 ay saklanır.",
+    "C5": "Kaydını sıfırlaman bu kayıtları silmez.",
+    "C6": "Hesabın ya da Kodhane kaydın silinirse bu kayıtlar da silinir."
+  },
+  "variants": {
+    "A-tam": "Bulut kaydı kullanıyorsan oyundaki ilerleme olayların sunucuda ayrıca kaydedilir: hisse ve Borsa Payı kazançların, Halka Arz ve Yatırım Turları, Borsa Payı Ağacı'ndan aldığın geliştirmeler, kaydını sıfırlaman ya da geri yüklemen ve yaptığımız telafiler. Her kayıtta değişikliğin miktarı, kullanıcı kimliğin, oyunun sürümü ve zaman bulunur; e-posta adresin tutulmaz. Bu kayıtları yalnızca hileyi fark etmek ve kaybolan ilerlemeni geri vermek için kullanırız. Kayıtlar 12 ay saklanır. Kaydını sıfırlaman bu kayıtları silmez. Hesabın ya da Kodhane kaydın silinirse bu kayıtlar da silinir.",
+    "A-c6siz": "Bulut kaydı kullanıyorsan oyundaki ilerleme olayların sunucuda ayrıca kaydedilir: hisse ve Borsa Payı kazançların, Halka Arz ve Yatırım Turları, Borsa Payı Ağacı'ndan aldığın geliştirmeler, kaydını sıfırlaman ya da geri yüklemen ve yaptığımız telafiler. Her kayıtta değişikliğin miktarı, kullanıcı kimliğin, oyunun sürümü ve zaman bulunur; e-posta adresin tutulmaz. Bu kayıtları yalnızca hileyi fark etmek ve kaybolan ilerlemeni geri vermek için kullanırız. Kayıtlar 12 ay saklanır. Kaydını sıfırlaman bu kayıtları silmez.",
+    "B-tam": "Bulut kaydı kullanıyorsan oyundaki ilerleme olayların sunucuda ayrıca kaydedilir: hisse ve Borsa Payı kazançların, Halka Arz ve Yatırım Turları, Borsa Payı Ağacı'ndan aldığın geliştirmeler, kaydını sıfırlaman ya da geri yüklemen ve yaptığımız telafiler. Her kayıtta değişikliğin miktarı, kullanıcı kimliğin, oyunun sürümü ve zaman bulunur; e-posta adresin tutulmaz. Bu kayıtları yalnızca hileyi fark etmek ve kaybolan ilerlemeni geri vermek için kullanırız. Kaydını sıfırlaman bu kayıtları silmez. Hesabın ya da Kodhane kaydın silinirse bu kayıtlar da silinir.",
+    "B-c6siz": "Bulut kaydı kullanıyorsan oyundaki ilerleme olayların sunucuda ayrıca kaydedilir: hisse ve Borsa Payı kazançların, Halka Arz ve Yatırım Turları, Borsa Payı Ağacı'ndan aldığın geliştirmeler, kaydını sıfırlaman ya da geri yüklemen ve yaptığımız telafiler. Her kayıtta değişikliğin miktarı, kullanıcı kimliğin, oyunun sürümü ve zaman bulunur; e-posta adresin tutulmaz. Bu kayıtları yalnızca hileyi fark etmek ve kaybolan ilerlemeni geri vermek için kullanırız. Kaydını sıfırlaman bu kayıtları silmez."
+  }
+}

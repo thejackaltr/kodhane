@@ -3,7 +3,7 @@
  * böylece her yayında yeni bir önbellek oluşur ve oyuncuya "Yeni sürüm hazır" bildirimi gider.
  */
 var BUILD = '__BUILD__';
-var CACHE_VERSION = 'v4.4.2';
+var CACHE_VERSION = 'v4.4.3';
 var CACHE = 'kodhane-' + CACHE_VERSION + '-' + BUILD;
 var ASSETS = ['./', './index.html', './style.css', './game.js', './cloud.js', './leaderboard.js', './manifest.webmanifest',
   './icon.svg', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
