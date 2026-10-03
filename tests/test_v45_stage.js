@@ -46,14 +46,19 @@ const hostile = {}; Object.defineProperty(hostile, 'stage_id', { enumerable: tru
 let hostileOut; try { hostileOut = LB.rowStageLabel(hostile); } catch (e) { hostileOut = 'THROW ' + e.message; }
 check('rowStageLabel: a row whose stage_id getter throws -> generic, no exception', hostileOut === GEN, hostileOut);
 
-// ---------------------------------------------------------------- satır: stage_id (v7) / best_stage_id / stage (v6)
+// ---------------------------------------------------------------- satır: stage_id (v7) / stage (v6); best_stage_id okunmaz
 const row = (o) => Object.assign({ rank: 1, nickname: 'x', score: 10, is_me: false, status: 'ok' }, o);
 check('row: known stage_id -> its name (Unicorn, not the legacy Global Holding)', LB.rowStageLabel(row({ stage: 5, stage_id: 'unicorn' })) === '🦄 Unicorn');
 check('row: stage_id asama_1e21 -> asama_1e21 placeholder (not the legacy Mars Ofisi)', LB.rowStageLabel(row({ stage: 8, stage_id: 'asama_1e21' })) === E21);
 check('row: unknown stage_id -> generic placeholder (no longer the legacy stage label)', LB.rowStageLabel(row({ stage: 5, stage_id: 'asama_bilinmeyen_x' })) === GEN);
 check('row: non-string stage_id (number / "" / object) -> generic', [5, '', {}, true].every((v) => LB.rowStageLabel(row({ stage: 5, stage_id: v })) === GEN));
-check('row: best_stage_id key (if the RPC names it so) works the same', LB.rowStageLabel(row({ stage: 8, best_stage_id: 'asama_1e21' })) === E21
-  && LB.rowStageLabel(row({ stage: 5, best_stage_id: 'sirketler_grubu' })) === '🏬 Şirketler Grubu' && LB.rowStageLabel(row({ stage: 5, best_stage_id: 'asama_bilinmeyen_x' })) === GEN);
+check('row: best_stage_id is not read (table column only, no RPC returns it): a row with only best_stage_id -> legacy label from stage',
+  LB.rowStageLabel(row({ stage: 8, best_stage_id: 'asama_1e21' })) === '🔴 Mars Ofisi' && LB.rowStageLabel(row({ stage: 5, best_stage_id: 'sirketler_grubu' })) === '🌐 Global Holding'
+  && LB.rowStageLabel(row({ stage: 5, best_stage_id: 'asama_bilinmeyen_x' })) === '🌐 Global Holding' && LB.rowStageLabel(row({ best_stage_id: 'unicorn' })) === GEN);
+check('row: stage_id wins over a stray best_stage_id', LB.rowStageLabel(row({ stage: 5, stage_id: 'unicorn', best_stage_id: 'asama_1e21' })) === '🦄 Unicorn');
+check('row: v6 row (no stage_id key, legacy rank only) -> legacy view for every legacy rank 0..8 + "Aşama N" beyond',
+  K.LEGACY_STAGE_IDS.every((id, i) => { const v6 = { rank: 1, nickname: 'x', score: 10, stage: i, is_me: false, status: 'ok' }; return !('stage_id' in v6) && LB.rowStageLabel(v6) === LB.stageLabel(i); })
+  && LB.rowStageLabel({ rank: 1, nickname: 'x', score: 10, stage: 9, is_me: false }) === 'Aşama 10');
 check('row: stage_id null / missing (v6, own row) -> legacy stage label as before', LB.rowStageLabel(row({ stage: 5, stage_id: null })) === '🌐 Global Holding'
   && LB.rowStageLabel(row({ stage: 6 })) === '🛰️ Teknoloji Devi' && LB.rowStageLabel(row({ stage: 12 })) === 'Aşama 13');
 check('row: no stage information at all -> generic, no exception', [row({}), row({ stage: null, stage_id: null }), null, undefined, 'x', 5].every((r) => LB.rowStageLabel(r) === GEN));
