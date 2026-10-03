@@ -386,6 +386,20 @@ check('reset.prestigeHint (r3)', K.RESET_TEXT['reset.prestigeHint'] === "Başar�
   const v3 = { version: 3, money: 10, runEarned: 50, totalEarned: 50, gens: { stajyer: 2 } };
   K.deserialize(JSON.stringify(v3));
   check('very old save (version 3, no clientVersion) migrates and writes clientVersion', K.state.gens.stajyer === 2 && JSON.parse(K.serialize()).clientVersion === K.VERSION);
+  // canlı v4.4.1 (6358db4) ile: v4.4.2 kaydını açan v4.4.1 sekmesi engellenmez, kayıt aynen kalır (clientVersion düşer); geri yön de aynı
+  let src441 = null;
+  try { src441 = require('child_process').execFileSync('git', ['show', '6358db4:game.js'], { cwd: path.join(__dirname, '..'), stdio: ['ignore', 'pipe', 'ignore'] }).toString(); } catch (e) { src441 = null; }
+  if (!src441) console.log('NOTE git show 6358db4:game.js yok: v4.4.1 gidiş-dönüş testi atlandı');
+  else {
+    const m = { exports: {} }; new Function('module', 'exports', 'require', src441).call({}, m, m.exports, require); const K1 = m.exports;
+    K1.state = K1.newState(); Object.assign(K1.state, { money: 2.5e40, runEarned: 3e41, cycleEarned: 3.5e41, totalEarned: 4e42, shares: 99, ipoCount: 3, reputation: 30, tree: ['kod_1'], upgrades: ['click_1'] });
+    K1.state.gens.stajyer = 120; K1.state.stageBest = 10; K1.state.stage = 10; K1.state.cycleStage = 10;
+    const strip = (o) => { const c = JSON.parse(JSON.stringify(o)); delete c.lastSaved; delete c.clientVersion; return c; };
+    const o1 = JSON.parse(K1.serialize()); K.deserialize(JSON.stringify(o1)); const o2 = JSON.parse(K.serialize());
+    check('v4.4.1 save -> v4.4.2 load+save: identical except lastSaved + clientVersion "4.4.2"', K1.VERSION === '4.4.1' && JSON.stringify(strip(o2)) === JSON.stringify(strip(o1)) && o2.clientVersion === '4.4.2' && !K.writesBlocked());
+    K1.deserialize(JSON.stringify(o2)); const o3 = JSON.parse(K1.serialize());
+    check('v4.4.2 save -> v4.4.1 load+save: not blocked, identical, clientVersion dropped', !K1.writesBlocked() && JSON.stringify(strip(o3)) === JSON.stringify(strip(o1)) && !('clientVersion' in o3));
+  }
 }
 
 console.log(`\n${pass}/${pass + fail} passed`);
