@@ -448,7 +448,7 @@ with sync_playwright() as p:
     check('login: URL cleaned', page.url == BASE + '/', page.url)
     check('login: session persisted', page.evaluate("!!localStorage.getItem('%s')" % STORAGE_KEY))
     row = fake.rows.get(UID_A)
-    check('first login: local save uploaded', row is not None and row['data']['clicks'] == 42 and row['data']['totalEarned'] >= 5000 and row['save_version'] == 5
+    check('first login: local save uploaded', row is not None and row['data']['clicks'] == 42 and row['data']['totalEarned'] >= 5000 and row['save_version'] == 6
           and row['data'].get('clientVersion') == page.evaluate('Kodhane.VERSION'),
           json.dumps(row)[:200] if row else 'no row')
     check('first login: no backup needed', page.evaluate("localStorage.getItem('%s')" % BACKUP_KEY) is None)
@@ -919,11 +919,11 @@ with sync_playwright() as p:
     check('v7: other ids rendered from stage_id (Teknoloji Devi, Global Holding, Mars Ofisi, Freelancer)', lab.get('TeknoDev') == '🛰️ Teknoloji Devi'
           and lab.get('GlobalH') == '🌐 Global Holding' and lab.get('Marslı') == '🔴 Mars Ofisi' and lab.get('Freelancer1') == '🏠 Freelancer', json.dumps(lab, ensure_ascii=False))
     st_txt = page.evaluate('Kodhane.leaderboard.stageText')
-    gen, e21 = st_txt.get('leaderboard.stage.unknown'), st_txt.get('leaderboard.stage.asama_1e21')
-    check('v4.5: unknown stage_id (newer server) -> generic placeholder (no longer the legacy stage label), raw id not shown',
+    gen, e21 = st_txt.get('leaderboard.stageUnknown'), '🌌 Yörünge Üssü'
+    check('v4.5: unknown stage_id (newer server) -> generic "Yeni aşama" (Yazı asama-1e21 r1; no longer the legacy stage label), raw id not shown',
           gen and lab.get('GelecekSürüm') == gen and lab.get('Bilinmez') == gen and 'uzay' not in json.dumps(lab) and 'bilinmeyen' not in json.dumps(lab), json.dumps(lab, ensure_ascii=False))
-    check('v4.5: stage_id asama_1e21 -> its own placeholder (not Mars Ofisi / raw id)', e21 and e21 != gen and lab.get('Rekortmen') == e21, [lab.get('Rekortmen'), e21])
-    check('v4.5: numeric stage_id -> generic placeholder, list still drawn (11 rows)', ok and lab.get('SayıKimlik') == gen, lab.get('SayıKimlik'))
+    check('v4.5: stage_id asama_1e21 -> 🌌 Yörünge Üssü (game STAGES; not Mars Ofisi / raw id)', gen == 'Yeni aşama' and e21 != gen and lab.get('Rekortmen') == e21, [lab.get('Rekortmen'), e21])
+    check('v4.5: numeric stage_id -> generic name, list still drawn (11 rows)', ok and lab.get('SayıKimlik') == gen, lab.get('SayıKimlik'))
     check('v4.5: HTML-looking stage_id stays text: generic label, no <img> in the list, onerror never ran',
           lab.get('HtmlKimlik') == gen and page.locator('#lbList img').count() == 0 and page.evaluate('window.__xss2') is None and '<img' not in page.inner_html('#lbList'), lab.get('HtmlKimlik'))
     check('v7: called once with exactly {p_limit: 50} (no p_game), v6 not called', fake.v7_calls == [(False, {'p_limit': 50})] and fake.rpc_calls == []
@@ -1136,11 +1136,11 @@ with sync_playwright() as p:
     ctx.route('https://cdn.jsdelivr.net/**', lambda r: r.fulfill(status=200, headers={'content-type': 'application/javascript; charset=utf-8', 'access-control-allow-origin': '*'}, body=SDK_BYTES))
     page, errs, perrs = open_page(ctx)
     ok = wait_until(page, 'Kodhane.cloud.state.reconciled && Kodhane.cloud.state.lastPushAt > 0', 10000)
-    check('426: signed in, first write ok (row v5)', ok and fake.rows[UID_O]['data'].get('saveVersion') == 5)
-    # başka cihazda daha yeni sürüm (saveVersion 6) yazdı; sunucuda sürüm koruması açık
+    check('426: signed in, first write ok (row v6 = v4.5)', ok and fake.rows[UID_O]['data'].get('saveVersion') == 6)
+    # başka cihazda daha yeni sürüm (saveVersion 7) yazdı; sunucuda sürüm koruması açık (v4.5: bu istemci 6)
     fake.saves.version_guard = True
-    newer = dict(fake.rows[UID_O]['data'], saveVersion=6, version=6, clicks=777, totalEarned=99999.0)
-    fake.rows[UID_O] = dict(fake.rows[UID_O], data=newer, save_version=6, revision=fake.rows[UID_O]['revision'] + 1)
+    newer = dict(fake.rows[UID_O]['data'], saveVersion=7, version=7, clicks=777, totalEarned=99999.0)
+    fake.rows[UID_O] = dict(fake.rows[UID_O], data=newer, save_version=7, revision=fake.rows[UID_O]['revision'] + 1)
     row_before = json.dumps(fake.rows[UID_O], sort_keys=True)
     page.evaluate("Kodhane.state.clicks += 5; Kodhane.save()")
     local_before = page.evaluate("localStorage.getItem('%s')" % SAVE_KEY)
@@ -1154,7 +1154,7 @@ with sync_playwright() as p:
     check('426: push fails once (the 426 write), server row unchanged', r is False and fake.count('POST', SAVES_PATH) == posts0 + 1 and json.dumps(fake.rows[UID_O], sort_keys=True) == row_before,
           [r, fake.count('POST', SAVES_PATH) - posts0])
     check('426: recorded as PT426 / 426 / save_version_too_old', page.evaluate('Kodhane.cloud.state.lastTooOld') == {'code': 'PT426', 'message': 'save_version_too_old', 'status': 426,
-          'details': 'sent saveVersion 5, stored saveVersion 6'}, page.evaluate('Kodhane.cloud.state.lastTooOld'))
+          'details': 'sent saveVersion 6, stored saveVersion 7'}, page.evaluate('Kodhane.cloud.state.lastTooOld'))
     band = page.inner_text('#updateBar')
     check('426: olderTab band shown (title, short text at 360px, "Sayfayı yenile"), not the generic error', page.is_visible('#updateBar')
           and page.get_attribute('#updateBar', 'data-test') == 'older-tab-band' and page.inner_text('#updateBar .ub-title') == TT['title']
@@ -1175,7 +1175,7 @@ with sync_playwright() as p:
     page.tap('#bottomNav [data-view="kod"]'); page.wait_for_timeout(200)
     page.screenshot(path=os.path.join(OUT_SHOTS, 'kodhane-v44-eski-sekme-360x640.png'))
     # aynı anda newerSave (daha yeni kayıt okundu) ve servis çalışanı güncellemesi: tek bant, olderTab metni
-    page.evaluate("Kodhane.guardFuture({saveVersion: 6}, 'test'); Kodhane.showUpdate({postMessage() {}})")
+    page.evaluate("Kodhane.guardFuture({saveVersion: 7}, 'test'); Kodhane.showUpdate({postMessage() {}})")
     page.wait_for_timeout(150)
     check('overlap: olderTab + newerSave + SW update -> ONE band, olderTab text only', page.locator('.update-bar:not(.hidden)').count() == 1
           and page.get_attribute('#updateBar', 'data-test') == 'older-tab-band' and page.inner_text('#updateBar .ub-title') == TT['title']

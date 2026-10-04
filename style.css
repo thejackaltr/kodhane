@@ -579,3 +579,5 @@ html.nb-open body { padding-bottom: calc(var(--nb-space, 160px) + 8px); }
   /* olay kartı bandın üstündeki alana sığmazsa kendi içinde kayar ("Sonra" ve seçimler ulaşılabilir kalır) */
   html.nb-open .event-card { max-height: calc(100vh - var(--nb-space, 160px) - 8px); overflow-y: auto; overscroll-behavior: contain; padding: 10px 12px; }
 }
+/* v4.5: uzun tek parça adlar (ör. Yazı'dan bekleyen [anahtar] yer tutucuları) kartı taşırmasın */
+.ach-name, .ach-desc, .tree-branch h4, .tree-node b, .tree-node small, .upg-name, .stats dt, .stats dd { overflow-wrap: anywhere; }

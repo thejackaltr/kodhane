@@ -2208,7 +2208,7 @@
       ['Çözülen olay kartı', fmt(S.eventsResolved)],
       ['İtibar', fmt(S.reputation)],
       // v4.5 avantaj paneli (P2): eşik açıksa ✓, değilse ilerleme. Satır adları METIN BEKLENIYOR (V45_TEXT rep.perk.E1..E4).
-      ['E1', 'E2', 'E3', 'E4'].map(function (e) { return [v45Text('rep.perk.' + e), repPerk(e) ? '✓' : fmt(S.reputation) + ' / ' + fmt(V45.rep.thr[e])]; })
+      ['E1', 'E2', 'E3', 'E4'].map(function (e) { return [v45Text('rep.perk.' + e), repPerk(e) ? '✓' : fmt(S.reputation) + ' / ' + fmt(V45.rep.thr[e])]; }),
       ['Başarım bonusu', '+%' + S.achievements.length + ' üretim'],
       ['Günlük seri (en iyi)', (S.daily.streak || 0) + ' gün (' + (S.daily.best || 0) + ')'],
       ['Çevrimdışı kazanç', tl(S.offlineEarned)],
