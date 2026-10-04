@@ -24,7 +24,8 @@ jobs:
     timeout-minutes: 10
     env:
       # Simülasyon çapraz kontrolü yerel klasör ister; CI'da yok -> test kendi içinde SKIP eder.
-      KODHANE_SIM: ${{ runner.temp }}/kodhane-sim-yok
+      # (job düzeyindeki env'de runner bağlamı kullanılamaz; sabit, var olmayan bir yol)
+      KODHANE_SIM: /tmp/kodhane-sim-yok
     steps:
       # Tam geçmiş: test_v44.js eski sürümleri (879f67b, 6358db4) git show ile karşılaştırır.
       - uses: actions/checkout@v5
