@@ -20,6 +20,7 @@ const NOW = Date.parse('2026-10-04T10:15:30Z'); // TSİ 13:15:30
 
 // ---------------------------------------------------------------- metinler
 const R3 = '/workspace/plans/kodhane-p7-kayip-bildir-yazi-r3.json';
+const R3T = fs.existsSync(R3) ? JSON.parse(fs.readFileSync(R3, 'utf8')).LOSS_TEXT : L.TEXT;   // yoksa birebir karşılaştırma kendi metnine düşer
 if (fs.existsSync(R3)) {
   const J = JSON.parse(fs.readFileSync(R3, 'utf8')).LOSS_TEXT;
   check('LOSS_TEXT = Yazı r3 LOSS_TEXT (all keys, same order, same text)', JSON.stringify(L.TEXT) === JSON.stringify(J), Object.keys(J).filter((k) => J[k] !== L.TEXT[k]));
@@ -111,9 +112,9 @@ check('409 loss_report_open -> limit.open', C(E(409, 'loss_report_open')).key ==
 check('409 stale_revision -> stale (refetch, no retry)', C(E(409, 'stale_revision', 'sent revision 3, server revision 4')).kind === 'stale');
 check('409 other -> generic', C(E(409, 'x')).kind === 'generic');
 const lim = C(E(429, 'loss_report_daily_limit', '2026-10-05T08:00:00Z', 'PT429'));
-check('429 PT429 loss_report_daily_limit + details UTC ISO -> limit.tooMany, retryAt = details', lim.kind === 'limit' && lim.key === 'lossReport.limit.tooMany' && lim.retryAt === Date.parse('2026-10-05T08:00:00Z') && lim.defaulted === false, lim);
+check('429 PT429 loss_report_daily_limit + details UTC ISO -> limit.daily, retryAt = details', lim.kind === 'limit' && lim.key === 'lossReport.limit.daily' && lim.retryAt === Date.parse('2026-10-05T08:00:00Z') && lim.defaulted === false, lim);
 const limM = C(E(429, 'loss_report_monthly_limit', '2026-11-01T00:00:00Z', 'PT429'));
-check('429 PT429 loss_report_monthly_limit + details -> limit.tooMany, retryAt = details', limM.key === 'lossReport.limit.tooMany' && limM.retryAt === Date.parse('2026-11-01T00:00:00Z') && limM.defaulted === false, limM);
+check('429 PT429 loss_report_monthly_limit + details -> limit.monthly, retryAt = details', limM.key === 'lossReport.limit.monthly' && limM.retryAt === Date.parse('2026-11-01T00:00:00Z') && limM.defaulted === false, limM);
 check('429 server example "2026-10-04T16:30:51Z" (second precision) parsed exactly', C(E(429, 'loss_report_daily_limit', '2026-10-04T16:30:51Z', 'PT429')).retryAt === Date.parse('2026-10-04T16:30:51Z'));
 check('429 details with milliseconds / surrounding spaces still parsed', C(E(429, 'loss_report_monthly_limit', '2026-10-05T08:00:00.123Z')).retryAt === Date.parse('2026-10-05T08:00:00.123Z') && C(E(429, 'loss_report_daily_limit', ' 2026-10-05T08:00:00Z ')).defaulted === false);
 check('429 unknown message with a time -> limit.tooMany, time used', (() => { const r = C(E(429, 'rate_limited', '2026-10-04T11:00:00Z')); return r.key === 'lossReport.limit.tooMany' && r.retryAt === Date.parse('2026-10-04T11:00:00Z'); })());
@@ -121,13 +122,23 @@ check('429 unknown / empty / non-string / prototype-name message -> tooMany, no 
   const r = C({ data: null, error: { message: msg, details: null, code: 'PT429', hint: null }, status: 429 }); return r.kind === 'limit' && r.key === 'lossReport.limit.tooMany' && r.defaulted === true; }));
 check('429 with no error body at all -> tooMany default 24 h, no crash', (() => { const r = C({ data: null, error: null, status: 429 }); return r.kind === 'limit' && r.key === 'lossReport.limit.tooMany' && r.retryAt === NOW + 86400000; })());
 const noDet = C(E(429, 'loss_report_daily_limit', null));
-check('429 daily without details -> safe default now + 24 h (defaulted)', noDet.retryAt === NOW + 86400000 && noDet.defaulted === true && noDet.key === 'lossReport.limit.tooMany');
-check('429 monthly without details (null / undefined / missing) -> default 24 h', [null, undefined].every((d) => { const r = C(E(429, 'loss_report_monthly_limit', d)); return r.retryAt === NOW + 86400000 && r.defaulted; })
+check('429 daily without details -> limit.daily, safe default now + 24 h (defaulted)', noDet.retryAt === NOW + 86400000 && noDet.defaulted === true && noDet.key === 'lossReport.limit.daily');
+check('429 monthly without details (null / undefined / missing) -> limit.monthly, default 24 h', [null, undefined].every((d) => { const r = C(E(429, 'loss_report_monthly_limit', d)); return r.key === 'lossReport.limit.monthly' && r.retryAt === NOW + 86400000 && r.defaulted; })
   && C({ data: null, error: { message: 'loss_report_monthly_limit', code: 'PT429' }, status: 429 }).retryAt === NOW + 86400000);
 check('429 bad details (seconds, local time, offset, garbage, empty, number, object) -> default', ['3600', '2026-10-05 08:00:00', '2026-10-05T08:00:00+03:00', 'yarın', '', 3600, {}].every((d) => C(E(429, 'loss_report_daily_limit', d)).defaulted === true));
 check('429 broken ISO that matches the shape (month 13, day 45, hour 99) -> default 24 h', ['2026-13-01T00:00:00Z', '2026-10-45T00:00:00Z', '2026-10-05T99:00:00Z', '2026-10-05T08:61:00Z'].every((d) => { const r = C(E(429, 'loss_report_monthly_limit', d)); return r.defaulted === true && r.retryAt === NOW + 86400000; }));
-check('429 LIMIT_KEYS table: daily + monthly -> tooMany; daily/monthly texts still in TEXT (Yazı r3)', /var LIMIT_KEYS = \{ loss_report_daily_limit: 'lossReport\.limit\.tooMany', loss_report_monthly_limit: 'lossReport\.limit\.tooMany' \}/.test(SRC)
-  && !!L.TEXT['lossReport.limit.daily'] && !!L.TEXT['lossReport.limit.monthly']);
+check('429 LIMIT_KEYS table: daily -> limit.daily, monthly -> limit.monthly (each its own text)', /var LIMIT_KEYS = \{ loss_report_daily_limit: 'lossReport\.limit\.daily', loss_report_monthly_limit: 'lossReport\.limit\.monthly' \}/.test(SRC)
+  && L.TEXT['lossReport.limit.daily'] !== L.TEXT['lossReport.limit.monthly'] && L.TEXT['lossReport.limit.daily'] !== L.TEXT['lossReport.limit.tooMany']);
+check('429 daily / monthly / tooMany texts = Yazı r3 verbatim, each with one {sure}', ['daily', 'monthly', 'tooMany'].every((k) => L.TEXT['lossReport.limit.' + k] === R3T['lossReport.limit.' + k]
+  && (L.TEXT['lossReport.limit.' + k].match(/\{sure\}/g) || []).length === 1));
+check('429 {sure} filled: classify key + sureText -> no placeholder left, ends with the duration (daily "1 saat 30 dakika", monthly "3 gün 1 dakika", unknown "1 gün")', [
+  ['loss_report_daily_limit', new Date(NOW + 5400000).toISOString().replace(/\.\d+Z$/, 'Z'), 'lossReport.limit.daily', '1 saat 30 dakika'],
+  ['loss_report_monthly_limit', new Date(NOW + 3 * 86400000 + 30000).toISOString().replace(/\.\d+Z$/, 'Z'), 'lossReport.limit.monthly', '3 gün 1 dakika'],
+  ['yeni_sinir', null, 'lossReport.limit.tooMany', '1 gün']].every(([msg, det, key, sure]) => {
+    const r = C(E(429, msg, det, 'PT429')), t = L.text(r.key, { sure: L.sureText(r.retryAt, NOW) });
+    return r.key === key && t === L.TEXT[key].replace('{sure}', sure) && !/[{}]/.test(t); }));
+check('429 daily and monthly are really used (reachable from classify, not only listed in TEXT)', C(E(429, 'loss_report_daily_limit')).key === 'lossReport.limit.daily' && C(E(429, 'loss_report_monthly_limit')).key === 'lossReport.limit.monthly'
+  && C(E(429, 'loss_report_daily_limit ')).key === 'lossReport.limit.tooMany' && C(E(429, 'LOSS_REPORT_DAILY_LIMIT')).key === 'lossReport.limit.tooMany');
 check('429 far future clamped to 31 days (daily and monthly)', C(E(429, 'loss_report_daily_limit', '2030-01-01T00:00:00Z')).retryAt === NOW + 31 * 86400000 && C(E(429, 'loss_report_monthly_limit', '2030-01-01T00:00:00Z')).retryAt === NOW + 31 * 86400000);
 check('429 header Retry-After is not used (no headers read)', !/retry-after/i.test(SRC.replace(/Retry-After (YOK|DEĞİL|yok)/g, '').replace(/Retry-After YOK/g, '')));
 check('network error / empty -> generic', C({ data: null, error: { message: 'Failed to fetch' }, status: 0 }).kind === 'generic' && C(null).kind === 'generic');

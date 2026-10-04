@@ -154,11 +154,10 @@
     return fmtDur(Math.ceil(ms / 60000) * 60);
   }
   function errOf(resp) { return (resp && resp.error) || null; }
-  // 429 message -> metin anahtarı (Yazılım Yöneticisi, 4 Ekim: iki sınır da lossReport.limit.tooMany). Sunucu: code PT429,
-  // message loss_report_daily_limit (24 saatte 1) | loss_report_monthly_limit (30 günde 5), details = tekrar deneme zamanı UTC ISO.
-  // Not: Yazı r3 ve Backend istemci notu günlük/aylık için ayrı metin (lossReport.limit.daily / .monthly) öngörüyordu; metinler
-  // TEXT'te duruyor, geri dönmek bu tabloyu değiştirmekten ibaret. Tabloda olmayan message da tooMany'ye düşer.
-  var LIMIT_KEYS = { loss_report_daily_limit: 'lossReport.limit.tooMany', loss_report_monthly_limit: 'lossReport.limit.tooMany' };
+  // 429 message -> metin anahtarı (Yazı r3; Backend istemci notu §3; Yazılım Yöneticisi 4 Ekim 17:18 kararı: ayrı metinler).
+  // Sunucu: code PT429, message loss_report_daily_limit (24 saatte 1) | loss_report_monthly_limit (30 günde 5), hint null,
+  // details = tekrar deneme zamanı UTC ISO. Tabloda olmayan (bilinmeyen, boş, dize olmayan) message lossReport.limit.tooMany'ye düşer.
+  var LIMIT_KEYS = { loss_report_daily_limit: 'lossReport.limit.daily', loss_report_monthly_limit: 'lossReport.limit.monthly' };
   // RPC yanıtı -> { kind, key, field?, retryAt?, defaulted? }. kind: ok | needLogin | invalid | noCloudSave | open | stale | limit | generic
   function classify(resp, now) {
     if (!resp) return { kind: 'generic', key: 'lossReport.error.generic' };
@@ -180,7 +179,7 @@
     }
     if (st === 429) {
       var r = parseRetry(det, now);
-      var key = LIMIT_KEYS.hasOwnProperty(msg) ? LIMIT_KEYS[msg] : 'lossReport.limit.tooMany';   // bilinmeyen / boş message da tooMany
+      var key = Object.prototype.hasOwnProperty.call(LIMIT_KEYS, msg) ? LIMIT_KEYS[msg] : 'lossReport.limit.tooMany';   // bilinmeyen / boş / dize olmayan: tooMany
       return { kind: 'limit', key: key, retryAt: r.at, defaulted: r.defaulted };
     }
     return { kind: 'generic', key: 'lossReport.error.generic' };
