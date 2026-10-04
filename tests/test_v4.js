@@ -72,7 +72,7 @@ check('small numbers unchanged', [0, 5, 12.4, 999, 1000, 1234.5, -2.5e6].map(K.f
   check('index.html Yatırım Turu note: "100 Milyon TL" (= tl(PRESTIGE 1e8)), no Mn/Mr/Tn', html.includes('İlk hisse için bu turda en az ' + K.tl(1e8) + ' kazanmalısın.') &&
     K.tl(1e8) === '100 Milyon TL' && !/\d\s*(Mn|Mr|Tn)\b/.test(html));
   const sw = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
-  check('sw.js cache name moves forward with the version (v4.4.2)', /var CACHE_VERSION = 'v4\.4\.2';/.test(sw)); }
+  check('sw.js cache name moves forward with the version (v4.5.0) and caches lossreport.js', /var CACHE_VERSION = 'v4\.5\.0';/.test(sw) && /'\.\/lossreport\.js'/.test(sw)); }
 
 // ---------------------------------------------------------------- Halka Arz
 fresh();
