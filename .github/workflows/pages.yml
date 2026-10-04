@@ -34,6 +34,9 @@ jobs:
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
+      - name: Remove server code (supabase, docs) from the site
+        run: rm -rf supabase docs
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
