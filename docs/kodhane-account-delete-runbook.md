@@ -137,6 +137,14 @@ Değişkenleri dosyanın başına `\set` ile ekle. Geçici dosya yalnız `/tmp`'
   satır üretir, token'a girseydi oynamaya devam eden oyuncuda ön kontrol hep yeniden istenirdi. Satırlar kayıttan türetilir,
   karar (uid + mod) değişmez. Tablo yoksa (migration öncesi) adım atlanır. `auth.users` silinince satırlar cascade ile de gider.
   Testler: `run_kodhane_account_delete_tests.sh` L-*.
+- **Kayıp bildir (`kodhane_loss.loss_report`, migration 20261003060000, v4.5, ayrı kurulum):** kuruluysa ön kontrol tabloda
+  `kodhane|kodhane_loss.loss_report|user_id|N|delete|delete` gösterir, iki mod da siler (adım K3c), doğrulama 0 bekler.
+  Bildirimler `expect` token'ına **girer**: ön kontrolden sonra yeni bildirim gelirse silme durur, ön kontrol yeniden yapılır.
+  Silme özetinin üstünde ayrı bir satır yazar: `kodhane_loss.loss_report N (Kayıp bildir reports, mode …)`; özet satırı aynı kalır.
+  Tablo yoksa adım atlanır, çıktı eskisiyle aynıdır. `auth.users` silinince bildirimler cascade ile de gider. Silme listesi
+  geri uygulamasında bildirimin `created_at`'i "önce/sonra" kararına girer. Testler: `run_kodhane_loss_report_tests.sh` D-*.
+  **Bu migration kuruluyken eski (`be96e03`) silme betiği kullanılmaz:** `full` modda tabloyu "other" sayıp durur (güvenli),
+  `kodhane_only` modda bildirimleri bırakır.
 
 ## Silme listesi (geri yüklemeden sonra silinen hesaplar geri gelmesin)
 Tasarım `plans/silme-listesi-kodhane-tasarim.md`. Referans uygulama Fenomen v2.2 (`feaec45`).

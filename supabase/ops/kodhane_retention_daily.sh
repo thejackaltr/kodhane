@@ -10,7 +10,10 @@
 #      Only if migration 20261003020000 is applied: otherwise "skipped" and exit 0 (the retention package is installed
 #      before the progress log). After steps 1-3 on purpose: they are committed before it runs, so a failure here leaves them done.
 #   5. kodhane_private.cleanup_deletion_log()   deletion log (silme listesi) rows older than 45 days. Only if migration
-#      20261003040000 is applied (separate install step): otherwise "skipped". LAST, same reason as step 4.
+#      20261003040000 is applied (separate install step): otherwise "skipped". After step 4, same reason.
+#   6. kodhane_loss.cleanup_loss_reports()      Kayıp bildir: closed reports (applied / rejected) 12 months after their last
+#      status change (Aryen). Only if migration 20261003060000 (v4.5 P7, separate install + approval) is applied:
+#      otherwise "skipped". LAST.
 # Secrets: none in this file. Uses the container's own POSTGRES_PASSWORD only if it is set (never printed); local
 # connections in the Supabase image are trust anyway. Never use set -x here.
 # Env (optional): KD_DB (postgres), KD_PGUSER (postgres), KD_PGHOST (localhost), KD_AUDIT_BATCH (5000, 1..50000),
@@ -56,7 +59,13 @@ else
   if [ "$pleft" -gt 0 ]; then echo "$(ts) kodhane retention: progress log batch cap reached ($MAXB x $B); the rest is deleted on the next run"; fi
 fi
 if [ "$(q "select (to_regprocedure('kodhane_private.cleanup_deletion_log()') is not null)::int")" != 1 ]; then
-  echo "$(ts) kodhane retention deletion log skipped: migration 20261003040000 not applied in database $DB"; exit 0
+  echo "$(ts) kodhane retention deletion log skipped: migration 20261003040000 not applied in database $DB"
+else
+  dl=$(q "select kodhane_private.cleanup_deletion_log()")
+  echo "$(ts) kodhane retention deletion log OK: deletion_log $dl row(s) older than 45 days deleted"
 fi
-dl=$(q "select kodhane_private.cleanup_deletion_log()")
-echo "$(ts) kodhane retention deletion log OK: deletion_log $dl row(s) older than 45 days deleted"
+if [ "$(q "select (to_regprocedure('kodhane_loss.cleanup_loss_reports()') is not null)::int")" != 1 ]; then
+  echo "$(ts) kodhane retention loss reports skipped: migration 20261003060000 not applied in database $DB"; exit 0
+fi
+lr=$(q "select kodhane_loss.cleanup_loss_reports()")
+echo "$(ts) kodhane retention loss reports OK: loss_report $lr closed report(s) older than 12 months deleted"

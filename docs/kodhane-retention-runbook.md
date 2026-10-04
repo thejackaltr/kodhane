@@ -40,8 +40,11 @@
   kazanç günlüğü migration'ı canlıya girdikten sonra** Dokploy'daki komutla değiştirilir (test D0e: ilk komutla birebir başlar).
 - `supabase/ops/kodhane_retention_dokploy_command_with_deletion_log.txt` ve `..._with_progress_log_and_deletion_log.txt`: ilk iki
   komutun birebir aynısı + sonda silme listesi adımı (tek `-c`). Yalnız silme listesi migration'ı canlıdayken (aşağıda).
+- `supabase/ops/kodhane_retention_dokploy_command_with_progress_log_and_loss_report.txt` ve `..._with_progress_log_and_deletion_log_and_loss_report.txt`:
+  kazanç günlüğü (ve silme listesi) komutunun birebir aynısı + sonda kayıp bildir adımı (tek `-c`). Yalnız P7 canlıdayken, P7 kurulumuyla birlikte ayrı onayla (aşağıda).
 - `supabase/ops/kodhane_retention_daily.sh`: **yalnız yerel test ve elle kullanım aracı.** Dokploy bunu çalıştırmaz, çünkü dosya container'da yok. Aynı adımları aynı sırayla uygular;
-  kazanç günlüğü adımı ve ondan sonra silme listesi adımı (5) en sonda; fonksiyon yoksa "skipped" yazıp atlanır (testler S8, deletion_log T6/T6b).
+  kazanç günlüğü adımı, ondan sonra silme listesi adımı (5) ve kayıp bildir adımı (6) en sonda; fonksiyon yoksa "skipped" yazıp atlanır
+  (testler S8, deletion_log T6/T6b, kayıp bildir K5).
 - Eski host betiği `kodhane_retention_dokploy_task.sh` kaldırıldı. Dokploy v0.30.8'de host tipi görev yok.
 - Testler: `supabase/tests/retention/run_kodhane_retention_tests.sh` (`KR_CT=<container>`). Yalnız yerel container'da çalıştırılır.
 
@@ -166,6 +169,27 @@ psql -X -P pager=off -U postgres -d postgres -v ON_ERROR_STOP=1 -x -c "select pu
 - Ekledikten sonra elle bir kez tetikle; sonda `deletion_log_rows | 0` (ilk 45 gün) ve çıkış 0 beklenir.
 - Silme listesi geri alınacaksa önce komut, liste adımı olmayan dosyaya döner.
 - Bu adımdan bağımsız olarak listenin DB dışına alınması (15 dakikada bir dışa aktarım) ayrı bir görevdir ve saklama işine dahil değildir.
+
+### Kayıp bildir adımı (kayıp bildir migration'ı `20261003060000` canlıya girdikten sonra, P7 kurulumuyla birlikte, ayrı onayla)
+Adım tek bir `-c`, sonda: `-c "select kodhane_loss.cleanup_loss_reports() as loss_report_rows"`.
+Fonksiyon kapanmış (`applied`, `rejected`) ve son durum değişikliği 12 aydan eski bildirimleri tek DELETE ile siler. Açık bildirimlere dokunmaz.
+P7 kazanç günlüğü ister. Bu yüzden iki dosya da kazanç günlüğü adımını içerir:
+- Silme listesi adımı **yoksa** `supabase/ops/kodhane_retention_dokploy_command_with_progress_log_and_loss_report.txt`:
+```sh
+psql -X -P pager=off -U postgres -d postgres -v ON_ERROR_STOP=1 -x -c "select public.kodhane_cleanup_save_backups() as kodhane_save_backups, public.acik_ofis_cleanup_save_backups() as acik_ofis_save_backups" -c "select coalesce(sum(b.n), 0) as audit_log_entries, count(*) filter (where b.n > 0) as audit_batches from (select public.kodhane_cleanup_audit_log(5000) as n from generate_series(1, 20)) b" -c "select count(*) as audit_left_over_12m from auth.audit_log_entries a where a.created_at < now() - make_interval(months => 12)" -c "select coalesce(sum(b.n), 0) as progress_log_rows, count(*) filter (where b.n > 0) as progress_log_batches from (select public.kodhane_cleanup_progress_log(365, 5000) as n from generate_series(1, 20)) b" -c "select count(*) as progress_log_left_over_365d from public.kodhane_progress_log p where p.created_at < now() - make_interval(days => 365)" -c "select kodhane_loss.cleanup_loss_reports() as loss_report_rows"
+```
+- Silme listesi adımı **varsa** `supabase/ops/kodhane_retention_dokploy_command_with_progress_log_and_deletion_log_and_loss_report.txt`:
+```sh
+psql -X -P pager=off -U postgres -d postgres -v ON_ERROR_STOP=1 -x -c "select public.kodhane_cleanup_save_backups() as kodhane_save_backups, public.acik_ofis_cleanup_save_backups() as acik_ofis_save_backups" -c "select coalesce(sum(b.n), 0) as audit_log_entries, count(*) filter (where b.n > 0) as audit_batches from (select public.kodhane_cleanup_audit_log(5000) as n from generate_series(1, 20)) b" -c "select count(*) as audit_left_over_12m from auth.audit_log_entries a where a.created_at < now() - make_interval(months => 12)" -c "select coalesce(sum(b.n), 0) as progress_log_rows, count(*) filter (where b.n > 0) as progress_log_batches from (select public.kodhane_cleanup_progress_log(365, 5000) as n from generate_series(1, 20)) b" -c "select count(*) as progress_log_left_over_365d from public.kodhane_progress_log p where p.created_at < now() - make_interval(days => 365)" -c "select kodhane_private.cleanup_deletion_log() as deletion_log_rows" -c "select kodhane_loss.cleanup_loss_reports() as loss_report_rows"
+```
+- Önceki dosyanın birebir aynısıdır, sonuna bir `-c` eklenir. Komut tek tırnak ve `$` içermez.
+- Kayıp bildir migration'ı kurulu değilse komut son adımda hata verir: çıkış 1, önceki adımlar commit edilmiş olur. Bu yüzden adım P7'den önce eklenmez.
+  Kayıp bildir testi K4: test DB'sinde komut `loss_report_rows | 1` verir.
+- `kodhane_retention_daily.sh` (elle/yerel betik) 6. adımda aynı fonksiyonu çağırır. Fonksiyon yoksa `loss report: skipped` yazar (test K5).
+  5. adım artık betiği bitirmez.
+- Ekledikten sonra elle bir kez tetikle; sonda `loss_report_rows | 0` (ilk 12 ay) ve çıkış 0 beklenir.
+- P7 geri alınacaksa önce komut, kayıp bildir adımı olmayan dosyaya döner.
+- Dokploy değişikliği bu iş kapsamında **yapılmadı** (DevOps dondurması).
 
 ## İlk çalıştırma (elle tetikle)
 1. Görevi kaydettikten sonra Dokploy'da "Run" / "şimdi çalıştır" ile bir kez elle tetikle.

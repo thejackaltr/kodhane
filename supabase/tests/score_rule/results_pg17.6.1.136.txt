@@ -1,0 +1,59 @@
+== container kd46-136: supabase/postgres:17.6.1.136 sha256:f519727303f0af6862882be2a30f420e28710d4209226e681aaddb
+PASS M0 without package B: refused, nothing created  -- 1|t
+PASS M1 after B: kodhane_score_plausible is v4.4b (463f2109c35b825827e57b8098b49947)  -- 463f2109c35b825827e57b8098b49947
+PASS M2 migration applies (own transaction)
+PASS M3 definition md5 = reviewed v4.5 (a52586896ae53ac8e5159aa500c4b031); comment v4.5  -- a52586896ae53ac8e5159aa500c4b031|t
+PASS M3b SET jit = off: proconfig search_path + jit=off (after B: search_path only)  -- search_path="",jit=off
+PASS M4 B / A untouched: other public functions, kodhane_saves triggers (+ the two stage log triggers), plausible owner + ACL  -- dfadd52a843b1884d9e91f357d220fdd|kodhane_saves_a_version_guard:O,kodhane_saves_before_delete:O,kodhane_saves_before_write:O,kodhane_saves_v44_stage_id:O,kodhane_saves_zz_stage_1e21_log_ins:O,kodhane_s
+PASS M4b stage catalogue: after B e97a3589f1f23fe36991b986480bd509:b0aa4d9eb67eb4bb284d54c6641be791:f1e8655e57baf17f8c2330d6f252eacf; with v4.5 e1c7af8061bc48883d2ea911213f990a:f875dd829a4e2a62a9d4b3457aa018a5:2325f40530fa6b360ca0583641750b6b (rank / at / CHECK); asama_1e21 rank 10 at 1e21, mars_ofisi 11  -- e97a3589f1f23fe36991b986480bd509:b0aa4d9eb67eb4bb284d54c6641be791:f1e8655e57baf17f8c2330d6f252eacf|e1c7af8061bc48883d2ea911213f990a:f875dd829a4e2a62a9d4b3457aa018a5:2325f40530fa6b360ca0583641750b6b|10
+PASS M5 idempotent: second run OK, schema identical, still 2 curve rows  -- same|2:v45_f2=true,v45_f3=false
+PASS M6 install verify (read only)  -- SRVERIFY|PASS|14
+PASS M7 package B build PASS, install.sql unchanged (deefef0e...) and without the score rule  -- 1|deefef0e5c52cc3679dc997374d2edbb|0
+PASS E0 sample: rows / sim rejections (v4.4a mirror) / rejections with asama_1e21 known  -- 677|137|7
+PASS E1 v4.4b SQL = the simulation's rule mirror on every sample row (0 mismatches)  -- 0
+PASS E2 curve [[0, 1.15]], tier 32, cut 1 (= v4.4b formula): v4.5 = v4.4b with asama_1e21 known on every sample row  -- 0
+PASS E2b same equivalence on the live copy saves and on edge vectors (v4.3 / v4.4 formats, huge, negative, wrong types)  -- 14|0
+PASS E3 v45_f2: no sample row that v4.4b accepts is refused (more generous everywhere)  -- 0
+PASS E4 v45_f2: sample rejections v4.4b -> v4.5 (only Karar 1 'A prev' remain)  -- 137>7|-
+PASS E5 live copy: every save plausible under v4.4b stays plausible  -- 0
+PASS E3b v45_f3 (H20, costlier at 100-300): still no sample / live copy save that v4.4b accepts is refused (units never below v4.4b)  -- 0|0
+PASS E8f2 B bound at the edge (x1.001 in / out) = independent unit-by-unit reference, curve v45_f2, pre / post Halka Arz, t grid 1e9 ... 1e60 (edge inside the time window)  -- 140|0|-
+PASS E8f3 B bound at the edge (x1.001 in / out) = independent unit-by-unit reference, curve v45_f3, pre / post Halka Arz, t grid 1e9 ... 1e60 (edge inside the time window)  -- 138|0|-
+PASS E8v44 B bound at the edge (x1.001 in / out) = independent unit-by-unit reference, curve v44b_equiv, pre / post Halka Arz, t grid 1e9 ... 1e60 (edge inside the time window)  -- 134|0|-|ref 0
+PASS E6 asama_1e21 at 1.15e21: v4.5 t / v4.4b f; at 9e20 (below 1e21) both f; yapay_zeka_lab at 1.15e21 both t  -- true/false false/false true/true
+PASS E7 still refuses: 1e40 after 2 h, unknown employee, unknown stage id, format-4 save with a stage id  -- falsefalsefalsefalse
+PASS C1 a second active row -> 23505 (score_curve_one_active)  -- 1
+PASS C2 bad curves refused by the CHECK (start not 0, not increasing, growth 1 / 3, non-integer start, not an array, empty, string)  --  CHK CHK CHK CHK CHK CHK CHK CHK
+PASS C3 out-of-range tier_mult / ik_factor / borsa_cut / id refused  --  CHK CHK CHK CHK CHK CHK CHK
+PASS C4 no active row: the helper falls back to the built-in v45_f2 values (same judgement on every sample row; nobody hidden)  -- 19b0c1983fef1745b65b84d9012ff1ce|1
+PASS C5 v45_f3 (H20) active: helper returns it; sample rejections (F3 curve is costlier 100-300 but tiers x727)  -- [[0, 1.15], [100, 1.20], [300, 1.10], [500, 1.05], [1000, 1.025], [3000, 1.0125]]|7
+PASS C6 back to v45_f2: verify PASS  -- SRVERIFY|PASS|14
+PASS P1 anon / authenticated: no SELECT on score_curve, no EXECUTE on the helper (42501)  -- 111
+PASS P2 service_role: kodhane_score_plausible works (helper reachable), table still closed  -- t|1
+PASS P3 leaderboard v7 as a player (authenticated, JWT sub) works and lists the live copy players  -- t
+PASS S0 fixture under B: best_stage_id a=yapay_zeka_lab b=NULL c=teknoloji_devi (all three now at asama_1e21), d e f; leaderboard shows A with yapay_zeka_lab (the wrong stage name)  -- a=yapay_zeka_lab b=NULL c=teknoloji_devi d=yapay_zeka_lab e=mars_ofisi f=NULL|A=yapay_zeka_lab C=teknoloji_devi D=yapay_zeka_lab
+PASS I1 build / preflight / dryrun PASS; dry run leaves v4.4b (463f2109c35b825827e57b8098b49947), no kodhane_rule  --  BUILD|PASS PREFLIGHT|PASS DRYRUN|PASS|463f2109c35b825827e57b8098b49947|t
+PASS I2 preflight dry run on the live copy: all plausible now stay plausible (became_false 0)  -- became_false|0
+PASS S1 preflight prints 3 backfill candidates; dryrun prints rows 3 (NULL:1, teknoloji_devi:1, yapay_zeka_lab:1) + 3 BFROW lines; after the dry run nothing written  -- INFO|stage_1e21_backfill_candidates|3|INFO|stage_1e21_backfill|rows|3|from|NULL:1,teknoloji_devi:1,yapay_zeka_lab:1|3|a=yapay_zeka_lab b=NULL c=teknoloji_devi d=yapay_zeka_lab e=mars_ofisi f=NULL
+PASS I3 install without preflight / without dryrun in the run directory -> STOP (nothing installed)  -- STOP: preflight.out has no ^PREFLIGHT\|PASS in|STOP: dryrun.out has no ^DRYRUN\|PASS in|463f2109c35b825827e57b8098b49947
+PASS I4 install / verify PASS; definition = v4.5  --  INSTALL|PASS VERIFY|PASS|a52586896ae53ac8e5159aa500c4b031
+PASS S2 install: a b c -> asama_1e21 (backfill), d e f untouched; log = 3 backfill rows with the value before; revision / data / best_score / updated_at of every save unchanged  -- a=asama_1e21 b=asama_1e21 c=asama_1e21 d=yapay_zeka_lab e=mars_ofisi f=NULL|a=yapay_zeka_lab:backfill b=NULL:backfill c=teknoloji_devi:backfill|2479e6245a8be95833b47fd4d68e0b88
+PASS S3 leaderboard v7 after the install: A B C listed with asama_1e21 (not yapay_zeka_lab)  -- A=asama_1e21 B=asama_1e21 C=asama_1e21 D=yapay_zeka_lab E=mars_ofisi
+PASS S4 player write (authenticated, JWT sub) of d at asama_1e21: CHECK accepts, B trigger sets asama_1e21, logged (old yapay_zeka_lab, trigger); new save 9 at asama_1e21 logged (old NULL, trigger)  -- asama_1e21|9=NULL:trigger d=yapay_zeka_lab:trigger
+PASS S5 CHECK still refuses an unknown stage id (asama_x, also with triggers off); verify PASS after the trigger writes  -- 1|SRVERIFY|PASS|14
+PASS S6 account deletion: deleting the user (auth.users -> kodhane_saves cascade) also removes its stage_1e21_log row (FK on delete cascade)  -- 1|0|0
+PASS I5 changed migration (md5 differs from inputs.md5) -> build STOP  -- STOP: input files differ from kodhane_score_rule/inputs.md5
+PASS I6 a save plausible now but not under v4.5 -> preflight STOP (became_false 1)  -- became_false|1|STOP: preflight did not pass
+PASS I7 same with a forced preflight: dryrun stops in the transaction ('would become implausible'), nothing changed  -- 1|STOP: dryrun did not pass|t
+PASS R0 rollback without rollback-preview in the run directory -> STOP (nothing changed); rollback-preview records 5 rows (3 backfill, 2 trigger) in rollback_rows.tsv  -- STOP: rollback_preview.out has no ^RBPREVIEW\|PASS|a52586896ae53ac8e5159aa500c4b031|RBPREVIEW|PASS|5 row(s) recor|RBCOUNT|5|backfill|3|trigger|2|nolog|0|5
+PASS R0b rollback-preview: RBJIT says the rollback removes jit=off  -- RBJIT|search_path="",jit=off|rollback removes jit=off from kodhane_score_plausible (v4.4b definition: search_path only)
+PASS R1 rollback (install script): ROLLBACK|PASS; definition = v4.4b (463f2109c35b825827e57b8098b49947); stage catalogue + CHECK = B (e97a3589f1f23fe36991b986480bd509:b0aa4d9eb67eb4bb284d54c6641be791:f1e8655e57baf17f8c2330d6f252eacf); kodhane_rule gone; rows as preview, restored  -- ROLLBACK|PASS|463f2109c35b825827e57b8098b49947|e97a3589f1f23fe36991b986480bd509:b0aa4d9eb67eb4bb284d54c6641be791:f1e8655e57baf17f8c2330d6f252eacf|t|CHECK|rollback_rows_restored|t|5|same
+PASS R1d after the rollback: no jit setting (proconfig search_path only), CHECK|rollback_no_jit_setting|t  -- search_path=""|CHECK|rollback_no_jit_setting|t
+PASS R1b row by row (rollback_rows.tsv, written before the rollback): every recorded save back to its value before; e f untouched; revision / data / updated_at unchanged  -- 5/5 9:asama_1e21>NULL a:asama_1e21>yapay_zeka_lab b:asama_1e21>NULL c:asama_1e21>teknoloji_devi d:asama_1e21>yapay_zeka_lab|9=NULL a=yapay_zeka_lab b=NULL c=teknoloji_devi d=yapay_zeka_lab e=mars_ofis
+PASS R1c leaderboard after the rollback: B's view again (A yapay_zeka_lab; asama_1e21 saves implausible under v4.4b; 9 keeps the best_score of its v4.5 write, legacy stage freelancer)  -- 9=freelancer A=yapay_zeka_lab C=teknoloji_devi D=yapay_zeka_lab
+PASS R2 verify after rollback -> STOP (not v4.5)  -- STOP: verify did not pass
+PASS R3 rollback file a second time: no error, still v4.4b, 0 rows to restore  -- 0|463f2109c35b825827e57b8098b49947|RBCOUNT|0
+PASS R4 re-install after rollback: v4.5 again, verify PASS; backfill now 5 rows (9 a b c d at asama_1e21)  -- a52586896ae53ac8e5159aa500c4b031|SRVERIFY|PASS|14|INFO|stage_1e21_backfill|rows|5|from|NULL:2,teknoloji_devi:1,yapay_zeka_lab:2|9=asama_1e21 a=asama_1e21 b=asama_1e21 c=asama_1e21 d=asama_1e21 e=mars_
+PASS R5 rollback file after the re-install: v4.4b + B catalogue, rows back again (row by row = rollback_rows.tsv)  -- 463f2109c35b825827e57b8098b49947|e97a3589f1f23fe36991b986480bd509:b0aa4d9eb67eb4bb284d54c6641be791:f1e8655e57baf17f8c2330d6f252eacf|5/5|CHECK|rollback_rows_restored|t|5
+PASS R5b rollback file directly: proconfig search_path only (jit=off gone)  -- search_path=""
+== done: 57 pass / 0 fail ( C 6, E 13, I 7, M 10, P 3, R 11, S 7,); image f519727303f0; artefacts in /tmp/p7j-sr

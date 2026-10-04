@@ -158,11 +158,11 @@ for t in kodhane_save_backups acik_ofis_save_backups; do add_bk kr_main $t $U1 d
 add_pl kr_main 10 "interval '366 days'" s1; add_pl kr_main 1 "interval '364 days'" s1keep
 o=$(job -e KD_DB=kr_main -e KD_AUDIT_BATCH=4 2>&1); rc=$?
 check "S1 daily job: both backup tables + audit in batches, then progress log (365 days) in batches, exit 0" "$rc|$(sed -E 's/^[0-9TZ:-]+ //' <<<"$o" | tr '\n' '#')" \
-  "0|kodhane retention OK: kodhane_save_backups 1, acik_ofis_save_backups 1, audit_log_entries 10 (3 batch(es) of <= 4); audit rows older than 12 months left 0#kodhane retention progress log OK: kodhane_progress_log 10 (3 batch(es) of <= 4); rows older than 365 days left 0#kodhane retention deletion log skipped: migration 20261003040000 not applied in database kr_main#"
+  "0|kodhane retention OK: kodhane_save_backups 1, acik_ofis_save_backups 1, audit_log_entries 10 (3 batch(es) of <= 4); audit rows older than 12 months left 0#kodhane retention progress log OK: kodhane_progress_log 10 (3 batch(es) of <= 4); rows older than 365 days left 0#kodhane retention deletion log skipped: migration 20261003040000 not applied in database kr_main#kodhane retention loss reports skipped: migration 20261003060000 not applied in database kr_main#"
 check "S1b kept: the 11-month audit row and the 364-day progress log row" "$(tag_n kr_main s1keep)/$(pl_n kr_main s1keep)/$(pl_n kr_main s1)" 1/1/0
 o=$(job -e KD_DB=kr_main 2>&1); rc=$?
 check "S2 second run: nothing to delete" "$rc|$(sed -E 's/^[0-9TZ:-]+ //' <<<"$o" | tr '\n' '#')" \
-  "0|kodhane retention OK: kodhane_save_backups 0, acik_ofis_save_backups 0, audit_log_entries 0 (1 batch(es) of <= 5000); audit rows older than 12 months left 0#kodhane retention progress log OK: kodhane_progress_log 0 (1 batch(es) of <= 5000); rows older than 365 days left 0#kodhane retention deletion log skipped: migration 20261003040000 not applied in database kr_main#"
+  "0|kodhane retention OK: kodhane_save_backups 0, acik_ofis_save_backups 0, audit_log_entries 0 (1 batch(es) of <= 5000); audit rows older than 12 months left 0#kodhane retention progress log OK: kodhane_progress_log 0 (1 batch(es) of <= 5000); rows older than 365 days left 0#kodhane retention deletion log skipped: migration 20261003040000 not applied in database kr_main#kodhane retention loss reports skipped: migration 20261003060000 not applied in database kr_main#"
 add_audit kr_main 10 "interval '13 months'" s3
 o=$(job -e KD_DB=kr_main -e KD_AUDIT_BATCH=4 -e KD_AUDIT_MAX_BATCHES=2 2>&1); rc=$?
 if [[ $rc == 0 && "$o" == *"audit_log_entries 8 (2 batch(es) of <= 4); audit rows older than 12 months left 2"* && "$o" == *"batch cap reached"* ]]; then pass "S3 batch cap: 8 of 10 deleted, 2 left for the next run, exit 0"

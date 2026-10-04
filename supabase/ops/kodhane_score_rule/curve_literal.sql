@@ -1,0 +1,1 @@
+cross join (values ('[[0, 1.15], [300, 1.10], [500, 1.05], [1000, 1.025], [3000, 1.0125]]'::jsonb, 32 * power(1.25::float8, 14), 0.14::float8 / 0.15, 0.8::float8)) c(growth, tier_mult, ik_factor, borsa_cut)   -- = row v45_f2 (dry run literal)
