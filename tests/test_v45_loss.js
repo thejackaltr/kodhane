@@ -24,8 +24,8 @@ if (fs.existsSync(R3)) {
   const J = JSON.parse(fs.readFileSync(R3, 'utf8')).LOSS_TEXT;
   check('LOSS_TEXT = Yazı r3 LOSS_TEXT (all keys, same order, same text)', JSON.stringify(L.TEXT) === JSON.stringify(J), Object.keys(J).filter((k) => J[k] !== L.TEXT[k]));
 } else console.log('NOTE Yazı r3 JSON yok: birebir karşılaştırma atlandı');
-check('pending texts are [key] placeholders marked // METIN BEKLENIYOR (Yazı)', Object.keys(L.TEXT_PENDING).length === 2 && Object.keys(L.TEXT_PENDING).every((k) => L.TEXT_PENDING[k] === '[' + k + ']'
-  && new RegExp('"' + k.replace(/\./g, '\\.') + '": "[^"]*",?\\s*// METIN BEKLENIYOR \\(Yazı\\)').test(SRC)), L.TEXT_PENDING);
+check('former pending texts filled from Yazı metinler r1 (2 keys), no METIN BEKLENIYOR left in lossreport.js', Object.keys(L.TEXT_PENDING).length === 2 && Object.keys(L.TEXT_PENDING).every((k) => L.TEXT_PENDING[k] && L.TEXT_PENDING[k][0] !== '[')
+  && !/METIN BEKLENIYOR/.test(SRC), L.TEXT_PENDING);
 check('account.privacyDetails text is NOT in the code (only a slot)', !/kayıp bildirimi\]|Bildirimini yalnızca kaybolan ilerlemeni incelemek/.test(SRC + fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8'))
   && /id="accPrivacyDetails"[^>]*data-text-key="account\.privacyDetails"[^>]*><\/div>/.test(fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8')));
 check('text(): {n} and {sure} substitution', L.text('lossReport.description.counter', { n: 12 }) === '12 / 280' && L.text('lossReport.limit.daily', { sure: '5 dakika' }).endsWith('kalan süre: 5 dakika'));

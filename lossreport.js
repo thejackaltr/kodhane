@@ -5,7 +5,7 @@
  *   Hatalar (HTTP / message / details): 401 (oturum yok) · 403 not_authenticated · 400 loss_report_invalid (lost_items | lost_since |
  *   description) · 404 no_cloud_save · 409 loss_report_open · 429 loss_report_daily_limit | loss_report_monthly_limit, details =
  *   tekrar deneme zamanı UTC ISO (Retry-After YOK). Kayıt yazımındaki 409 stale_revision: kayıt yeniden çekilir, yazma tekrarlanmaz.
- * Metinler: Yazı kodhane-p7-kayip-bildir-yazi-r3.json (LOSS_TEXT) birebir. Yazı'da olmayan metin yer tutucudur (METIN BEKLENIYOR).
+ * Metinler: Yazı kodhane-p7-kayip-bildir-yazi-r3.json (LOSS_TEXT) birebir. Eksik iki hata metni (LOSS_TEXT_PENDING) Yazı kodhane-v4.5-metinler-yazi-r1.json'dan.
  * Arayüz Hesap penceresindeki "Kayıp bildir" bölümüdür (#lossSection); metinler yalnız textContent ile basılır.
  */
 (function (root) {
@@ -68,8 +68,8 @@
   };
   // Yazı r3'te olmayan metinler: yer tutucu ([anahtar]); kesin metin gelince yalnız burası değişir.
   var LOSS_TEXT_PENDING = {
-    "lossReport.error.lostSince": "[lossReport.error.lostSince]",             // METIN BEKLENIYOR (Yazı) 400 loss_report_invalid / lost_since
-    "lossReport.error.descriptionLength": "[lossReport.error.descriptionLength]" // METIN BEKLENIYOR (Yazı) açıklama 280 karakteri aşarsa
+    "lossReport.error.lostSince": "Oyunun en son ne zaman doğru olduğunu yeniden seç.", // Yazı kodhane-v4.5-metinler-yazi-r1
+    "lossReport.error.descriptionLength": "Açıklama en çok 280 karakter olabilir." // Yazı kodhane-v4.5-metinler-yazi-r1
   };
 
   var CFG = {

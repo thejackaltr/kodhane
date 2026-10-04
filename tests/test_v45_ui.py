@@ -164,8 +164,11 @@ with sync_playwright() as p:
     stats = pg.inner_text('#statsList')
     rows = ev("[...document.querySelectorAll('#statsList > div')].map(d => [d.querySelector('dt').textContent, d.querySelector('dd').textContent])")
     check('stats: İtibar 150 (no "/ 100")', ['İtibar', '150'] in rows, [r for r in rows if r[0] == 'İtibar'])
-    perks = {r[0]: r[1] for r in rows if r[0].startswith('[rep.perk.')}
-    check('advantage panel: E1 ✓, E2 ✓, E4 150 / 500; E3 off (karar 3) -> not listed (labels are placeholders)', perks == {'[rep.perk.E1]': '✓', '[rep.perk.E2]': '✓', '[rep.perk.E4]': '150 / 500'}, perks)
+    VT = ev('Kodhane.V45_TEXT')
+    PERK_NAMES = {VT['rep.perk.' + e]: e for e in ('E1', 'E2', 'E3', 'E4')}
+    perks = {PERK_NAMES[r[0]]: r[1] for r in rows if r[0] in PERK_NAMES}
+    check('advantage panel: E1 ✓, E2 ✓, E4 150 / 500 (Yazı names); E3 off (karar 3) -> not listed', perks == {'E1': '✓', 'E2': '✓', 'E4': '150 / 500'}
+          and [r[0] for r in rows if r[0] in PERK_NAMES] == [VT['rep.perk.E1'], VT['rep.perk.E2'], VT['rep.perk.E4']], [perks, rows])
     check('E3 off: no [rep.perk.E3] anywhere in the page', '[rep.perk.E3]' not in ev('document.body.innerText'))
     ev("Kodhane.state.reputation = 1e6; Kodhane.selectTab('upgrades'); Kodhane.selectTab('stats')"); pg.wait_for_timeout(150)
     check('E3 off even at 1e6 reputation: repPerk(E3) false, row absent', ev("Kodhane.repPerk('E3')") is False and '[rep.perk.E3]' not in pg.inner_text('#statsList'))
@@ -178,13 +181,13 @@ with sync_playwright() as p:
     ids = ev("Kodhane.availableUpgrades().map(u => u.id)")
     check('150 tier (stajyer_6) offered at 160 Stajyer; 200 tier not yet; junior 150 tier not at 120', 'stajyer_6' in ids and 'stajyer_7' not in ids and 'junior_6' not in ids, [i for i in ids if i.startswith(('stajyer', 'junior'))])
     upg_txt = pg.inner_text('#upgList')
-    check('upgrade list shows the 150 tier (placeholder name) with "x1,25"', '[upg.genTier.name 150]' in upg_txt and 'Stajyer üretimi x1,25' in upg_txt, upg_txt[:300])
+    check('upgrade list shows the 150 tier (Yazı: Kendi Kupası) with "x1,25"', 'Kendi Kupası' in upg_txt and 'Stajyer üretimi x1,25' in upg_txt, upg_txt[:300])
     # Borsa dalı
     ev("Kodhane.setView ? Kodhane.setView('prestige') : Kodhane.selectTab('prestige')"); pg.wait_for_timeout(250)
     check('tree: 15 nodes, Borsa branch with 3 nodes, costs 4 / 5 / 5', ev("document.querySelectorAll('#treeGrid .tree-node').length") == 15
           and ev("[...document.querySelectorAll('#treeGrid [data-branch=borsa] .tn-cost')].map(e => e.textContent).join('|')") == '4 🪙|5 🪙|5 🪙')
-    check('Borsa locked with 11 old nodes: placeholder lock text, disabled', ev("document.querySelector('[data-node=borsa_1]').disabled") is True
-          and ev("document.querySelector('[data-node=borsa_1] .tn-state').textContent") == '[tree.borsa.lockedFull]')
+    check('Borsa locked with 11 old nodes: Yazı lock text, disabled', ev("document.querySelector('[data-node=borsa_1]').disabled") is True
+          and ev("document.querySelector('[data-node=borsa_1] .tn-state').textContent") == VT['tree.borsa.lockedFull'])
     ev("Kodhane.state.tree = %s; Kodhane.state.ipoShares = 20; Kodhane.renderAll()" % json.dumps(NODES12))
     pg.wait_for_timeout(150)
     check('12 old nodes: borsa_1 buyable (4 Borsa Payı)', ev("document.querySelector('[data-node=borsa_1]').disabled") is False)
@@ -195,7 +198,7 @@ with sync_playwright() as p:
     shot(pg, 'borsa-dali', '360x640')
     # Yörünge Üssü
     ev("Kodhane.showStageUp(Kodhane.stageRank('asama_1e21'))"); pg.wait_for_timeout(300)
-    check('stage-up card: 🌌 Yörünge Üssü (Yazı r1), message placeholder', pg.inner_text('#suTitle') == 'Yörünge Üssü' and pg.inner_text('#suIcon') == '🌌' and pg.inner_text('#suMsg') == '[stage.asama_1e21.msg]')
+    check('stage-up card: 🌌 Yörünge Üssü (Yazı r1), message from Yazı metinler r1', pg.inner_text('#suTitle') == 'Yörünge Üssü' and pg.inner_text('#suIcon') == '🌌' and pg.inner_text('#suMsg') == VT['stage.asama_1e21.msg'])
     shot(pg, 'yorunge-ussu', '360x640')
     ev("Kodhane.hideStageUp()")
     # E1 aralıkları (Math.random sabit 0,5): teklif (60..180) -> 120 sn, kart (150..270) -> 210 sn
@@ -208,7 +211,7 @@ with sync_playwright() as p:
     # E2 büyük müşteri
     big = ev("""() => { const r = Math.random; Math.random = () => 0.05; Kodhane.state.reputation = 100; Kodhane.spawnOffer('cash'); const o = Kodhane.offer;
       const out = [o.big, document.getElementById('coText').textContent]; Math.random = r; return out; }""")
-    check('E2 (100): big customer offer x3 with placeholder prefix', big[0] is True and big[1].startswith('[offer.big] '), big)
+    check('E2 (100): big customer offer x3 with the 💎 prefix (Yazı)', big[0] is True and big[1].startswith('💎 Büyük müşteri: '), big)
     nb = ev("""() => { const r = Math.random; Math.random = () => 0.05; Kodhane.state.reputation = 99; Kodhane.spawnOffer('cash'); const o = Kodhane.offer.big; Math.random = r; return o; }""")
     check('below E2: no big customer', nb is False)
     check('balance UI: no page errors', not errs, errs)
@@ -282,7 +285,7 @@ with sync_playwright() as p:
     check('400 description -> error.description (lossReport.error.description)', r['error'] == T['lossReport.error.description'] and r['form'], r)
     pg.click('#lossCancel')
     r = attempt(ERR(400, 'loss_report_invalid', 'lost_since', '22023'))
-    check('400 lost_since -> placeholder [lossReport.error.lostSince]', r['error'] == '[lossReport.error.lostSince]', r)
+    check('400 lost_since -> lossReport.error.lostSince (Yazı metinler r1)', r['error'] == 'Oyunun en son ne zaman doğru olduğunu yeniden seç.', r)
     pg.click('#lossCancel')
     r = attempt(ERR(401, 'permission denied for function kodhane_loss_report_create', None, '42501'))
     check('401 -> needLogin + "Giriş yap"', r['notice'] == T['lossReport.needLogin'] and r['login'] and not r['form'], r)
@@ -365,7 +368,7 @@ with sync_playwright() as p:
         ev("document.querySelector('#treeGrid [data-branch=borsa]').scrollIntoView({block: 'center'})"); shot(pg, 'borsa-dali', vp)
         ev("Kodhane.selectTab('stats')"); pg.wait_for_timeout(150)
         overflow(pg, vp, '#tab-stats', 'stats + advantage panel')
-        ev("[...document.querySelectorAll('#statsList dt')].find(d => d.textContent === '[rep.perk.E1]').scrollIntoView({block: 'center'})"); shot(pg, 'avantaj-paneli', vp)
+        ev("[...document.querySelectorAll('#statsList dt')].find(d => d.textContent === Kodhane.V45_TEXT['rep.perk.E1']).scrollIntoView({block: 'center'})"); shot(pg, 'avantaj-paneli', vp)
         ev("Kodhane.showStageUp(Kodhane.stageRank('asama_1e21'))"); pg.wait_for_timeout(300)
         shot(pg, 'yorunge-ussu', vp); ev("Kodhane.hideStageUp()")
         pg.click('#accountBtn'); pg.wait_for_selector('#accountPanel:not(.hidden)'); pg.wait_for_timeout(200)

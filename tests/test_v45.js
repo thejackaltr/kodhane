@@ -80,7 +80,7 @@ K.state.tree.push('borsa_3');
 check('with borsa_3: 750 shown; 1000 not yet (UI shows only reached tiers)', vis().includes(750) && !vis().includes(1000));
 fresh(); K.state.upgrades = ['stajyer_1', 'stajyer_6', 'stajyer_7'];
 check('tier effects multiply: x2 x1.25 x1.25', near(K.genTps(K.GENERATORS[0]) / (K.GENERATORS[0].tps * K.globalMult()), 2 * 1.25 * 1.25, 1e-12));
-check('new tier names are placeholders [upg.genTier.name N] (METIN BEKLENIYOR)', upg('ai', 2000).name === '[upg.genTier.name 2000]');
+check('new tier names from Yazı (ai 2000 = Ajan Kuluçkası 🥚)', upg('ai', 2000).name === 'Ajan Kuluçkası' && upg('ai', 2000).icon === '🥚');
 
 // ---------------------------------------------------------------- itibar
 fresh();
@@ -122,7 +122,7 @@ check('E3 penaltyCut is config only (not used by the game code)', (SRC.match(/pe
 fresh();
 const BASE = ['kod_1', 'kod_2', 'kod_3', 'ekip_1', 'ekip_2', 'ekip_3', 'musteri_1', 'musteri_2', 'musteri_3', 'yatirim_1', 'yatirim_2', 'yatirim_3'];
 K.state.ipoShares = 100; K.state.tree = BASE.slice(0, 11);
-check('borsa_1 locked until the 12 old nodes are owned', K.nodeState('borsa_1') === 'locked' && K.nodeStateText(K.NODE_BY_ID.borsa_1, 'locked') === '[tree.borsa.lockedFull]');
+check('borsa_1 locked until the 12 old nodes are owned', K.nodeState('borsa_1') === 'locked' && K.nodeStateText(K.NODE_BY_ID.borsa_1, 'locked') === 'Önce ağaçtaki diğer dalları tamamla.');
 K.state.tree = BASE.slice();
 check('12 old nodes -> borsa_1 ready; borsa_2 needs borsa_1', K.nodeState('borsa_1') === 'ready' && K.nodeState('borsa_2') === 'locked');
 check('buy borsa_1/2/3 costs 4+5+5 = 14', K.buyNode('borsa_1') && K.buyNode('borsa_2') && K.buyNode('borsa_3') && K.state.ipoShares === 86);
@@ -141,8 +141,8 @@ function ipoWith(tree) {
 
 // ---------------------------------------------------------------- asama_1e21
 fresh();
-check('asama_1e21: rank between YZ Lab and Mars, name/icon from Yazı r1, desc/msg placeholders', K.stageRank('asama_1e21') === 10 && K.stageRank('mars_ofisi') === 11
-  && K.STAGE_BY_ID.asama_1e21.name === 'Yörünge Üssü' && K.STAGE_BY_ID.asama_1e21.icon === '🌌' && K.STAGE_BY_ID.asama_1e21.desc === '[stage.asama_1e21.desc]' && K.STAGE_BY_ID.asama_1e21.msg === '[stage.asama_1e21.msg]');
+check('asama_1e21: rank between YZ Lab and Mars, name/icon from Yazı r1, desc/msg from Yazı metinler r1', K.stageRank('asama_1e21') === 10 && K.stageRank('mars_ofisi') === 11
+  && K.STAGE_BY_ID.asama_1e21.name === 'Yörünge Üssü' && K.STAGE_BY_ID.asama_1e21.icon === '🌌' && K.STAGE_BY_ID.asama_1e21.desc === 'Dünya pencerede, Mars ufukta.' && K.STAGE_BY_ID.asama_1e21.msg.startsWith('Tebrikler! Ofis yörüngeye çıktı.'));
 K.state.runEarned = 2e21; K.state.totalEarned = 2e21; K.state.cycleEarned = 2e21;
 check('earning 2e21 reaches asama_1e21 (stageIndex), 9.9e20 does not', K.stageIndex(2e21) === K.stageRank('asama_1e21') && K.stageIndex(9.9e20) === K.stageRank('yapay_zeka_lab') && K.stageIndex(1e23) === K.stageRank('mars_ofisi'));
 check('Borsa Payı at asama_1e21 = 9', K.stagePay(K.stageRank('asama_1e21')) === 9);
@@ -153,7 +153,7 @@ check('legacy (server) index of asama_1e21 = 7 (same as YZ Lab; Mars stays 8)', 
 
 // ---------------------------------------------------------------- yer tutucular
 const V45T = K.V45_TEXT;
-check('every V45_TEXT value is a [key] placeholder and marked // METIN BEKLENIYOR (Yazı) in game.js', Object.keys(V45T).every((k) => V45T[k].startsWith('[' + k) && new RegExp("'" + k.replace(/\./g, '\\.') + "': '[^']*',?\\s*// METIN BEKLENIYOR \\(Yazı\\)").test(SRC)), Object.keys(V45T));
+check('no V45_TEXT placeholder left except rep.perk.E3 (E3 off, karar 3); no METIN BEKLENIYOR in game.js', Object.keys(V45T).filter((k) => V45T[k].startsWith('[')).join() === 'rep.perk.E3' && !/METIN BEKLENIYOR/.test(SRC), Object.keys(V45T).filter((k) => V45T[k].startsWith('[')));
 
 // ---------------------------------------------------------------- F3 = yalnız config
 const K3 = load('F3');
