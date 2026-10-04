@@ -233,7 +233,8 @@ class FakeSupabase:
             ok = body.get('p_event') in ('news_leaderboard_shown', 'news_leaderboard_click')
             self.events.append((body.get('p_event'), bool(claims)))
             return self.reply(route, 200, ok)
-        if u.path == '/rest/v1/rpc/kodhane_loss_report_status' and method == 'POST':   # v4.5 P7: sunucu kurulu varsayılır; bildirim yok
+        # v4.5 P7: sunucu kurulu varsayılır; bildirim yok. Misafir yoklaması (anon anahtar) gerçek sunucu gibi 401 42501 alır (karar 7)
+        if u.path == '/rest/v1/rpc/kodhane_loss_report_status' and method == 'POST':
             return self.reply(route, 200, []) if claims else self.reply(route, 401, {'code': 'not_authenticated', 'message': 'not_authenticated'})
         if u.path.startswith('/rest/v1/rpc/') and u.path.rsplit('/', 1)[1] in SAVE_RPC.values() and method == 'POST':
             st, body = self.saves.rpc(claims['sub'] if claims else None, u.path.rsplit('/', 1)[1], json.loads(req.post_data or '{}'))
@@ -419,7 +420,7 @@ with sync_playwright() as p:
     check('guest: send button cools down', page.is_disabled('#accSend'))
     page.tap('#accClose')
     check('guest: panel closes', page.is_hidden('#accountPanel'))
-    check('guest: no page/console errors', not perrs and not errs, '; '.join(perrs + errs))
+    check('guest: no page/console errors (P7 guest probe: browser 401 network line allowed)', not perrs and not [e for e in errs if 'status of 401 (Unauthorized)' not in e], '; '.join(perrs + errs))
     ctx.close()
 
     # ------------------------------------------------------------ 2) CDN erişilemezse oyun çalışmaya devam eder
@@ -518,7 +519,7 @@ with sync_playwright() as p:
     check('otp: same post-login flow (local save uploaded)', row is not None and row['data']['clicks'] == 64, json.dumps(row)[:120] if row else 'no row')
     check('otp: session persisted, pending cleared, signed-in panel', page.evaluate("!!localStorage.getItem('%s') && !localStorage.getItem('kodhane_auth_pending')" % STORAGE_KEY)
           and page.is_visible('#accSignOut') and page.is_hidden('#accCodeForm'))
-    check('otp: no page/console errors', not perrs and not [e for e in errs if '403' not in e], '; '.join(perrs + errs))
+    check('otp: no page/console errors', not perrs and not [e for e in errs if '403' not in e and 'status of 401 (Unauthorized)' not in e], '; '.join(perrs + errs))
     ctx.close()
 
     # 3d) "E-postayı değiştir" e-posta adımına döner
@@ -819,7 +820,7 @@ with sync_playwright() as p:
     ok = wait_until(page, "document.getElementById('accMsg').textContent.includes('gönderildi')")
     check('prod: magic link request goes to kodhane-api.teserix.com/auth/v1/otp', ok and len(fake.otp) == 1, json.dumps(fake.otp))
     check('prod: magic-link redirect is exactly ' + PAGES, fake.otp and fake.otp[0]['redirect_to'] == PAGES, fake.otp and fake.otp[0]['redirect_to'])
-    check('prod: no page/console errors', not perrs and not errs, '; '.join(perrs + errs))
+    check('prod: no page/console errors (P7 guest probe: browser 401 network line allowed)', not perrs and not [e for e in errs if 'status of 401 (Unauthorized)' not in e], '; '.join(perrs + errs))
     ctx.close()
 
     # ------------------------------------------------------------ 12) Sıralama: misafir (mobil), boş liste, çevrimdışı, hata

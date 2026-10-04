@@ -66,6 +66,20 @@ check('403 not_authenticated -> needLogin', C(E(403, 'not_authenticated', null, 
 check('403 other -> generic (not login)', C(E(403, 'permission denied')).kind === 'generic' && C(E(403, '')).key === 'lossReport.error.generic');
 check('404 no_cloud_save -> noCloudSave', C(E(404, 'no_cloud_save', null, 'PT404')).key === 'lossReport.noCloudSave');
 check('404 other (function missing PGRST202) -> generic + missing flag', C(E(404, 'Could not find the function', null, 'PGRST202')).key === 'lossReport.error.generic' && C(E(404, 'x', null, 'PGRST202')).missing === true);
+// ---------------------------------------------------------------- karar 7: sunucu kurulu mu (durum RPC'si yanıtından)
+const A = L.availability;
+check('availability: 200 (rows or []) -> yes', A({ data: [], error: null, status: 200 }) === 'yes' && A({ data: [{ id: 'x' }], error: null, status: 200 }) === 'yes');
+check('availability: anon 401 42501 (function exists, no EXECUTE for anon) -> yes', A(E(401, 'permission denied for function kodhane_loss_report_status', null, '42501')) === 'yes');
+check('availability: 403 not_authenticated -> yes (function exists)', A(E(403, 'not_authenticated', null, '42501')) === 'yes');
+check('availability: 404 PGRST202 -> no', A(E(404, 'Could not find the function public.kodhane_loss_report_status(p_limit) in the schema cache', null, 'PGRST202')) === 'no');
+check('availability: 404 without code / 42883 -> no', A({ data: null, error: { message: 'HTTP 404' }, status: 404 }) === 'no' && A(E(404, 'function does not exist', null, '42883')) === 'no');
+check('availability: 5xx / network (status 0) / 429 / empty -> null (temporary, decision unchanged)', [500, 502, 503, 504].every((st) => A(E(st, 'x')) === null) && A({ data: null, error: { message: 'Failed to fetch' }, status: 0 }) === null
+  && A(E(429, 'x')) === null && A(null) === null);
+check('CFG.enabled kept as manual off switch; session cache key for the decision', L.CFG.enabled === true && L.CFG.availKey === 'kodhane_loss_avail_v1');
+check('section shown only when proven installed (avail === yes), refresh/probe skip when avail is no or disabled',
+  /var show = CFG\.enabled && S\.avail === 'yes'/.test(SRC) && /if \(!CFG\.enabled \|\| S\.avail === 'no'\) return Promise\.resolve\(null\)/.test(SRC) && /if \(!CFG\.enabled \|\| S\.avail !== 'unknown'\) return Promise\.resolve\(null\)/.test(SRC));
+check('no console output from lossreport.js (no console.error/warn/log)', !/console\.(error|warn|log)/.test(SRC));
+check('karar 6: stale-tab heuristic marked "// Backend\'in kesin alanı bekleniyor"', (SRC.match(/\/\/ Backend'in kesin alanı bekleniyor/g) || []).length >= 3);
 check('409 loss_report_open -> limit.open', C(E(409, 'loss_report_open')).key === 'lossReport.limit.open');
 check('409 stale_revision -> stale (refetch, no retry)', C(E(409, 'stale_revision', 'sent revision 3, server revision 4')).kind === 'stale');
 check('409 other -> generic', C(E(409, 'x')).kind === 'generic');

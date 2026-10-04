@@ -73,7 +73,8 @@
   };
 
   var CFG = {
-    enabled: true,                 // false: bölüm hiç görünmez (sunucu kurulmadan yayınlanırsa tek anahtar)
+    enabled: true,                 // false: elle kapatma; bölüm hiç görünmez, sunucu yoklanmaz
+    availKey: 'kodhane_loss_avail_v1', // sessionStorage: sunucu kurulu mu ('yes' | 'no'), oturum boyunca önbellek (karar 7)
     rpcCreate: 'kodhane_loss_report_create',
     rpcStatus: 'kodhane_loss_report_status',
     statusLimit: 10,
@@ -193,6 +194,19 @@
     return { status: 'in_review', label: text('lossReport.status.in_review.label'),
       text: row.review_reason === 'save_changed' ? text('lossReport.status.in_review.save_changed') : text('lossReport.status.in_review.text'), open: true };
   }
+  // Karar 7: durum RPC'si yanıtından "P7 sunucusu kurulu mu" -> 'yes' | 'no' | null (bilinmiyor, karar değişmez).
+  // PostgREST önce fonksiyonu şema önbelleğinde arar: yoksa 404 PGRST202 (eski sürümde 42883). Varsa yetki kapısı gelir:
+  // anon anahtarla 401 42501 (EXECUTE yalnız authenticated'da; istemci notu bölüm 3), bozuk JWT 403. Durum RPC'sinin
+  // başka bir 404'ü yok (no_cloud_save yalnız create'te), bu yüzden durum RPC'sinde her 404 "kurulu değil" sayılır.
+  // Ağ hatası (status 0) ve 5xx geçicidir: null, bölüm kalıcı olarak gizlenmez.
+  function availability(resp) {
+    if (!resp) return null;
+    var e = errOf(resp), st = resp.status, code = e && e.code;
+    if (!e && st >= 200 && st < 300) return 'yes';
+    if (st === 404 || code === 'PGRST202' || code === '42883') return 'no';
+    if (st === 401 || st === 403) return 'yes';
+    return null;
+  }
   function latest(rows) {
     if (!Array.isArray(rows) || !rows.length) return null;
     return rows.slice().sort(function (a, b) { return (Date.parse(b && b.created_at) || 0) - (Date.parse(a && a.created_at) || 0); })[0] || null;
@@ -201,7 +215,7 @@
   var LR = {
     TEXT: LOSS_TEXT, TEXT_PENDING: LOSS_TEXT_PENDING, CFG: CFG, ITEMS: ITEMS, SINCE: SINCE, REJECT_CODES: REJECT_CODES,
     text: text, lostSinceISO: lostSinceISO, cleanDescription: cleanDescription, validate: validate, buildArgs: buildArgs,
-    parseRetry: parseRetry, sureText: sureText, classify: classify, statusView: statusView, latest: latest
+    parseRetry: parseRetry, sureText: sureText, classify: classify, statusView: statusView, latest: latest, availability: availability
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = LR;
   if (!K) return;
@@ -209,7 +223,8 @@
   if (typeof document === 'undefined') return;
 
   // ---------------------------------------------------------------- tarayıcı
-  var S = { rows: null, unavailable: false, notice: null, form: false, sending: false, retry: null, pendingApplied: null, loadedAt: Date.now(), fetching: null };
+  // avail: 'unknown' (yoklanmadı / geçici hata) | 'yes' | 'no'. Bölüm yalnız 'yes' iken görünür (kanıtlanana kadar gizli).
+  var S = { rows: null, avail: 'unknown', probing: null, notice: null, form: false, sending: false, retry: null, pendingApplied: null, loadedAt: Date.now(), fetching: null };
   var el = {};
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
@@ -220,9 +235,22 @@
     if (!K.cloud || typeof K.cloud.rpc !== 'function') return Promise.reject(new Error('no-cloud'));
     return K.cloud.rpc(name, args);
   };
-  function call(name, args) {
+  // Misafir yoklaması (testler değiştirir): oturumsuz, herkese açık anahtarla doğrudan durum RPC'si; SDK indirilmez.
+  // Kuruluysa 401 42501, kurulu değilse 404 PGRST202 döner. Yanıt { data, error, status }.
+  LR.anonTransport = function (name, args) {
+    if (!K.cloud || typeof K.cloud.anonRpc !== 'function') return Promise.reject(new Error('no-cloud'));
+    return K.cloud.anonRpc(name, args);
+  };
+  function ssGet(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } }
+  function ssSet(k, v) { try { sessionStorage.setItem(k, v); } catch (e) {} }
+  // Kesin sonuç ('yes' | 'no') oturum boyunca saklanır; null (geçici hata) mevcut kararı değiştirmez.
+  function setAvail(a) {
+    if (a !== 'yes' && a !== 'no') return;
+    S.avail = a; ssSet(CFG.availKey, a);
+  }
+  function call(name, args, anon) {
     var p;
-    try { p = Promise.resolve(LR.transport(name, args)); } catch (e) { p = Promise.reject(e); }
+    try { p = Promise.resolve((anon ? LR.anonTransport : LR.transport)(name, args)); } catch (e) { p = Promise.reject(e); }
     return p.then(function (r) { return r || { data: null, error: { message: 'empty' }, status: 0 }; },
       function (e) { return { data: null, error: { message: String(e && e.message || e) }, status: 0 }; });
   }
@@ -337,23 +365,41 @@
     render();
   }
   // Durum RPC'si: yalnız oyuncunun kendi bildirimleri. Fonksiyon sunucuda yoksa (404 PGRST202) bölüm gizlenir.
+  // Karar 7: kurulu değilse ('no', oturum önbelleği) bir daha istek atılmaz.
   function refresh() {
-    if (!signed() || !CFG.enabled) return Promise.resolve(null);
+    if (!CFG.enabled || S.avail === 'no') return Promise.resolve(null);
+    if (!signed()) return probe();
     if (S.fetching) return S.fetching;
     S.fetching = call(CFG.rpcStatus, { p_limit: CFG.statusLimit }).then(function (r) {
       S.fetching = null;
-      var c = classify(r);
-      if (c.kind === 'ok') {
-        S.unavailable = false;
+      setAvail(availability(r));
+      if (classify(r).kind === 'ok') {
         S.rows = Array.isArray(r.data) ? r.data : [];
         noticeApplied();
-      } else if (c.missing) S.unavailable = true;
+      }
       render();
       return S.rows;
     });
     return S.fetching;
   }
+  // Misafir: sunucu kurulu mu? Karar biliniyorsa (oturum önbelleği) istek atılmaz; geçici hatada yalnız bir sonraki
+  // Hesap penceresi açılışında (düğme) yeniden denenir. Misafirin satırı yoktur; yalnız görünürlük belirlenir.
+  function probe() {
+    if (!CFG.enabled || S.avail !== 'unknown') return Promise.resolve(null);
+    if (S.probing) return S.probing;
+    // Aynı tıklamada iki tetik (Hesap düğmesi + bulut render'ı) tek istek sayılır.
+    if (S.probeAt && Date.now() - S.probeAt < 500) return Promise.resolve(null);
+    S.probeTried = true; S.probeAt = Date.now();
+    S.probing = call(CFG.rpcStatus, { p_limit: 1 }, true).then(function (r) {
+      S.probing = null;
+      setAvail(availability(r));
+      render();
+      return null;
+    });
+    return S.probing;
+  }
   // Telafi yüklendi: bu sekme yükleme anında açıksa (applied_at > sayfa açılışı) applied.toast; eski sekmenin 409'unda staleTab.
+  // Backend'in kesin alanı bekleniyor
   function noticeApplied() {
     var seen = seenIds();
     (S.rows || []).forEach(function (row) {
@@ -364,19 +410,22 @@
     });
   }
   // game.js adoptSave (409 stale_revision -> güncel kayıt yüklendi) bunu sorar: telafiden geldiyse staleTab metni, değilse ''.
+  // Backend'in kesin alanı bekleniyor
   LR.consumeAppliedForStale = function () {
     if (!S.pendingApplied) return '';
     S.pendingApplied = null;
     return text('lossReport.applied.staleTab');
   };
   // cloud.js handleStale bunu reconcile'dan önce çağırır (en fazla 2,5 sn bekler): telafi yüklendiyse adoptSave staleTab gösterir.
+  // Backend'in kesin alanı bekleniyor
+  // (karar 6: eski sekme ayrımı şimdilik durum yoklamasına dayalı sezgi: applied_at > sekme açılışı ve 409'dan önceki yenileme.)
   LR.beforeStale = function () {
-    if (!signed() || S.unavailable || !CFG.enabled) return Promise.resolve();
+    if (!signed() || S.avail === 'no' || !CFG.enabled) return Promise.resolve();
     return Promise.race([refresh(), new Promise(function (r) { setTimeout(r, 2500); })]).then(function () {}, function () {});
   };
   function render() {
     if (!el.section) return;
-    var show = CFG.enabled && !(signed() && S.unavailable);
+    var show = CFG.enabled && S.avail === 'yes';   // karar 7: kurulu olduğu kanıtlanana kadar gizli
     el.section.classList.toggle('hidden', !show);
     if (!show) return;
     var now = Date.now();
@@ -396,13 +445,15 @@
     el.form.classList.toggle('hidden', !S.form);
     el.submit.disabled = S.sending;
   }
-  LR.render = render; LR.refresh = refresh; LR.state = S; LR.el = el; LR.handleResult = handleResult;
+  LR.render = render; LR.refresh = refresh; LR.probe = probe; LR.state = S; LR.el = el; LR.handleResult = handleResult;
   LR.setRetry = function (o) { S.retry = o; lsSet(CFG.retryKey, o ? JSON.stringify(o) : null); render(); };
 
   function start() {
     el.section = document.getElementById('lossSection');
     if (!el.section) return;
     S.retry = loadRetry();
+    var cached = ssGet(CFG.availKey);
+    if (cached === 'yes' || cached === 'no') S.avail = cached;
     build(); render();
     // Hesap penceresi açılınca ve oturum değişince durumu yenile; kalan süre metni 30 sn'de bir güncellenir.
     var btn = document.getElementById('accountBtn');
@@ -412,7 +463,10 @@
     K.onCloudRender = function () {
       if (typeof prev === 'function') { try { prev(); } catch (e) {} }
       var s = signed();
-      if (s !== wasSigned) { wasSigned = s; if (!s) { S.rows = null; S.unavailable = false; S.form = false; } else { S.notice = null; setTimeout(refresh, 0); } }
+      if (s !== wasSigned) { wasSigned = s; if (!s) { S.rows = null; S.form = false; } else { S.notice = null; setTimeout(refresh, 0); } }
+      // Hesap penceresi başka yoldan açıldıysa da (giriş akışı) misafir yoklaması yapılır; karar biliniyorsa istek yok.
+      // Yalnız ilk kez: geçici hatadan sonra her render'da yeniden istek atılmaz (sonraki deneme Hesap düğmesine basınca).
+      if (!s && S.avail === 'unknown' && !S.probeTried) { var pn = document.getElementById('accountPanel'); if (pn && !pn.classList.contains('hidden')) probe(); }
       render();
     };
     setInterval(function () { if (S.retry) render(); }, 30000);

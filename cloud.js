@@ -1006,6 +1006,23 @@
     getClient: getClient, online: online,
     // v4.5 (P7): oturumlu RPC (lossreport.js). Yanıt { data, error, status } (supabase-js / sahte sunucu).
     rpc: function (name, args) { if (!C.user) return Promise.resolve({ data: null, error: { message: 'permission denied for function ' + name, code: '42501' }, status: 401 }); return T.rpc(name, args); },
+    // v4.5 (P7, karar 7): oturumsuz RPC, herkese açık anahtarla (sıralamadaki misafir çağrısı gibi; SDK indirilmez). Yalnız
+    // "sunucuda bu fonksiyon var mı" yoklaması için: kuruluysa 401 42501, yoksa 404 PGRST202. Yapılandırma yoksa status 0.
+    anonRpc: function (name, args) {
+      if (useMock()) return mock().rpc(null, name, args);
+      if (!configured || typeof fetch !== 'function') return Promise.resolve({ data: null, error: { message: 'not_configured' }, status: 0 });
+      return fetch(CFG.url + '/rest/v1/rpc/' + name, {
+        method: 'POST',
+        headers: { apikey: CFG.key, Authorization: 'Bearer ' + CFG.key, 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(args || {})
+      }).then(function (res) {
+        return res.text().then(function (t) {
+          var b = null; try { b = t ? JSON.parse(t) : null; } catch (e) {}
+          return res.ok ? { data: b, error: null, status: res.status }
+            : { data: null, error: b && typeof b === 'object' && !Array.isArray(b) ? b : { message: 'HTTP ' + res.status }, status: res.status };
+        });
+      }, function (e) { return { data: null, error: { message: String(e && e.message || e) }, status: 0 }; });
+    },
     resetSave: function () { return K.beforeReset() || Promise.reject(new Error('not-signed-in')); },
     restoreSave: restoreSave, latestBackup: latestBackup, handleStale: handleStale, mock: function () { return useMock() ? mock() : null; },
     hold: hold, release: releaseHold, gate: gate, staleKind: staleKind,
