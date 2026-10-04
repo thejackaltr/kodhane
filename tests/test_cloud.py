@@ -233,6 +233,8 @@ class FakeSupabase:
             ok = body.get('p_event') in ('news_leaderboard_shown', 'news_leaderboard_click')
             self.events.append((body.get('p_event'), bool(claims)))
             return self.reply(route, 200, ok)
+        if u.path == '/rest/v1/rpc/kodhane_loss_report_status' and method == 'POST':   # v4.5 P7: sunucu kurulu varsayılır; bildirim yok
+            return self.reply(route, 200, []) if claims else self.reply(route, 401, {'code': 'not_authenticated', 'message': 'not_authenticated'})
         if u.path.startswith('/rest/v1/rpc/') and u.path.rsplit('/', 1)[1] in SAVE_RPC.values() and method == 'POST':
             st, body = self.saves.rpc(claims['sub'] if claims else None, u.path.rsplit('/', 1)[1], json.loads(req.post_data or '{}'))
             return self.reply(route, st, body)
