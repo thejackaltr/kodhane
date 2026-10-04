@@ -731,37 +731,87 @@
     push(false).then(function () { C.keepalive = false; }, function () { C.keepalive = false; });
   }
 
-  // v4.5: "Hesap ve bulut kaydı hakkında" bağlantısı ve paneli (account.privacyDetails). Metinler Yazı
-  // kodhane-hesap-bilgilendirme-yazi-r17.md JSON bloklarından birebir ([0], [8], [9], privacyLink, privacyTitle).
-  // Varsayılan KAPALI: Aryen ve avukat onaylamadan açılmaz (PRIVACY.enabled). Kapalıyken bağlantı da panel de DOM'da boş ve gizli.
-  //   loginLog12m:    [0]'daki "Bu giriş kayıtları 12 ay sonra silinir." cümlesi (r17: temizlik canlıda + üç koşul + Yazılım bildirimi)
-  //   resetBackup30d: [8] sıfırlama yedeği paragrafı (r17: kendi üç koşulu)
-  var PRIVACY = { enabled: false, loginLog12m: false, resetBackup30d: false };
+  // v4.5: "Hesap ve bulut kaydı hakkında" bağlantısı ve paneli. Metinler Yazı kodhane-hesap-bilgilendirme-yazi-r18.json'dan
+  // birebir: ACC_TEXT (12 paragraf), PRIVACY_IDS (= _paragraflar, aynı sıra), PRIVACY_KOSULLU (= KOSULLU). Köşeli parantezli
+  // metinler açık yer tutucudur ([4], [5], [7]); olduğu gibi durur.
+  // Varsayılan KAPALI (PRIVACY.enabled): panel Aryen'in ve avukatın kararı olmadan açılmaz. Kapalıyken bağlantı da panel de DOM'da boş ve gizli.
+  // Süzme sıra numarasıyla değil kimlikle yapılır (dizin kaymasına dayanıklı). Bayraklar:
+  //   loginLog12m:        KOSULLU "[0].girisKayitlari12ay" ([0]'a 12 ay cümlesi). Koşul: daad30e + 5233266 canlıda, üç koşul, Yazılım bildirimi.
+  //   resetBackup30d:     KOSULLU "[8]" (sıfırlama yedeği paragrafı, [7] ile kazanç kaydı arası). Koşul: kendi üç koşulu; 12 ayı beklemez.
+  //   earningsLog:        "kazanç kaydı" paragrafı. Taşınma kuralı: panel açılana kadar telemetry.details'ta kalır; panelin
+  //                       açıldığı sürümde oradan çıkar ve yalnız burada durur (iki yerde birden durmaz).
+  //   progressLog12m:     KOSULLU "kazanç kaydı.C4" (Yazı önerisi). Yalnız earningsLog açıkken anlamlı.
+  //   progressLogDelete:  KOSULLU "kazanç kaydı.C6+C7" (Yazı önerisi; ikisi birlikte). Yalnız earningsLog açıkken anlamlı.
+  //   deletionList:       "silme listesi" paragrafı. Koşul (r18 md, EKSİK 6): silme listesi canlıda kurulu olmalı.
+  //   deletionList45d:    KOSULLU "silme listesi.45gun" (Yazı önerisi). Yalnız deletionList açıkken anlamlı.
+  //   sharedWithAcikOfis: [0]'daki Açık Ofis ortak hesap cümlesi (r4'ten beri kasıtlı istisna; Açık Ofis ayrılınca kapanır).
+  var PRIVACY = { enabled: false, loginLog12m: false, resetBackup30d: false, earningsLog: false, progressLog12m: false,
+    progressLogDelete: false, deletionList: false, deletionList45d: false, sharedWithAcikOfis: true };
   var ACC_TEXT = {
+    'account.privacySummary': "E-postan yalnızca giriş bağlantısı ve kodu için. İsimsiz sayaç ve ziyaret sayımı hesabına bağlanmaz.", // r18; kodda yeri yok (Yazı r18 Frontend notu 1), gösterilmez
     'account.privacyLink': "Hesap ve bulut kaydı hakkında",
     'account.privacyTitle': "Hesap ve bulut kaydı hakkında",
     'account.privacyDetails': [
-      "Giriş yaparsan e-posta adresini ve bulut kaydını tutarız. Bulut kaydınla birlikte son kaydetme zamanı ve sıralama için en iyi puanın da tutulur. Girişlerin, çıkışların ve giriş e-postası isteklerin de e-posta adresinle birlikte kaydedilir. Bu giriş kayıtları 12 ay sonra silinir. Bu hesap Açık Ofis oyunuyla ortaktır, orada da aynı hesapla giriş yaparsın.", // [0] Yazı r17 (son cümle koşullu: PRIVACY.loginLog12m)
-      "[account.privacyDetails[1]]", // METIN BEKLENIYOR (Yazı) [1]: r17'de yok
-      "[account.privacyDetails[2]]", // METIN BEKLENIYOR (Yazı) [2]: r17'de yok
-      "[account.privacyDetails[3]]", // METIN BEKLENIYOR (Yazı) [3]: r17'de yok
-      "[account.privacyDetails[4]]", // METIN BEKLENIYOR (Yazı) [4]: r17'de yok
-      "[account.privacyDetails[5]]", // METIN BEKLENIYOR (Yazı) [5]: r17'de yok
-      "[account.privacyDetails[6]]", // METIN BEKLENIYOR (Yazı) [6]: r17'de yok
-      "[account.privacyDetails[7]]", // METIN BEKLENIYOR (Yazı) [7]: r17'de yok
-      "Kaydını sıfırlarsan buluttaki eski kaydın 30 gün oyun içi yedek olarak saklanır. Bu sürede onu geri yükleyebilirsin, sonra bu yedek silinir.", // [8] Yazı r17 (koşullu: PRIVACY.resetBackup30d)
-      "Hesabının ya da yalnızca Kodhane kaydının silinmesini istersen info@teserix.com adresine yazabilirsin. Talebin yalnızca hesabının kayıtlı e-posta adresinden gelirse işlenir. Hesabının tamamı silindiğinde giriş kayıtların da silinir. Silme seçtiğin verileri sunucudan siler, cihazındaki kaydı silmez. Silinen veriler güvenlik yedeklerinde bir süre daha kalabilir; bu yedekler yalnızca arıza durumunda geri yükleme için kullanılır. Cihazındaki kayıt tarayıcıda kalır; onu da silmek için oyunu her cihazda kapat ve tarayıcında bu sitenin verilerini temizle, yoksa yeniden girişte kayıt buluta geri yüklenir.", // [9] Yazı r17
-      "[account.privacyDetails[veri sorumlusu]]" // METIN BEKLENIYOR (Yazı) [veri sorumlusu]: r17'de yok
+      "Giriş yaparsan e-posta adresini ve bulut kaydını tutarız. Bulut kaydınla birlikte son kaydetme zamanı ve sıralama için en iyi puanın da tutulur. Girişlerin, çıkışların ve giriş e-postası isteklerin de e-posta adresinle birlikte kaydedilir. Bu hesap Açık Ofis oyunuyla ortaktır, orada da aynı hesapla giriş yaparsın.", // [0]
+      "Sıralamaya katılırsan seçtiğin takma ad da hesabınla birlikte tutulur. Takma adın ve puanın sıralamada herkese görünür. E-postan hiçbir yerde görünmez. Kurallara uymayan takma adları sıralamada gizleyebiliriz.", // [1]
+      "E-posta adresini yalnızca sana giriş bağlantısı ve kodu göndermek için kullanırız. Giriş yaptıysan bulut kaydını, telefonda ve bilgisayarda aynı ajansla devam edebilmen için tutarız.", // [2]
+      "Bunları, senin istediğin bulut kaydı hizmetini sunabilmek için işleriz (KVKK madde 5/2-c). E-posta adresini ve takma adını sen yazarsın. Giriş yaptığın sürece bulut kaydın oyundan otomatik gönderilir. Giriş yapmazsan kaydın buluta gitmez, yalnızca bu cihazda, tarayıcında durur; sonradan giriş yaparsan bu kayıt buluta yüklenebilir ve eşitleme sırasında tarayıcında ikinci bir kopyası oluşabilir. Giriş yapmasan da oyun, örneğin sıralamayı göstermek için, Kodhane'nin sunucusuna bağlanır; bu bağlantılar ve sayaçlar aşağıda anlatılıyor.", // [3]
+      "Bilgiler Kodhane'nin sunucusunda (kodhane-api.teserix.com) tutulur. Sunucu, bağlantı sırasında IP adresini teknik kayıtlarda görebilir. Bu teknik kayıtlar [TEKNİK KAYIT SAKLAMA SÜRESİ — avukat belirleyecek] sonra silinir.", // [4]
+      "Giriş e-postalarını Resend adlı e-posta gönderim hizmeti gönderir. E-posta adresin bu hizmete yalnızca giriş e-postasını gönderebilmek için iletilir. Gönderim Türkiye dışındaki sunuculardan yapılır: [GÖNDERİM BÖLGESİ — Yazılım teyit edecek]. Yani e-posta adresin bu iş için yurt dışına aktarılır. Aktarımın dayanağı: [YURT DIŞI AKTARIM DAYANAĞI — Aryen/avukat belirleyecek]", // [5]
+      "İsimsiz sayaç ve ziyaret sayımı hesabına bağlanmaz. Giriş yapsan da bu sayımlara e-postan, takma adın ya da hesap bilgin gitmez.", // [6]
+      "[SAKLAMA SÜRESİ — Aryen belirleyecek] boyunca giriş yapılmazsa hesabın ve bulut kaydın silinir; cihazındaki kayıt, içindeki son olayların listesiyle birlikte yerinde kalır. Aynı cihazda yeniden giriş yaparsan bu kayıt buluta geri yüklenir.", // [7]
+      "Bulut kaydı kullanıyorsan ilerlemendeki değişiklikler sunucuda ayrıca kaydedilir: hisselerin, Yatırım Turu ve Halka Arz sayıların ya da Borsa Payın arttığında veya azaldığında, Borsa Payı Ağacı'ndaki geliştirmelerin değiştiğinde, kaydını sıfırladığında ya da geri yüklediğinde ve bir telafi yaptığımızda. Her kayıtta olayın adı, hangi oyun öğesiyle ilgili olduğu, değişen bilginin önceki ve sonraki değeri, kaydının numarası, değişikliği oyunun mu yoksa ekibimizin mi (örneğin bir telafi) yaptığı, varsa telafi numarası, kullanıcı kimliğin, oyunun sürümü ve zaman bulunur; e-posta adresin tutulmaz. Bu kayıtları yalnızca hileyi fark etmek ve kaybolan ilerlemeni geri vermek için kullanırız. Kaydını sıfırlaman bu kayıtları silmez.", // kazanç kaydı
+      "Hesabının ya da yalnızca Kodhane kaydının silinmesini istersen info@teserix.com adresine yazabilirsin. Talebin yalnızca hesabının kayıtlı e-posta adresinden gelirse işlenir. Hesabının tamamı silindiğinde giriş kayıtların da silinir. Silme seçtiğin verileri sunucudan siler, cihazındaki kaydı silmez. Silinen veriler güvenlik yedeklerinde bir süre daha kalabilir; bu yedekler yalnızca arıza durumunda geri yükleme için kullanılır. Cihazındaki kayıt tarayıcıda kalır; onu da silmek için oyunu her cihazda kapat ve tarayıcında bu sitenin verilerini temizle, yoksa yeniden girişte kayıt buluta geri yüklenir.", // [9]
+      "Hesabın ya da Kodhane kaydın silindiğinde ayrı bir listede yalnızca hesap kimliğini, neyin silindiğini, silme zamanını ve silmenin nasıl yapıldığını gösteren bir referansı tutarız. E-posta adresin bu listede yer almaz. Bu liste, bir arıza sonrası yedekten geri yükleme yaparsak silinen verilerin yeniden silinmesi için kullanılır.", // silme listesi
+      "Bu bilgilerin veri sorumlusu Teserix Bilişim ve Dijital Çözümler. KVKK'nın 11. maddesindeki haklarını kullanmak için info@teserix.com adresine yazabilirsin." // veri sorumlusu
     ]
   };
-  var LOGIN_LOG_12M = ' Bu giriş kayıtları 12 ay sonra silinir.';
-  function privacyParagraphs() {
-    return ACC_TEXT['account.privacyDetails'].map(function (p, i) {
-      if (i === 0 && !PRIVACY.loginLog12m) return p.replace(LOGIN_LOG_12M, '');
-      if (i === 8 && !PRIVACY.resetBackup30d) return '';
-      return p;
-    }).filter(function (p) { return !!p; });
+  var PRIVACY_IDS = ["[0]", "[1]", "[2]", "[3]", "[4]", "[5]", "[6]", "[7]", "kazanç kaydı", "[9]", "silme listesi", "veri sorumlusu"];
+  // Paragraf kimliği -> onu gösteren bayrak (yoksa her zaman gösterilir).
+  var PRIVACY_GATE = { 'kazanç kaydı': 'earningsLog', 'silme listesi': 'deletionList' };
+  // Bayrak kapalıyken paragraftan çıkan cümleler (asıl metinde var).
+  var PRIVACY_OPTIONAL = [
+    { id: '[0].acikOfis', flag: 'sharedWithAcikOfis', target: '[0]', text: "Bu hesap Açık Ofis oyunuyla ortaktır, orada da aynı hesapla giriş yaparsın." }
+  ];
+  // Yazı r18 KOSULLU: bayrak açıkken eklenir. Cümle: target paragrafında after cümlesinin hemen arkasına. Paragraf: afterId'nin arkasına.
+  var PRIVACY_KOSULLU = [
+    { id: '[0].girisKayitlari12ay', flag: 'loginLog12m', target: '[0]', after: "Girişlerin, çıkışların ve giriş e-postası isteklerin de e-posta adresinle birlikte kaydedilir.",
+      text: "Bu giriş kayıtları 12 ay sonra silinir." },
+    { id: '[8]', flag: 'resetBackup30d', paragraph: true, afterId: '[7]',
+      text: "Bulut kaydı kullanıyorsan kaydını sıfırladığında buluttaki eski kaydın 30 gün oyun içi yedek olarak saklanır. Bu sürede onu geri yükleyebilirsin, sonra bu yedek silinir." },
+    { id: 'kazanç kaydı.C4', flag: 'progressLog12m', target: 'kazanç kaydı', after: "Bu kayıtları yalnızca hileyi fark etmek ve kaybolan ilerlemeni geri vermek için kullanırız.",
+      text: "Kayıtlar 12 ay saklanır." },
+    { id: 'kazanç kaydı.C6+C7', flag: 'progressLogDelete', target: 'kazanç kaydı', after: "Kaydını sıfırlaman bu kayıtları silmez.",
+      text: "Hesabın ya da Kodhane kaydın silinirse bu kayıtlar da silinir. Silinen kayıtlar güvenlik yedeklerinde bir süre daha kalabilir; bu yedekler yalnızca arıza durumunda geri yükleme için kullanılır." },
+    { id: 'silme listesi.45gun', flag: 'deletionList45d', target: 'silme listesi', after: "Bu liste, bir arıza sonrası yedekten geri yükleme yaparsak silinen verilerin yeniden silinmesi için kullanılır.",
+      text: "Listedeki bu bilgiler 45 gün sonra silinir; listenin kopyalarında bir süre daha kalabilir." }
+  ];
+  // Gösterilecek paragraflar: [{ id, text }], sırayla.
+  function privacyItems() {
+    var det = ACC_TEXT['account.privacyDetails'];
+    if (det.length !== PRIVACY_IDS.length) return [];
+    var items = det.map(function (t, i) { return { id: PRIVACY_IDS[i], text: t }; });
+    PRIVACY_OPTIONAL.forEach(function (o) {
+      if (PRIVACY[o.flag]) return;
+      items.forEach(function (it) { if (it.id === o.target) it.text = it.text.replace(' ' + o.text, '').replace(o.text, '').trim(); });
+    });
+    PRIVACY_KOSULLU.forEach(function (k) {
+      if (!PRIVACY[k.flag]) return;
+      if (k.paragraph) {
+        var at = -1;
+        items.forEach(function (it, i) { if (it.id === k.afterId) at = i; });
+        if (at >= 0) items.splice(at + 1, 0, { id: k.id, text: k.text });
+        return;
+      }
+      items.forEach(function (it) {
+        if (it.id !== k.target) return;
+        var pos = it.text.indexOf(k.after);
+        if (pos >= 0) { pos += k.after.length; it.text = it.text.slice(0, pos) + ' ' + k.text + it.text.slice(pos); }
+      });
+    });
+    return items.filter(function (it) { var g = PRIVACY_GATE[it.id]; return !g || PRIVACY[g]; });
   }
+  function privacyParagraphs() { return privacyItems().map(function (it) { return it.text; }); }
   function renderPrivacy() {
     var link = document.getElementById('accPrivacyLink'), box = document.getElementById('accPrivacyDetails');
     if (!link || !box) return;
@@ -777,7 +827,7 @@
     box.innerHTML = '';
     if (!open) return;
     var h = document.createElement('h4'); h.className = 'acc-privacy-title'; h.textContent = ACC_TEXT['account.privacyTitle']; box.appendChild(h);
-    privacyParagraphs().forEach(function (p) { var e = document.createElement('p'); e.textContent = p; box.appendChild(e); });
+    privacyItems().forEach(function (it) { var e = document.createElement('p'); e.textContent = it.text; e.setAttribute('data-pid', it.id); box.appendChild(e); });
   }
   function togglePrivacy() {
     var box = document.getElementById('accPrivacyDetails');
@@ -1082,7 +1132,7 @@
     restoreSave: restoreSave, latestBackup: latestBackup, handleStale: handleStale, mock: function () { return useMock() ? mock() : null; },
     hold: hold, release: releaseHold, gate: gate, staleKind: staleKind,
     TEXT: CLOUD_TEXT, sendErrorKey: sendErrorKey,
-    PRIVACY: PRIVACY, ACC_TEXT: ACC_TEXT, privacyParagraphs: privacyParagraphs, renderPrivacy: renderPrivacy, togglePrivacy: togglePrivacy,
+    PRIVACY: PRIVACY, ACC_TEXT: ACC_TEXT, PRIVACY_IDS: PRIVACY_IDS, PRIVACY_KOSULLU: PRIVACY_KOSULLU, PRIVACY_OPTIONAL: PRIVACY_OPTIONAL, PRIVACY_GATE: PRIVACY_GATE, privacyItems: privacyItems, privacyParagraphs: privacyParagraphs, renderPrivacy: renderPrivacy, togglePrivacy: togglePrivacy,
     BACKUP_KEY: BACKUP_KEY, REV_KEY: REV_KEY, WRITER_KEY: WRITER_KEY, isConfigured: function () { return configured; }
   };
 
