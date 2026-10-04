@@ -18,16 +18,16 @@ function fresh() { K.state = K.newState(); return K.state; }
 function round(earn) { K.earn(earn); return K.doPrestige(); }
 
 // ---------------------------------------------------------------- ayarlar = denge simülasyonu E100cd12
-check('version 4.4.2, save version 5 (unchanged)', K.VERSION === '4.4.2' && K.SAVE_VERSION === 5);
+check('version 4.5.0, save version 6 (v4.5)', K.VERSION === '4.5.0' && K.SAVE_VERSION === 6);
 check('Halka Arz balance = E100cd12 (keep 1.0 floor, bankPending, +10%/pay, cap 40, 12 h)',
   H.keepShares === 1.0 && H.keepMode === 'floor' && H.bankPending === true && H.shareGainPerEarned === 0.10 && H.accelCap === 40 && H.cooldownSec === 43200, H);
-check('stage pays by ID = [0,0,0,0,0,2,3,4,5,8,12]', K.STAGES.map((s, i) => K.stagePay(i)).join(',') === '0,0,0,0,0,2,3,4,5,8,12');
+check('stage pays by ID = [0,0,0,0,0,2,3,4,5,8,9,12] (v4.5: asama_1e21 9)', K.STAGES.map((s, i) => K.stagePay(i)).join(',') === '0,0,0,0,0,2,3,4,5,8,9,12');
 check('repeatMinStage = teknoloji_devi (rank 8)', H.repeatMinStage === 'teknoloji_devi' && R('teknoloji_devi') === 8);
 check('unchanged: rounds 3, firstMin 1, unspent +1% (cap 50)', H.rounds === 3 && H.firstMin === 1 && H.unspentBonus === 0.01 && H.unspentCap === 50);
 const IDS = K.STAGES.map((s) => s.id).join(',');
-check('stage IDs', IDS === 'freelancer,ev_ofisi,butik_studyo,ajans,dev_ajans,global_holding,unicorn,sirketler_grubu,teknoloji_devi,yapay_zeka_lab,mars_ofisi', IDS);
+check('stage IDs', IDS === 'freelancer,ev_ofisi,butik_studyo,ajans,dev_ajans,global_holding,unicorn,sirketler_grubu,teknoloji_devi,yapay_zeka_lab,asama_1e21,mars_ofisi', IDS);
 check('Unicorn at 1e11, Şirketler Grubu at 1e13, others unchanged', K.STAGE_BY_ID.unicorn.at === 1e11 && K.STAGE_BY_ID.sirketler_grubu.at === 1e13 &&
-  K.STAGES.map((s) => s.at).join(',') === [0, 1e3, 5e4, 1e6, 5e7, 2.5e9, 1e11, 1e13, 1e15, 1e19, 1e23].join(','));
+  K.STAGES.map((s) => s.at).join(',') === [0, 1e3, 5e4, 1e6, 5e7, 2.5e9, 1e11, 1e13, 1e15, 1e19, 1e21, 1e23].join(','));
 check('new stage names + icons', K.STAGE_BY_ID.unicorn.name === 'Unicorn' && K.STAGE_BY_ID.sirketler_grubu.name === 'Şirketler Grubu');
 const GI = K.GENERATORS.map((g) => g.id).join(',');
 check('employee IDs (veri, cip new)', GI === 'stajyer,junior,senior,tasarimci,pm,ai,sunucu,ofis,veri,arge,cip,yzlab,mars', GI);
@@ -37,15 +37,15 @@ check('Çip Fabrikası 2.5e10 / 8.0e5 at Teknoloji Devi', G('cip').base === 2.5e
 check('Ar-Ge now at Şirketler Grubu, YZ Lab / Mars by ID', G('arge').stage === 'sirketler_grubu' && G('yzlab').stage === 'yapay_zeka_lab' && G('mars').stage === 'mars_ofisi');
 check('cost and output ladder strictly increasing', K.GENERATORS.every((g, i) => i === 0 || (g.base > K.GENERATORS[i - 1].base && g.tps > K.GENERATORS[i - 1].tps)));
 const UN = (id) => K.UPGRADES.filter((u) => u.target === id).map((u) => u.name);
-check('veri upgrades (Yazı r3 names)', UN('veri').join('|') === 'Sıcak–Soğuk Koridor|Yedeğin Yedeği|Denizaltı Kablosu|Kutup Soğutması|Uzay Soğutması', UN('veri'));
-check('cip upgrades (Yazı r3 names)', UN('cip').join('|') === 'Temiz Oda Tulumu|Silikon Gofret|Nanometre Yarışı|Çip Kıtlığına Son|Kendini Tasarlayan Çip', UN('cip'));
+check('veri upgrades (Yazı r3 names; v4.5 150+ tiers placeholders)', UN('veri').slice(0, 5).join('|') === 'Sıcak–Soğuk Koridor|Yedeğin Yedeği|Denizaltı Kablosu|Kutup Soğutması|Uzay Soğutması', UN('veri'));
+check('cip upgrades (Yazı r3 names; v4.5 150+ tiers placeholders)', UN('cip').slice(0, 5).join('|') === 'Temiz Oda Tulumu|Silikon Gofret|Nanometre Yarışı|Çip Kıtlığına Son|Kendini Tasarlayan Çip', UN('cip'));
 // simülasyon dosyası varsa sayıları oradan da karşılaştır (sert durak: fark varsa FAIL)
 {
   const simFile = path.join(process.env.KODHANE_SIM || '/workspace/kodhane-sim44', 'tests', 'balance_v44.js');
   if (fs.existsSync(simFile)) {
     const B = require(simFile), E = B.SCEN.E100cd12.ha;
     check('sim E100cd12 == CFG.halkaArz (keep, bank, accel, cap, cooldown)', ['keepShares', 'bankPending', 'shareGainPerEarned', 'accelCap', 'cooldownSec'].every((k) => E[k] === H[k]) && (E.keepMode || 'floor') === H.keepMode);
-    check('sim PAYS44 == stage pays', B.PAYS44.join(',') === K.STAGES.map((s, i) => K.stagePay(i)).join(','));
+    check('sim PAYS44 == stage pays (v4.5 asama_1e21 excluded)', B.PAYS44.join(',') === K.STAGES.filter((s) => s.id !== 'asama_1e21').map((s) => K.stagePay(K.stageRank(s.id))).join(','));
     check('sim repeatMinStage index == rank of repeatMinStage', E.repeatMinStage === R(H.repeatMinStage));
     check('sim GENS44 == veri/cip', B.GENS44.veri.base === G('veri').base && B.GENS44.veri.tps === G('veri').tps && B.GENS44.cip.base === G('cip').base && B.GENS44.cip.tps === G('cip').tps);
   } else console.log('SKIP sim cross-check (no ' + simFile + ')');
@@ -135,10 +135,10 @@ fresh(); K.state.stage = R('sirketler_grubu'); K.state.stageBest = R('teknoloji_
 { const d = K.saveData();
   check('saveData: ID fields', d.stageId === 'sirketler_grubu' && d.stageBestId === 'teknoloji_devi' && d.cycleStageId === 'unicorn');
   check('saveData: legacy numbers on the old scale (ŞG/Unicorn -> 5 = GH, TD -> 6) for the server best_stage and old clients', d.stage === 5 && d.stageBest === 6 && d.cycleStage === 5, [d.stage, d.stageBest, d.cycleStage]);
-  check('saveData: version/saveVersion 5', d.version === 5 && d.saveVersion === 5);
+  check('saveData: version/saveVersion 6', d.version === 6 && d.saveVersion === 6);
   K.deserialize(JSON.stringify(d));
-  check('v5 round trip: ID wins over the legacy number', K.state.stage === R('sirketler_grubu') && K.state.stageBest === R('teknoloji_devi') && K.state.cycleStage === R('unicorn') && K.loadedVersion === 5); }
-check('legacyStageIndex for every rank', K.STAGES.map((s, i) => K.legacyStageIndex(i)).join(',') === '0,1,2,3,4,5,5,5,6,7,8');
+  check('v5 round trip: ID wins over the legacy number', K.state.stage === R('sirketler_grubu') && K.state.stageBest === R('teknoloji_devi') && K.state.cycleStage === R('unicorn') && K.loadedVersion === 6); }
+check('legacyStageIndex for every rank', K.STAGES.map((s, i) => K.legacyStageIndex(i)).join(',') === '0,1,2,3,4,5,5,5,6,7,7,8'); // v4.5: Yörünge Üssü -> eski sıra 7 (YZ Lab)
 { K.deserialize(JSON.stringify({ version: 5, saveVersion: 5, stageId: 'yok', stage: 7, stageBestId: 42, stageBest: 7 }));
   check('unknown/invalid ID -> falls back to the legacy number', K.STAGES[K.state.stage].id === 'yapay_zeka_lab' && K.STAGES[K.state.stageBest].id === 'yapay_zeka_lab'); }
 // sunucunun sıfırlama yükü (stage 0, sürüm kopyalanmış) ve newState kopyası
@@ -333,7 +333,7 @@ check('reset.prestigeHint (r3)', K.RESET_TEXT['reset.prestigeHint'] === "Başar�
   const fresh441 = (K.state = S, JSON.parse(K.serialize()));   // (ad eski: v4.4.2 kaydı)
   const KEYS442 = KEYS440.slice(); KEYS442.splice(KEYS442.indexOf('saveVersion') + 1, 0, 'clientVersion');   // tek ek alan, saveVersion'ın hemen arkasında
   check('v4.4.2 fresh save: v4.4.0 keys in the same order + only clientVersion (after saveVersion)', JSON.stringify(Object.keys(fresh441)) === JSON.stringify(KEYS442), Object.keys(fresh441).filter((k) => !KEYS440.includes(k)));
-  check('v4.4.2: data.clientVersion = "4.4.2" (= VERSION), saveVersion still 5', fresh441.clientVersion === '4.4.2' && fresh441.clientVersion === K.VERSION && fresh441.saveVersion === 5 && fresh441.version === 5);
+  check('v4.5: data.clientVersion = "4.5.0" (= VERSION), saveVersion 6', fresh441.clientVersion === '4.5.0' && fresh441.clientVersion === K.VERSION && fresh441.saveVersion === 6 && fresh441.version === 6);
   // dolu bir v4.4.0 kaydı (gerçek 879f67b çıktısıyla aynı biçim): yükle -> kaydet; alan kümesi (iç içe) ve değerler aynı (lastSaved hariç)
   let src440 = null;
   try { src440 = require('child_process').execFileSync('git', ['show', '879f67b:game.js'], { cwd: path.join(__dirname, '..'), stdio: ['ignore', 'pipe', 'ignore'] }).toString(); } catch (e) { src440 = null; }
@@ -350,14 +350,15 @@ check('reset.prestigeHint (r3)', K.RESET_TEXT['reset.prestigeHint'] === "Başar�
     const raw0 = K0.serialize(), o0 = JSON.parse(raw0);
     K.deserialize(raw0); const o1 = JSON.parse(K.serialize());
     const noCv = (o) => { const c = JSON.parse(JSON.stringify(o)); delete c.clientVersion; return c; };
-    check('v4.4.0 save (no clientVersion) -> v4.4.2 load+save: identical nested key set and order + clientVersion', JSON.stringify(keysDeep(noCv(o1))) === JSON.stringify(keysDeep(o0)) && o1.clientVersion === '4.4.2',
+    check('v4.4.0 save (no clientVersion) -> v4.4.2 load+save: identical nested key set and order + clientVersion', JSON.stringify(keysDeep(noCv(o1))) === JSON.stringify(keysDeep(o0)) && o1.clientVersion === '4.5.0',
       [keysDeep(o1).filter((k) => !keysDeep(o0).includes(k)), keysDeep(o0).filter((k) => !keysDeep(o1).includes(k))]);
     const strip = (o) => { const c = noCv(o); delete c.lastSaved; return c; };
-    check('v4.4.0 save -> v4.4.2 load+save: all values identical (except lastSaved, + clientVersion)', JSON.stringify(strip(o1)) === JSON.stringify(strip(o0)),
-      Object.keys(o0).filter((k) => k !== 'lastSaved' && JSON.stringify(o0[k]) !== JSON.stringify(o1[k])));
-    check('v4.4.0 save -> v4.4.2: still saveVersion 5 / version 5', o1.saveVersion === 5 && o1.version === 5);
-    K0.deserialize(K.serialize()); const o2 = JSON.parse(K0.serialize());
-    check('v4.4.2 save -> v4.4.0 load+save: identical (except lastSaved), clientVersion dropped, not blocked as a future save', JSON.stringify(strip(o2)) === JSON.stringify(strip(o0)) && !('clientVersion' in o2) && !K0.writesBlocked());
+    // v4.5: değerler aynı; yalnız sürüm (6) ve bu turda 1e21'i geçen (döngü kazancı 2,5e21) oyuncunun aşama kimlikleri Yörünge Üssü olur
+    const diff = Object.keys(o0).filter((k) => k !== 'lastSaved' && JSON.stringify(o0[k]) !== JSON.stringify(o1[k]));
+    check('v4.4.0 save -> v4.5 load+save: values identical except version/saveVersion and stage IDs re-evaluated to asama_1e21 (earned past 1e21)',
+      diff.every((k) => ['version', 'saveVersion', 'stageId', 'stageBestId', 'cycleStageId'].includes(k)) && ['stageBestId', 'cycleStageId'].every((k) => o1[k] === 'asama_1e21') && o1.stage === o0.stage && o1.stageBest === o0.stageBest, diff);
+    check('v4.4.0 save -> v4.5: saveVersion 6 / version 6', o1.saveVersion === 6 && o1.version === 6);
+    check('v4.5 save -> v4.4.0: treated as a future save (guardFuture: no writes from the old tab)', K0.guardFuture(K.serialize(), 'local') === true);
   }
 }
 
@@ -396,9 +397,9 @@ check('reset.prestigeHint (r3)', K.RESET_TEXT['reset.prestigeHint'] === "Başar�
     K1.state.gens.stajyer = 120; K1.state.stageBest = 10; K1.state.stage = 10; K1.state.cycleStage = 10;
     const strip = (o) => { const c = JSON.parse(JSON.stringify(o)); delete c.lastSaved; delete c.clientVersion; return c; };
     const o1 = JSON.parse(K1.serialize()); K.deserialize(JSON.stringify(o1)); const o2 = JSON.parse(K.serialize());
-    check('v4.4.1 save -> v4.4.2 load+save: identical except lastSaved + clientVersion "4.4.2"', K1.VERSION === '4.4.1' && JSON.stringify(strip(o2)) === JSON.stringify(strip(o1)) && o2.clientVersion === '4.4.2' && !K.writesBlocked());
-    K1.deserialize(JSON.stringify(o2)); const o3 = JSON.parse(K1.serialize());
-    check('v4.4.2 save -> v4.4.1 load+save: not blocked, identical, clientVersion dropped', !K1.writesBlocked() && JSON.stringify(strip(o3)) === JSON.stringify(strip(o1)) && !('clientVersion' in o3));
+    const sv = (o) => { const c = strip(o); delete c.version; delete c.saveVersion; return c; };
+    check('v4.4.1 save -> v4.5 load+save: identical except lastSaved, version/saveVersion 6 + clientVersion "4.5.0"', K1.VERSION === '4.4.1' && JSON.stringify(sv(o2)) === JSON.stringify(sv(o1)) && o2.saveVersion === 6 && o2.clientVersion === '4.5.0' && !K.writesBlocked());
+    check('v4.5 save -> v4.4.1: future save, the old tab does not write (guardFuture)', K1.guardFuture(JSON.stringify(o2), 'local') === true && K1.writesBlocked());
   }
 }
 
