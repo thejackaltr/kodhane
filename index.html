@@ -280,7 +280,9 @@
       </div>
       <!-- v4.5 (P7) Kayıp bildir: içerik ve metinler lossreport.js'ten (Yazı r3 LOSS_TEXT). Misafir ve girişli oyuncuya görünür. -->
       <section id="lossSection" class="loss-section hidden" aria-labelledby="lossTitle"></section>
-      <!-- v4.5: account.privacyDetails paneli için yer (kayıp bildirimi gizlilik satırı). METIN BEKLENIYOR (Yazı): metin koda konmadı. -->
+      <!-- v4.5: "Hesap ve bulut kaydı hakkında" (Yazı hesap bilgilendirme r17). İçerik cloud.js ACC_TEXT'ten; varsayılan KAPALI
+           (cloud.js PRIVACY.enabled = false): Aryen ve avukat onaylamadan bağlantı da panel de görünmez. -->
+      <button id="accPrivacyLink" type="button" class="acc-link acc-privacy-link hidden" aria-expanded="false" aria-controls="accPrivacyDetails"></button>
       <div id="accPrivacyDetails" class="acc-privacy-details hidden" data-text-key="account.privacyDetails"></div>
       <p id="accMsg" class="acc-msg" aria-live="polite"></p>
       <p class="save-note">Giriş yapmadan da oynayabilirsin; misafir kaydın bu cihazda tutulur. Girişliyken oyun hem bu cihaza hem de buluta (yaklaşık 45 sn’de bir) kaydedilir.</p>

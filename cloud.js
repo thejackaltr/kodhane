@@ -731,6 +731,61 @@
     push(false).then(function () { C.keepalive = false; }, function () { C.keepalive = false; });
   }
 
+  // v4.5: "Hesap ve bulut kaydı hakkında" bağlantısı ve paneli (account.privacyDetails). Metinler Yazı
+  // kodhane-hesap-bilgilendirme-yazi-r17.md JSON bloklarından birebir ([0], [8], [9], privacyLink, privacyTitle).
+  // Varsayılan KAPALI: Aryen ve avukat onaylamadan açılmaz (PRIVACY.enabled). Kapalıyken bağlantı da panel de DOM'da boş ve gizli.
+  //   loginLog12m:    [0]'daki "Bu giriş kayıtları 12 ay sonra silinir." cümlesi (r17: temizlik canlıda + üç koşul + Yazılım bildirimi)
+  //   resetBackup30d: [8] sıfırlama yedeği paragrafı (r17: kendi üç koşulu)
+  var PRIVACY = { enabled: false, loginLog12m: false, resetBackup30d: false };
+  var ACC_TEXT = {
+    'account.privacyLink': "Hesap ve bulut kaydı hakkında",
+    'account.privacyTitle': "Hesap ve bulut kaydı hakkında",
+    'account.privacyDetails': [
+      "Giriş yaparsan e-posta adresini ve bulut kaydını tutarız. Bulut kaydınla birlikte son kaydetme zamanı ve sıralama için en iyi puanın da tutulur. Girişlerin, çıkışların ve giriş e-postası isteklerin de e-posta adresinle birlikte kaydedilir. Bu giriş kayıtları 12 ay sonra silinir. Bu hesap Açık Ofis oyunuyla ortaktır, orada da aynı hesapla giriş yaparsın.", // [0] Yazı r17 (son cümle koşullu: PRIVACY.loginLog12m)
+      "[account.privacyDetails[1]]", // METIN BEKLENIYOR (Yazı) [1]: r17'de yok
+      "[account.privacyDetails[2]]", // METIN BEKLENIYOR (Yazı) [2]: r17'de yok
+      "[account.privacyDetails[3]]", // METIN BEKLENIYOR (Yazı) [3]: r17'de yok
+      "[account.privacyDetails[4]]", // METIN BEKLENIYOR (Yazı) [4]: r17'de yok
+      "[account.privacyDetails[5]]", // METIN BEKLENIYOR (Yazı) [5]: r17'de yok
+      "[account.privacyDetails[6]]", // METIN BEKLENIYOR (Yazı) [6]: r17'de yok
+      "[account.privacyDetails[7]]", // METIN BEKLENIYOR (Yazı) [7]: r17'de yok
+      "Kaydını sıfırlarsan buluttaki eski kaydın 30 gün oyun içi yedek olarak saklanır. Bu sürede onu geri yükleyebilirsin, sonra bu yedek silinir.", // [8] Yazı r17 (koşullu: PRIVACY.resetBackup30d)
+      "Hesabının ya da yalnızca Kodhane kaydının silinmesini istersen info@teserix.com adresine yazabilirsin. Talebin yalnızca hesabının kayıtlı e-posta adresinden gelirse işlenir. Hesabının tamamı silindiğinde giriş kayıtların da silinir. Silme seçtiğin verileri sunucudan siler, cihazındaki kaydı silmez. Silinen veriler güvenlik yedeklerinde bir süre daha kalabilir; bu yedekler yalnızca arıza durumunda geri yükleme için kullanılır. Cihazındaki kayıt tarayıcıda kalır; onu da silmek için oyunu her cihazda kapat ve tarayıcında bu sitenin verilerini temizle, yoksa yeniden girişte kayıt buluta geri yüklenir.", // [9] Yazı r17
+      "[account.privacyDetails[veri sorumlusu]]" // METIN BEKLENIYOR (Yazı) [veri sorumlusu]: r17'de yok
+    ]
+  };
+  var LOGIN_LOG_12M = ' Bu giriş kayıtları 12 ay sonra silinir.';
+  function privacyParagraphs() {
+    return ACC_TEXT['account.privacyDetails'].map(function (p, i) {
+      if (i === 0 && !PRIVACY.loginLog12m) return p.replace(LOGIN_LOG_12M, '');
+      if (i === 8 && !PRIVACY.resetBackup30d) return '';
+      return p;
+    }).filter(function (p) { return !!p; });
+  }
+  function renderPrivacy() {
+    var link = document.getElementById('accPrivacyLink'), box = document.getElementById('accPrivacyDetails');
+    if (!link || !box) return;
+    if (!PRIVACY.enabled) {
+      link.textContent = ''; link.classList.add('hidden'); link.setAttribute('aria-expanded', 'false');
+      box.innerHTML = ''; box.classList.add('hidden'); box.removeAttribute('data-open');
+      return;
+    }
+    link.textContent = ACC_TEXT['account.privacyLink']; link.classList.remove('hidden');
+    var open = box.getAttribute('data-open') === '1';
+    link.setAttribute('aria-expanded', open ? 'true' : 'false');
+    box.classList.toggle('hidden', !open);
+    box.innerHTML = '';
+    if (!open) return;
+    var h = document.createElement('h4'); h.className = 'acc-privacy-title'; h.textContent = ACC_TEXT['account.privacyTitle']; box.appendChild(h);
+    privacyParagraphs().forEach(function (p) { var e = document.createElement('p'); e.textContent = p; box.appendChild(e); });
+  }
+  function togglePrivacy() {
+    var box = document.getElementById('accPrivacyDetails');
+    if (!box || !PRIVACY.enabled) return;
+    if (box.getAttribute('data-open') === '1') box.removeAttribute('data-open'); else box.setAttribute('data-open', '1');
+    renderPrivacy();
+  }
+
   // Giriş e-postası gönderim hataları (Yazı r1, "Kod gönderim hataları"). Resend kotası üç oyunda ortak.
   var CLOUD_TEXT = {
     'cloud.rateLimit': 'Çok fazla deneme oldu, birkaç dakika sonra tekrar dene.',
@@ -1027,6 +1082,7 @@
     restoreSave: restoreSave, latestBackup: latestBackup, handleStale: handleStale, mock: function () { return useMock() ? mock() : null; },
     hold: hold, release: releaseHold, gate: gate, staleKind: staleKind,
     TEXT: CLOUD_TEXT, sendErrorKey: sendErrorKey,
+    PRIVACY: PRIVACY, ACC_TEXT: ACC_TEXT, privacyParagraphs: privacyParagraphs, renderPrivacy: renderPrivacy, togglePrivacy: togglePrivacy,
     BACKUP_KEY: BACKUP_KEY, REV_KEY: REV_KEY, WRITER_KEY: WRITER_KEY, isConfigured: function () { return configured; }
   };
 
@@ -1040,6 +1096,9 @@
     el.verify = el.accVerify; el.resend = el.accResend; el.change = el.accChange;
     if (!el.btn || !el.panel) return;
     el.btn.addEventListener('click', openPanel);
+    var pl = document.getElementById('accPrivacyLink');
+    if (pl) pl.addEventListener('click', togglePrivacy);
+    renderPrivacy();
     el.accClose.addEventListener('click', closePanel);
     el.panel.addEventListener('click', function (e) { if (e.target === el.panel) closePanel(); });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !el.panel.classList.contains('hidden')) closePanel(); });

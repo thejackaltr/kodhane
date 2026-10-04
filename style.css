@@ -602,5 +602,8 @@ html.nb-open body { padding-bottom: calc(var(--nb-space, 160px) + 8px); }
 .loss-error { color: #ff8a80; font-size: .82rem; min-height: 0; margin: 6px 0 0; }
 .loss-error:empty { display: none; }
 .acc-privacy-details { font-size: .78rem; color: var(--muted); line-height: 1.45; margin-top: 10px; }
+.acc-privacy-link { display: block; margin-top: 8px; text-align: left; }
+.acc-privacy-title { margin: 0 0 6px; font-size: .9rem; color: var(--text); }
+.acc-privacy-details p { margin: 0 0 8px; overflow-wrap: anywhere; }
 /* v4.5: uzun tek parça adlar (ör. Yazı'dan bekleyen [anahtar] yer tutucuları) kartı taşırmasın */
 .ach-name, .ach-desc, .tree-branch h4, .tree-node b, .tree-node small, .upg-name, .stats dt, .stats dd { overflow-wrap: anywhere; }
