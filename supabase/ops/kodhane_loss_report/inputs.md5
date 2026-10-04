@@ -7,4 +7,4 @@ b1e24a4c50780ecca82dd28caefc4fa3  ops/kodhane_loss_report/preflight.sql
 2034bc61e58af4faa5c1a6139aa196f5  ops/kodhane_account_delete_preflight.sql
 4ed2b2ab9f8c58e1ebe47b0bdd5a8d8f  ops/kodhane_account_delete_verify.sql
 cbba8cf4e7aceca3603568392c5d0389  ops/kodhane_deletion_log/reapply.sql
-277d48abd33e1620c8237befe3c1306a  ops/kodhane_deletion_log/lib.sh
+f21a7c78fe0e4007c28b1dadc5b7a873  ops/kodhane_deletion_log/lib.sh

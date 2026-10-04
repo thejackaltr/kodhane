@@ -6,4 +6,4 @@ e25f2538d0fd592856a63d60df9d3b73  ops/kodhane_score_rule/preflight_head.sql
 696bfa0f9564df29e2254c08c66d5e2b  ops/kodhane_score_rule/postcheck.sql
 dda9cfb450ec48f6bbc880f3e59ce0f1  ops/kodhane_score_rule/verify.sql
 44532490f38d0b8e258faad27ba80060  ops/kodhane_score_rule/rollback_preview.sql
-277d48abd33e1620c8237befe3c1306a  ops/kodhane_deletion_log/lib.sh
+f21a7c78fe0e4007c28b1dadc5b7a873  ops/kodhane_deletion_log/lib.sh
