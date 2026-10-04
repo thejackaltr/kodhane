@@ -126,7 +126,7 @@
           thr: { E1: 25, E2: 100, E3: 250, E4: 500 },
           E1: { offerMore: 0.25, eventMore: 0.25 },   // müşteri teklif aralığı ve olay kartı aralığı / (1 + x)
           E2: { bigChance: 0.10, bigMult: 3 },         // büyük müşteri teklifi: nakit teklifin bu ihtimalle x bigMult ödemesi
-          E3: { penaltyCut: 0.3 },                     // YALNIZ CONFIG: sim modellemedi, oyunda uygulanmıyor (açık soru)
+          E3: { enabled: false, penaltyCut: 0.3 },     // KAPALI (karar 3): sim modellemedi; oyunda etkisi yok, avantaj panelinde görünmez
           E4: { bigChance: 0.25 }                      // E4'te büyük müşteri ihtimali (E2'nin yerine)
         },
         borsa: {
@@ -597,7 +597,9 @@
   function investorBonus(n) { return shareBonus() * (n === undefined ? S.shares : n); }
   function offerSec() { return hasNode('musteri_2') ? CFG.tree.offerSec : CFG.offerSec; }
   // v4.5: itibar eşiği (E1..E4) açık mı
-  function repPerk(e) { return S.reputation >= V45.rep.thr[e]; }
+  // Avantaj config'te 'enabled: false' ise (E3, karar 3) hiç açılmaz ve panelde listelenmez.
+  function perkEnabled(e) { var c = V45.rep[e]; return !(c && c.enabled === false); }
+  function repPerk(e) { return perkEnabled(e) && S.reputation >= V45.rep.thr[e]; }
   // teklif aralığı çarpanı: Sadık Müşteri ve (v4.5) E1 ayrı ayrı / 1,25
   function offerFreq() { return (hasNode('musteri_1') ? 1 / (1 + CFG.tree.offerMore) : 1) * (repPerk('E1') ? 1 / (1 + V45.rep.E1.offerMore) : 1); }
   // v4.5: olay kartı aralığı çarpanı (E1)
@@ -2211,7 +2213,7 @@
       ['Çözülen olay kartı', fmt(S.eventsResolved)],
       ['İtibar', fmt(S.reputation)],
       // v4.5 avantaj paneli (P2): eşik açıksa ✓, değilse ilerleme. Satır adları METIN BEKLENIYOR (V45_TEXT rep.perk.E1..E4).
-      ['E1', 'E2', 'E3', 'E4'].map(function (e) { return [v45Text('rep.perk.' + e), repPerk(e) ? '✓' : fmt(S.reputation) + ' / ' + fmt(V45.rep.thr[e])]; }),
+      ['E1', 'E2', 'E3', 'E4'].filter(perkEnabled).map(function (e) { return [v45Text('rep.perk.' + e), repPerk(e) ? '✓' : fmt(S.reputation) + ' / ' + fmt(V45.rep.thr[e])]; }),
       ['Başarım bonusu', '+%' + S.achievements.length + ' üretim'],
       ['Günlük seri (en iyi)', (S.daily.streak || 0) + ' gün (' + (S.daily.best || 0) + ')'],
       ['Çevrimdışı kazanç', tl(S.offlineEarned)],

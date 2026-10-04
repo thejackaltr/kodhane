@@ -26,7 +26,7 @@ check('single config object CFG.v45: active F2, presets F2 + F3, common', C.acti
 check('game reads only V45 = common + presets[active] (growth/tierMult from preset, rest common)', V.growth === C.presets.F2.growth && V.tierMult === C.presets.F2.tierMult && V.rep === C.common.rep && V.borsa === C.common.borsa);
 check('F2 growth = GD [[0,1.15],[300,1.10],[500,1.05],[1000,1.025],[3000,1.0125]], tiers x1.25', JSON.stringify(V.growth) === '[[0,1.15],[300,1.1],[500,1.05],[1000,1.025],[3000,1.0125]]' && V.tierMult === 1.25);
 check('rep: max 1e9, +1%/point, cap +100%, thresholds 25/100/250/500', V.rep.max === 1e9 && V.rep.perPoint === 0.01 && V.rep.cap === 1 && JSON.stringify(V.rep.thr) === '{"E1":25,"E2":100,"E3":250,"E4":500}');
-check('E1 offer + event 0.25, E2 0.10 x3, E4 0.25, E3 config only (0.3)', V.rep.E1.offerMore === 0.25 && V.rep.E1.eventMore === 0.25 && V.rep.E2.bigChance === 0.1 && V.rep.E2.bigMult === 3 && V.rep.E4.bigChance === 0.25 && V.rep.E3.penaltyCut === 0.3);
+check('E1 offer + event 0.25, E2 0.10 x3, E4 0.25, E3 off (enabled: false, 0.3 kept in config)', V.rep.E1.offerMore === 0.25 && V.rep.E1.eventMore === 0.25 && V.rep.E2.bigChance === 0.1 && V.rep.E2.bigMult === 3 && V.rep.E4.bigChance === 0.25 && V.rep.E3.penaltyCut === 0.3 && V.rep.E3.enabled === false);
 check('Borsa 4/5/5, growthCut 0.8, IPO start 1e9 + senior 10 / tasarimci 10 / pm 5, full tree required', V.borsa.costs.join() === '4,5,5' && V.borsa.growthCut === 0.8 && V.borsa.ipoStartCash === 1e9 && JSON.stringify(V.borsa.ipoStartGens) === '[["senior",10],["tasarimci",10],["pm",5]]' && V.borsa.requireFullTree === true);
 check('asama_1e21 at 1e21, pay 9', V.stage1e21.id === 'asama_1e21' && V.stage1e21.at === 1e21 && V.stage1e21.pay === 9 && K.CFG.halkaArz.stagePays.asama_1e21 === 9);
 const SRC = fs.readFileSync(GP, 'utf8');
@@ -92,7 +92,7 @@ check('below the cap: +1%/point (40 -> 1.4)', near(K.repMult(), 1.4, 1e-12));
 K.state.reputation = 2e9; K.addRep(1);
 check('safety cap 1e9', K.state.reputation === 1e9);
 { const d = JSON.parse(K.serialize()); d.reputation = 12345; K.deserialize(JSON.stringify(d)); check('save/load keeps reputation > 100', K.state.reputation === 12345); }
-check('thresholds: repPerk', (() => { const out = []; [24, 25, 99, 100, 250, 500].forEach((r) => { K.state.reputation = r; out.push(['E1', 'E2', 'E3', 'E4'].filter(K.repPerk).join('')); }); return out.join('|') === '|E1|E1|E1E2|E1E2E3|E1E2E3E4'; })());
+check('thresholds: repPerk', (() => { const out = []; [24, 25, 99, 100, 250, 500].forEach((r) => { K.state.reputation = r; out.push(['E1', 'E2', 'E3', 'E4'].filter(K.repPerk).join('')); }); return out.join('|') === '|E1|E1|E1E2|E1E2|E1E2E4'; })());
 
 // ---------------------------------------------------------------- E1 aralıkları
 fresh();
@@ -108,6 +108,15 @@ fresh();
 const bc = (r) => { K.state.reputation = r; return K.bigOfferChance(); };
 check('big customer chance: 0 below E2, 0.10 at E2/E3, 0.25 at E4', bc(99) === 0 && bc(100) === 0.1 && bc(250) === 0.1 && bc(500) === 0.25);
 check('E3 penaltyCut is config only (not used by the game code)', (SRC.match(/penaltyCut/g) || []).length === 1);
+// E3 kapalı (karar 3): bayrak config'te, oyunda hiçbir etkisi yok, avantaj panelinde yok
+{
+  const snap = (r) => { K.state.reputation = r; return JSON.stringify([K.repPerk('E3'), K.offerFreq(), K.eventFreq(), K.bigOfferChance(), K.repMult ? K.repMult() : null]); };
+  fresh();
+  check('E3 disabled: repPerk(E3) false even at 1e6 reputation', [250, 499, 1e6].every((r) => { K.state.reputation = r; return K.repPerk('E3') === false; }));
+  check('E3 disabled: crossing 250 changes nothing (offer/event interval, big customer, rep bonus same at 249 and 250/499)', snap(249) === snap(250) && snap(249) === snap(499), [snap(249), snap(250), snap(499)]);
+  check('E3 disabled: game code never asks for E3 (no repPerk(\'E3\'), penaltyCut unused)', !/repPerk\(\s*'E3'\s*\)/.test(SRC) && (SRC.match(/penaltyCut/g) || []).length === 1);
+  check('E3 disabled: advantage panel lists only enabled perks (filter(perkEnabled))', /\['E1', 'E2', 'E3', 'E4'\]\.filter\(perkEnabled\)/.test(SRC));
+}
 
 // ---------------------------------------------------------------- Borsa dalı
 fresh();
