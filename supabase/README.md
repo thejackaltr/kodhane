@@ -9,8 +9,9 @@ Aynı veritabanını **Açık Ofis** de kullanır. Açık Ofis'in migration'lar�
 Aşağıdaki listede yalnız dosya adıyla anılırlar.
 
 ## Kaynak
-Dosyalar 2026-10-04'te Açık Ofis reposundaki `v4.4-backend` dalından (`63838e1`) alındı. İçerikleri bayt bayt aynı
-(md5 tablosu PR'da). **Kurulum bu repodaki dalın commit'inden yapılır.** Paket B'nin üretilen `install.sql` md5'i
+Dosyalar 2026-10-04'te Açık Ofis reposundaki `v4.4-backend` dalından (`63838e1`) alındı. Altyapı adlarını ortam
+değişkenine taşıyan altı dosya dışında içerikleri bayt bayt aynı (md5 tablosu ve fark gerekçeleri PR'da). **Kurulum bu
+repodaki dalın commit'inden yapılır.** Paket B'nin üretilen `install.sql` md5'i
 `deefef0e5c52cc3679dc997374d2edbb` (63838e1 ile aynı).
 
 ## Ortak veritabanının migration geçmişi (tarih sırasıyla)
@@ -34,6 +35,18 @@ ilgili preflight/verify ile yeniden doğrulanır; bu tablo bilgi içindir.
 - Paket B + kazanç günlüğü: `docs/kodhane-v44b-install-runbook.md` (`ops/kodhane_v44b_install.sh build → preflight → dryrun → install → verify`).
 - Saklama: `docs/kodhane-retention-runbook.md`. Silme listesi: `ops/kodhane_deletion_log_install.sh`. Hesap silme: `docs/kodhane-account-delete-runbook.md`.
 - Canlı DB'ye her kurulum ayrı onayla yapılır. Bu repoya merge etmek yalnız kodu alır.
+
+## Canlı hedef ortam değişkenleri
+`KODHANE_TARGET=live` betikleri altyapı adlarını yalnız ortamdan okur; repoda gerçek değer yoktur, varsayılan da yoktur.
+Değişken boşsa betik `STOP: … is not set` ile durur. Değerler yerel, commit edilmeyen `sb_env.sh`'tan gelir
+(`.gitignore`'da); şablon `supabase/sb_env.example.sh` yalnız yer tutucu içerir.
+
+| değişken | anlamı |
+|---|---|
+| `PORTAINER_API_TOKEN` | Portainer API anahtarı (ekrana basılmaz) |
+| `KODHANE_PORTAINER_URL` | DB'yi çalıştıran endpoint'in Portainer Docker API adresi (`https://<portainer-host>/api/endpoints/<id>/docker`) |
+| `KODHANE_DB_CONTAINER` | Supabase yığınının Postgres container adı |
+| `KODHANE_DB_COMPOSE` | Aynı yığının Dokploy compose adı (yalnız runbook: saklama görevi) |
 
 ## Testler
 Yalnız yerel, atılabilir veritabanlarında (Docker `supabase/postgres:17.6.1.136`). Taban veritabanı (`v44_base`) canlı

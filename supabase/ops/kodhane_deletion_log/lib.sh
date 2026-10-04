@@ -2,8 +2,9 @@
 # ops/kodhane_v44b_install.sh:
 #   KODHANE_TARGET=local  KODHANE_CT=<docker container> KODHANE_DB=<database>   (docker exec psql -U supabase_admin)
 #   KODHANE_TARGET=live   PORTAINER_API_TOKEN exported (never printed); KODHANE_PEXEC (default
-#                         /workspace/kodhane-cloud/pexec.sh), KODHANE_PENV (penv_md5.py): Portainer exec on puffin,
-#                         psql -U supabase_admin -d postgres in infrastructure-supabase-eqbmlp-db-1
+#                         /workspace/kodhane-cloud/pexec.sh), KODHANE_PENV (penv_md5.py): Portainer exec
+#                         ($KODHANE_PORTAINER_URL), psql -U supabase_admin -d postgres in $KODHANE_DB_CONTAINER
+#                         (both required, no default; local sb_env.sh, see supabase/sb_env.example.sh)
 dl_ts() { date '+%Y-%m-%d %H:%M:%S TSİ'; }
 dl_die() { echo "STOP: $*"; exit 1; }
 DL_PREFIX='\set ON_ERROR_STOP on
@@ -17,6 +18,9 @@ dl_target_init() {
   case "$DL_TARGET" in
     local) [[ -n "${KODHANE_CT:-}" && -n "${KODHANE_DB:-}" ]] || dl_die "KODHANE_TARGET=local needs KODHANE_CT and KODHANE_DB" ;;
     live)  [[ -n "${PORTAINER_API_TOKEN:-}" ]] || dl_die "PORTAINER_API_TOKEN is not exported"
+           [[ -n "${KODHANE_PORTAINER_URL:-}" ]] || dl_die "KODHANE_PORTAINER_URL is not set (Portainer Docker API base URL; no default, see supabase/sb_env.example.sh)"
+           [[ -n "${KODHANE_DB_CONTAINER:-}" ]] || dl_die "KODHANE_DB_CONTAINER is not set (live DB container name; no default, see supabase/sb_env.example.sh)"
+           export KODHANE_PORTAINER_URL KODHANE_DB_CONTAINER
            for f in "$DL_PEXEC" "$DL_PENV"; do [[ -r "$f" ]] || dl_die "missing $f"; done ;;
     *) dl_die "KODHANE_TARGET must be local or live" ;;
   esac

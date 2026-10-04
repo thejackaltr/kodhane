@@ -22,6 +22,9 @@ die() { echo "STOP: $*"; mark "STOP: $*"; exit 1; }
 umask 077; mkdir -p "$OUT/sql"; chmod 700 "$OUT"
 if [[ "$TARGET" == local ]]; then : "${KODHANE_CT:?}"; : "${KODHANE_DB:?}"
 else [[ -n "${PORTAINER_API_TOKEN:-}" ]] || die "PORTAINER_API_TOKEN is not exported"
+     [[ -n "${KODHANE_PORTAINER_URL:-}" ]] || die "KODHANE_PORTAINER_URL is not set (Portainer Docker API base URL; no default, see supabase/sb_env.example.sh)"
+     [[ -n "${KODHANE_DB_CONTAINER:-}" ]] || die "KODHANE_DB_CONTAINER is not set (live DB container name; no default, see supabase/sb_env.example.sh)"
+     export KODHANE_PORTAINER_URL KODHANE_DB_CONTAINER
      [[ -n "${KODHANE_LIVE_APPROVAL:-}" ]] || die "live deltest $STEP needs KODHANE_LIVE_APPROVAL (separate approval)"; mark "approval: $KODHANE_LIVE_APPROVAL"; fi
 run_sql() {  # run_sql <name>
   local f="$OUT/sql/$1.sql" o="$OUT/$1.out" rc; mark "$1 start ($(md5sum < "$f" | cut -c1-32))"

@@ -22,6 +22,7 @@
 #   KODHANE_TARGET=live   PORTAINER_API_TOKEN exported (never printed)          Portainer exec, as for package A:
 #                         KODHANE_PEXEC (default /workspace/kodhane-cloud/pexec.sh), KODHANE_PENV (penv_md5.py),
 #                         KODHANE_PDUMP (pdump_env.py); install / rollback also need KODHANE_LIVE_APPROVAL="<who, when>"
+#                         KODHANE_PORTAINER_URL, KODHANE_DB_CONTAINER (no default; local sb_env.sh, see sb_env.example.sh)
 # Other: KODHANE_OUT (required), KODHANE_BACKUP_DIR (default /home/box/agent-data/backups),
 #        KODHANE_ALLOW_PROGRESS_LOG_LOSS=on (rollback only: drop a non-empty progress log).
 # Exit 0 = step PASS; 1 = STOP / FAIL (the step output says why); 2 = usage.
@@ -51,6 +52,9 @@ if [[ "$TARGET" == local ]]; then
   : "${KODHANE_CT:?KODHANE_CT required for local}"; : "${KODHANE_DB:?KODHANE_DB required for local}"
 else
   [[ -n "${PORTAINER_API_TOKEN:-}" ]] || die "PORTAINER_API_TOKEN is not exported"
+  [[ -n "${KODHANE_PORTAINER_URL:-}" ]] || die "KODHANE_PORTAINER_URL is not set (Portainer Docker API base URL; no default, see supabase/sb_env.example.sh)"
+  [[ -n "${KODHANE_DB_CONTAINER:-}" ]] || die "KODHANE_DB_CONTAINER is not set (live DB container name; no default, see supabase/sb_env.example.sh)"
+  export KODHANE_PORTAINER_URL KODHANE_DB_CONTAINER
   for f in "$PEXEC" "$PENV" "$PDUMP"; do [[ -r "$f" ]] || die "missing $f"; done
 fi
 need_approval() {
@@ -249,8 +253,8 @@ case "$STEP" in
       # NOT rehearsed against Portainer (the local rehearsal runs the same SQL through docker exec).
       python3 - "$OUT/sql/full_restore.sql" > "$OUT/full_restore.out" 2>&1 <<'PY2'
 import io, json, os, struct, sys, tarfile, urllib.request
-src = sys.argv[1]; tok = os.environ['PORTAINER_API_TOKEN']; CT = 'infrastructure-supabase-eqbmlp-db-1'
-API = 'https://portainer.teserix.com/api/endpoints/3/docker'
+src = sys.argv[1]; tok = os.environ['PORTAINER_API_TOKEN']; CT = os.environ['KODHANE_DB_CONTAINER']
+API = os.environ['KODHANE_PORTAINER_URL'].rstrip('/')
 H = {'X-API-Key': tok, 'User-Agent': 'Mozilla/5.0'}
 buf = io.BytesIO()
 with tarfile.open(fileobj=buf, mode='w') as t:
