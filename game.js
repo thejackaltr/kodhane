@@ -1758,7 +1758,10 @@
     applySave(d);
     Core.lastAdopt = sk ? 'otherDevice' : kind;   // uyumluluk: 409/başka sekme = 'otherDevice'
     Core.lastAdoptKind = sk || null;               // 'reset' | 'sync' (staleKind)
-    if (sk === 'reset') toast('🔄 ' + otherDeviceText(signedIn(), sk), 7000);
+    // v4.5 (P7): 409 bir telafi yüklemesinden geldiyse (lossreport.js durumda yeni 'applied' gördü) lossReport.applied.staleTab
+    var lossMsg = sk && Core.lossReport && typeof Core.lossReport.consumeAppliedForStale === 'function' ? Core.lossReport.consumeAppliedForStale() : '';
+    if (lossMsg) toast(lossMsg, 7000);
+    else if (sk === 'reset') toast('🔄 ' + otherDeviceText(signedIn(), sk), 7000);
     else if (sk === 'sync') toast(otherDeviceText(signedIn(), sk), 7000);   // yalnız onaylı metin
     else if (kind === 'undoDone') toast('↩️ ' + resetText('reset.undoDone'), 4500);
     refreshRestoreBox();

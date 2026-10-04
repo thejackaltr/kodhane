@@ -714,6 +714,13 @@
     clearPushTimer();
     C.reconciled = false;
     if (C.staleAt.length > 3) { setStatus('error', 'Buluta kaydedilemedi; tekrar denenecek. Oyun bu cihazda kayıtlı.'); setTimeout(function () { if (C.user && !C.reconciled) reconcile(); }, 60000); return; }
+    // v4.5 (P7): 409 bir telafi yüklemesinden olabilir (sunucu revision'ı artırır). Kayıp bildir durumu önce (en fazla 2,5 sn)
+    // yenilenir; adoptSave telafiyse lossReport.applied.staleTab metnini gösterir. Yazma tekrar denenmez, kayıt yeniden çekilir.
+    if (K.lossReport && typeof K.lossReport.beforeStale === 'function') {
+      var go = function () { if (C.user && !C.reconciled) reconcile(); };
+      try { K.lossReport.beforeStale().then(go, go); } catch (e) { go(); }
+      return;
+    }
     reconcile();
   }
   function flush() {
@@ -997,6 +1004,8 @@
   K.cloud = {
     state: C, config: CFG, push: push, flush: flush, reconcile: reconcile, signOut: signOut, open: openPanel, close: closePanel,
     getClient: getClient, online: online,
+    // v4.5 (P7): oturumlu RPC (lossreport.js). Yanıt { data, error, status } (supabase-js / sahte sunucu).
+    rpc: function (name, args) { if (!C.user) return Promise.resolve({ data: null, error: { message: 'permission denied for function ' + name, code: '42501' }, status: 401 }); return T.rpc(name, args); },
     resetSave: function () { return K.beforeReset() || Promise.reject(new Error('not-signed-in')); },
     restoreSave: restoreSave, latestBackup: latestBackup, handleStale: handleStale, mock: function () { return useMock() ? mock() : null; },
     hold: hold, release: releaseHold, gate: gate, staleKind: staleKind,

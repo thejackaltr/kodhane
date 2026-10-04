@@ -278,6 +278,10 @@
           <button id="accSignOut" type="button" class="btn danger">Çıkış yap</button>
         </div>
       </div>
+      <!-- v4.5 (P7) Kayıp bildir: içerik ve metinler lossreport.js'ten (Yazı r3 LOSS_TEXT). Misafir ve girişli oyuncuya görünür. -->
+      <section id="lossSection" class="loss-section hidden" aria-labelledby="lossTitle"></section>
+      <!-- v4.5: account.privacyDetails paneli için yer (kayıp bildirimi gizlilik satırı). METIN BEKLENIYOR (Yazı): metin koda konmadı. -->
+      <div id="accPrivacyDetails" class="acc-privacy-details hidden" data-text-key="account.privacyDetails"></div>
       <p id="accMsg" class="acc-msg" aria-live="polite"></p>
       <p class="save-note">Giriş yapmadan da oynayabilirsin; misafir kaydın bu cihazda tutulur. Girişliyken oyun hem bu cihaza hem de buluta (yaklaşık 45 sn’de bir) kaydedilir.</p>
     </div>
@@ -286,6 +290,7 @@
   <script src="game.js"></script>
   <script src="cloud.js"></script>
   <script src="leaderboard.js"></script>
+  <script src="lossreport.js"></script>
   <!-- Umami (analiz.teserix.com) burada YOK: game.js onu yalnızca isimsiz sayaç izni verildikten sonra ekler (v4.3). -->
 </body>
 </html>
