@@ -68,7 +68,7 @@ Saklama paketi kazanç günlüğünden **önce** ve ondan bağımsız kurulur. A
   ```
   Beklenen: audit silinecek **0**, yedekler 0; Kodhane yedeğinde ilk silme **2026-10-30** (en eski yedek 2026-09-29 20:23 TSİ + 30 gün,
   ilk gece işi 2026-10-30 03:47). Kuru çalışma `0 | 0 | 0` döner ve `rollback` ile hiçbir şey silinmez (test A10).
-- [ ] **(c) Dokploy zamanlanmış görevi:** tip compose, proje **Kodhane**, uygulama `infrastructure-supabase-eqbmlp`, servis `db`,
+- [ ] **(c) Dokploy zamanlanmış görevi:** tip compose, proje **Kodhane**, uygulama `<KODHANE_DB_COMPOSE>`, servis `db`,
   cron **`47 3 * * *`**, timezone **`Europe/Istanbul`**, komut `supabase/ops/kodhane_retention_dokploy_command.txt` **aynen** (aşağıda birebir).
   Kullanıcı alanı boş (`-u` yok, root).
 - [ ] **(d) İlk çalışmadan sonra doğrulama:** görevi elle bir kez tetikle (aşağıda "İlk çalıştırma"). Dokploy logunda çıkış 0, `ERROR:` /
@@ -101,7 +101,7 @@ Saklama paketi kazanç günlüğünden **önce** ve ondan bağımsız kurulur. A
    | Alan | Değer |
    |---|---|
    | Tip | **compose** |
-   | Proje / uygulama | Kodhane projesi, compose `infrastructure-supabase-eqbmlp` |
+   | Proje / uygulama | Kodhane projesi, compose `<KODHANE_DB_COMPOSE>` (değer yerel `sb_env.sh`'ta) |
    | Servis | `db` |
    | Ad | `kodhane-retention` (öneri) |
    | Cron | `47 3 * * *` (GM'nin 03:20 günlük yedeğiyle çakışmaz) |

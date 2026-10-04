@@ -1,6 +1,6 @@
 # v4.4 A/B test sonuçları: canlı Postgres imajı (.136) ve .171
 
-- Canlı DB container'ı `infrastructure-supabase-eqbmlp-db-1` (Portainer endpoint 3) imajı: `supabase/postgres:17.6.1.136`,
+- Canlı DB container'ı `<KODHANE_DB_CONTAINER>` (Portainer, `<KODHANE_PORTAINER_URL>`) imajı: `supabase/postgres:17.6.1.136`,
   image id `sha256:f519727303f0…` (Portainer container inspect, salt okunur GET, 2026-09-29 21:19 TSİ).
   Canlıda `select version()` (read only transaction): `PostgreSQL 17.6 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 15.2.0, 64-bit`.
 - Box'taki `supabase/postgres:17.6.1.136` imajının id'si aynı (`f519727303f0`).
@@ -106,7 +106,7 @@ aynı. Ham loglardaki tek fark stdout/stderr satır sırası (NOTICE araya girme
   Rollback sonrası public + auth şeması migration öncesiyle aynı (R2, R4).
 
 ## 2026-10-01 21:24–21:27 TSİ: saklama, Dokploy v0.30.8 compose görevi (tek satır psql)
-- Host tipi görev yok. Görev compose tipinde, `infrastructure-supabase-eqbmlp` / `db` servisinde çalışıyor.
+- Host tipi görev yok. Görev compose tipinde, `<KODHANE_DB_COMPOSE>` / `db` servisinde çalışıyor.
   Komut: `supabase/ops/kodhane_retention_dokploy_command.txt`. Host betiği `kodhane_retention_dokploy_task.sh` kaldırıldı (S0, S8–S10 testleri onunla gitti).
 - Koşu: aynı .136 imajı (`f519727303f0`, vfs), container `kdjob-db136`, `v44_base` aynı yöntemle (şema diff 0). .171 koşulmadı.
 

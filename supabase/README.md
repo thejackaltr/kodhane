@@ -10,8 +10,11 @@ Aşağıdaki listede yalnız dosya adıyla anılırlar.
 
 ## Kaynak
 Dosyalar 2026-10-04'te Açık Ofis reposundaki `v4.4-backend` (`63838e1`) ve `v4.5-kayip-bildir` (`518968d`) dallarından
-alındı. İçerikleri bayt bayt aynı (md5 tablosu PR'da). **Kurulum bu repodaki dalın commit'inden yapılır.** Paket B'nin üretilen `install.sql` md5'i
-`deefef0e5c52cc3679dc997374d2edbb` (63838e1 ile aynı). v4.5 dosyaları (kayıp bildir, skor kuralı) `518968d` ile aynı.
+alındı. Şu dosyalar dışında içerikleri bayt bayt aynı: altyapı adlarını ortam değişkenine taşıyan altı dosya ve `lib.sh`'ı
+listeleyen iki `inputs.md5` (`kodhane_loss_report`, `kodhane_score_rule`), kayıp bildir testi (I3/I6 eski sürüm olarak bu
+repodaki `51a812a`'yı okur) ve .136 sonuç dosyası (md5 tablosu ve fark gerekçeleri PR'da). **Kurulum bu repodaki dalın
+commit'inden yapılır.** Paket B'nin üretilen `install.sql` md5'i `deefef0e5c52cc3679dc997374d2edbb` (63838e1 ile aynı).
+Skor kuralı migration/rollback'i ve kayıp bildir (P7) migration'ı `518968d` ile aynı.
 
 ## Ortak veritabanının migration geçmişi (tarih sırasıyla)
 Migration'lardan önce temel şema elle kuruldu (kodhane-cloud SQL dosyaları: `kodhane_saves`, `kodhane_profiles`, sıralama
@@ -39,6 +42,18 @@ ilgili preflight/verify ile yeniden doğrulanır; bu tablo bilgi içindir.
 - Kayıp bildir: `docs/kodhane-loss-report-runbook.md` (`ops/kodhane_loss_report_install.sh`, verify `LRVERIFY|PASS|9` + `DELCHECK|PASS|5`).
   Sıra: B (+ kazanç günlüğü) → skor kuralı → kayıp bildir.
 - Canlı DB'ye her kurulum ayrı onayla yapılır. Bu repoya merge etmek yalnız kodu alır.
+
+## Canlı hedef ortam değişkenleri
+`KODHANE_TARGET=live` betikleri altyapı adlarını yalnız ortamdan okur; repoda gerçek değer yoktur, varsayılan da yoktur.
+Değişken boşsa betik `STOP: … is not set` ile durur. Değerler yerel, commit edilmeyen `sb_env.sh`'tan gelir
+(`.gitignore`'da); şablon `supabase/sb_env.example.sh` yalnız yer tutucu içerir.
+
+| değişken | anlamı |
+|---|---|
+| `PORTAINER_API_TOKEN` | Portainer API anahtarı (ekrana basılmaz) |
+| `KODHANE_PORTAINER_URL` | DB'yi çalıştıran endpoint'in Portainer Docker API adresi (`https://<portainer-host>/api/endpoints/<id>/docker`) |
+| `KODHANE_DB_CONTAINER` | Supabase yığınının Postgres container adı |
+| `KODHANE_DB_COMPOSE` | Aynı yığının Dokploy compose adı (yalnız runbook: saklama görevi) |
 
 ## Testler
 Yalnız yerel, atılabilir veritabanlarında (Docker `supabase/postgres:17.6.1.136`). Taban veritabanı (`v44_base`) canlı

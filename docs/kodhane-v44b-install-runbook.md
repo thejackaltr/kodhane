@@ -19,10 +19,12 @@ Aryen'in o adım için verdiği yazılı onayla koşulur; onay metni `KODHANE_LI
 | `supabase/ops/kodhane_v44b_delete_test.sh` + `v44b_delete_test/*.sql` | İsteğe bağlı canlı silme testi. Kurulumdan **ayrı**, ayrı onay ister |
 | `supabase/tests/v44b_install/run_v44b_install_rehearsal.sh` | .136'da tam prova (canlıya asla yönlendirilmez) |
 
-Canlı hedef A'daki yolun aynısıdır. Portainer exec kullanılır, container `infrastructure-supabase-eqbmlp-db-1`, psql
+Canlı hedef A'daki yolun aynısıdır. Portainer exec kullanılır, container `<KODHANE_DB_CONTAINER>`, psql
 `-h localhost -U supabase_admin -d postgres`. Dosyalar `/workspace/kodhane-cloud/pexec.sh` ile koşar. Her dosyanın container'a
 bozulmadan ulaştığı önce `penv_md5.py` ile doğrulanır; uyuşmazlıkta betik durur. Yedek `pdump_env.py` ile alınır (`pg_dump -Fc`).
-Token yalnızca ortamdan okunur (`PORTAINER_API_TOKEN`), hiçbir yere yazdırılmaz.
+Token yalnızca ortamdan okunur (`PORTAINER_API_TOKEN`), hiçbir yere yazdırılmaz. Portainer Docker API adresi
+(`KODHANE_PORTAINER_URL`) ve DB container adı (`KODHANE_DB_CONTAINER`) da ortamdan gelir; ikisi de zorunlu, varsayılan yok,
+boşsa betik `STOP` ile durur. Değerler repoya girmez: yerel `sb_env.sh` (şablon `supabase/sb_env.example.sh`).
 
 ```bash
 cd /workspace/kodhane-v44-backend

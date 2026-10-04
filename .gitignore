@@ -13,3 +13,6 @@ tests/.cache/
 dumps/
 backups/
 *.bak
+
+# local live-target environment (real values, never committed; template supabase/sb_env.example.sh)
+sb_env.sh
