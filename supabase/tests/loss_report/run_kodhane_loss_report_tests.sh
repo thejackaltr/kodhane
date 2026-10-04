@@ -357,13 +357,23 @@ r=""; for st in build preflight dryrun; do r="$r $(STEP_=$st ins ins1 | grep -E 
 check "I1 build / preflight / dryrun PASS (dry run leaves no kodhane_loss)" "$r|$(q lr_i -c "select to_regnamespace('kodhane_loss') is null")" " BUILD|PASS PREFLIGHT|PASS DRYRUN|PASS|t"
 r=""; for st in install verify; do r="$r $(STEP_=$st ins ins1 | tail -n1)"; done
 check "I2 install / verify PASS (9 checks + delete path: account delete preflight lists kodhane_loss.loss_report delete|delete)" "$r|$(grep -c '^CHECK|delete_path|t' <<< "$(STEP_=verify ins ins1)")" " INSTALL|PASS VERIFY|PASS|1"
-OLD="$OUT/old_ops"; mkdir -p "$OLD/kodhane_deletion_log"
-for f in kodhane_account_delete.sql kodhane_account_delete_preflight.sql kodhane_account_delete_verify.sql kodhane_deletion_log/reapply.sql; do
-  git -C "$ROOT" -c safe.directory='*' show be96e03:supabase/ops/$f > "$OLD/$f"; done
+# the account delete files BEFORE the loss report (= v4.4-backend): commit 51a812a of this repository (thejackaltr/kodhane;
+# byte for byte the files of be96e03 in the Açık Ofis repository, where this branch started). OLDOK=1 only if all four
+# exist with exactly these md5s: a missing commit or an empty / different file makes I3 and I6 FAIL (never pass on empty files).
+OLD_REV=51a812a; OLD="$OUT/old_ops"; mkdir -p "$OLD/kodhane_deletion_log"; OLDOK=1
+while read -r m f; do
+  git -C "$ROOT" -c safe.directory='*' show "$OLD_REV:supabase/ops/$f" > "$OLD/$f" 2>>"$OUT/stderr" || OLDOK=0
+  [[ -s "$OLD/$f" && "$(md5sum < "$OLD/$f" | cut -c1-32)" == "$m" ]] || OLDOK=0
+done <<'OLDMD5'
+28f379a49cc799f21cdee108999e5d8b kodhane_account_delete.sql
+5a3bbf00538c2f4910f03031868bd4fe kodhane_account_delete_preflight.sql
+7cf7132c74a9cd18c753edb48d8e54dc kodhane_account_delete_verify.sql
+90f3e6c5a9fbaa1efdacf3d4abcbcf0e kodhane_deletion_log/reapply.sql
+OLDMD5
 r=""; for st in delete-script-check build preflight verify; do r="$r $(STEP_=$st ins ins2 KODHANE_ACCOUNT_DELETE_DIR="$OLD" | grep -cE '^STOP: delete-script-check failed$|^STOP: the account delete script' | sed 's/^2$/1/')"; done
-check "I3 old (be96e03) account delete script as KODHANE_ACCOUNT_DELETE_DIR: delete-script-check / build / preflight / verify STOP (4 md5 + 2 marker failures)" "$r|$(STEP_=delete-script-check ins ins2 KODHANE_ACCOUNT_DELETE_DIR="$OLD" | grep -c '^DELETECHECK|FAIL')" " 1 1 1 1|6"
+check "I3 old ($OLD_REV, 4 files present with the expected md5) account delete script as KODHANE_ACCOUNT_DELETE_DIR: delete-script-check / build / preflight / verify STOP (4 md5 + 2 marker failures)" "old_files_ok=$OLDOK|$r|$(STEP_=delete-script-check ins ins2 KODHANE_ACCOUNT_DELETE_DIR="$OLD" | grep -c '^DELETECHECK|FAIL')" "old_files_ok=1| 1 1 1 1|6"
 # I5 / I6: the verify's delete check (behaviour, one transaction, ROLLBACK): this branch's account delete -> PASS 5; the old
-# be96e03 DO block put into the same generated SQL -> kodhane_only + full + cleanup fail, the FK cascade (3) still passes
+# (51a812a) DO block put into the same generated SQL -> kodhane_only + full + cleanup fail, the FK cascade (3) still passes
 LRN0=$(q lr_i -c "select count(*) || ':' || (select count(*) from auth.users) from kodhane_loss.loss_report")
 v=$(STEP_=verify ins ins1)
 check "I5 verify delete check: both modes (real DO block) + FK cascade + cleanup then delete, each undone -> DELCHECK|PASS|5; nothing stays" \
@@ -376,9 +386,9 @@ ob = o.index('do $del$'); oe = o.index('end $del$;')
 open(sys.argv[3], 'w').write('\n'.join(g[:fb + 1] + o[ob + 1:oe + 1] + g[fe + 1:]))
 PYOLD
 r=$(P -d lr_i -At -f - < "$OUT/delete_check_old.sql" 2>&1)
-check "I6 same delete check with the OLD (be96e03) account delete block: DELCHECK|FAIL (kodhane_only leaves reports, full BLOCKED, cleanup + delete leaves one), FK cascade passes, rolled back" \
-  "$(grep -E '^DELCHECK\|FAIL' <<< "$r")|$(grep -c '^CHECK|delcheck_3|t|' <<< "$r")|$(grep -c '^CHECK|delcheck_2|f|.*BLOCKED' <<< "$r")|$(q lr_i -c "select count(*) || ':' || (select count(*) from auth.users) from kodhane_loss.loss_report")" \
-  "DELCHECK|FAIL|delcheck_1,delcheck_2,delcheck_4|1|1|$LRN0"
+check "I6 same delete check with the OLD ($OLD_REV) account delete block: DELCHECK|FAIL (kodhane_only leaves reports, full BLOCKED, cleanup + delete leaves one), FK cascade passes, rolled back" \
+  "old_files_ok=$OLDOK|$(grep -E '^DELCHECK\|FAIL' <<< "$r")|$(grep -c '^CHECK|delcheck_3|t|' <<< "$r")|$(grep -c '^CHECK|delcheck_2|f|.*BLOCKED' <<< "$r")|$(q lr_i -c "select count(*) || ':' || (select count(*) from auth.users) from kodhane_loss.loss_report")" \
+  "old_files_ok=1|DELCHECK|FAIL|delcheck_1,delcheck_2,delcheck_4|1|1|$LRN0"
 mkdir -p "$OUT/new_ops"; cp "$OPS"/kodhane_account_delete*.sql "$OUT/new_ops/"; cp -r "$OPS/kodhane_deletion_log" "$OUT/new_ops/"
 check "I4 unchanged copy of this branch's files -> PASS; one changed byte (md5 differs) -> STOP" "$(rm -f "$OUT/new_ops/x"; cp "$OPS/kodhane_account_delete.sql" "$OUT/new_ops/"; STEP_=delete-script-check ins ins3 KODHANE_ACCOUNT_DELETE_DIR="$OUT/new_ops" | tail -n1 | cut -d'|' -f1-2)|$(echo "-- changed" >> "$OUT/new_ops/kodhane_account_delete.sql"; STEP_=delete-script-check ins ins3 KODHANE_ACCOUNT_DELETE_DIR="$OUT/new_ops" | grep -c '^STOP:')" "DELETECHECK|PASS|1"
 P -d postgres -c "drop database if exists lr_i with (force)" >/dev/null 2>&1
