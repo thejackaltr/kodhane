@@ -99,15 +99,13 @@
     return { top: top, me: me, pinned: pinned, empty: top.length === 0, meStatus: me ? null : meStatus };
   }
   // v4.5: sıralama satırındaki aşama kimliğinin (v7 stage_id; v4.5 skor kuralıyla 'asama_1e21' de gelebilir) oyuncuya görünen adı.
-  // Tek yer: bilinen kimlik (game.js STAGE_BY_ID) kendi adını, 'asama_1e21' kendi yer tutucusunu, bilinmeyen / null / boş /
-  // string olmayan kimlik genel yer tutucuyu verir. Ham kimlik oyuncuya gösterilmez; hiçbir girdide exception atmaz.
+  // Tek yer: bilinen kimlik (game.js STAGE_BY_ID; v4.5'te 'asama_1e21' = 🌌 Yörünge Üssü dahil) kendi adını, bilinmeyen / null / boş /
+  // string olmayan kimlik genel adı verir. Ham kimlik oyuncuya gösterilmez; hiçbir girdide exception atmaz.
   // Metin her zaman textContent ile basılır (rowNode -> node()).
-  // METIN BEKLENIYOR (Yazı): 'leaderboard.stage.asama_1e21' ve 'leaderboard.stage.unknown' yer tutucudur; kesin metin Yazı'dan gelecek.
+  // Metin: Yazı kodhane-v4.5-asama-1e21-yazi-r1 ("leaderboard.stageUnknown": "Yeni aşama", emojisiz: gerçek bir aşamayla karışmasın).
   var STAGE_TEXT = {
-    'leaderboard.stage.asama_1e21': '🏆 Yeni aşama',   // METIN BEKLENIYOR (Yazı)
-    'leaderboard.stage.unknown': '❔ Aşama'           // METIN BEKLENIYOR (Yazı)
+    'leaderboard.stageUnknown': 'Yeni aşama'
   };
-  var STAGE_TEXT_KEY = { asama_1e21: 'leaderboard.stage.asama_1e21' };
   function hasOwn(o, k) { return !!o && Object.prototype.hasOwnProperty.call(o, k); }
   function stageIdLabel(id) {
     try {
@@ -115,10 +113,9 @@
         var byId = K.STAGE_BY_ID;
         var st = hasOwn(byId, id) ? byId[id] : null;
         if (st && typeof st.name === 'string' && st.name) return (st.icon ? st.icon + ' ' : '') + st.name;
-        if (hasOwn(STAGE_TEXT_KEY, id)) return STAGE_TEXT[STAGE_TEXT_KEY[id]];
       }
     } catch (e) { /* genel ada düşülür */ }
-    return STAGE_TEXT['leaderboard.stage.unknown'];
+    return STAGE_TEXT['leaderboard.stageUnknown'];
   }
   // best_stage sunucuda eski (v4.3) aşama sırasıyla tutulur (0..8); v4.4'te araya aşama girdiği için sıra -> aşama ID'si -> aşama.
   function stageLabel(i) {

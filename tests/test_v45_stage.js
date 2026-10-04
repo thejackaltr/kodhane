@@ -19,28 +19,29 @@ const SRC = fs.readFileSync(path.join(ROOT, 'leaderboard.js'), 'utf8');
 vm.runInContext(SRC, sandbox, { filename: 'leaderboard.js' });
 const LB = K.leaderboard;
 check('leaderboard.js loads in Node (stub DOM), exposes stageIdLabel / rowStageLabel / stageText', !!LB && typeof LB.stageIdLabel === 'function' && typeof LB.rowStageLabel === 'function' && !!LB.stageText);
-const T = LB.stageText, GEN = T['leaderboard.stage.unknown'], E21 = T['leaderboard.stage.asama_1e21'];
-check('placeholder keys: leaderboard.stage.asama_1e21 + leaderboard.stage.unknown (non-empty, different)', JSON.stringify(Object.keys(T)) === '["leaderboard.stage.asama_1e21","leaderboard.stage.unknown"]'
-  && typeof GEN === 'string' && GEN && typeof E21 === 'string' && E21 && GEN !== E21, T);
-check('placeholders marked in code: "// METIN BEKLENIYOR (Yazı)" next to both texts', (SRC.match(/\/\/ METIN BEKLENIYOR \(Yazı\)/g) || []).length >= 2
-  && /'leaderboard\.stage\.asama_1e21': '[^']*',?\s*\/\/ METIN BEKLENIYOR \(Yazı\)/.test(SRC) && /'leaderboard\.stage\.unknown': '[^']*'\s*\/\/ METIN BEKLENIYOR \(Yazı\)/.test(SRC));
+const T = LB.stageText, GEN = T['leaderboard.stageUnknown'], E21 = '🌌 Yörünge Üssü';
+check('stage texts: only leaderboard.stageUnknown = "Yeni aşama" (Yazı asama-1e21 r1, no emoji); old placeholders removed',
+  JSON.stringify(Object.keys(T)) === '["leaderboard.stageUnknown"]' && GEN === 'Yeni aşama' && !/METIN BEKLENIYOR/.test(SRC) && !/leaderboard\.stage\.(asama_1e21|unknown)/.test(SRC), T);
+check('asama_1e21 is a real stage in game.js (Yazı r1: 🌌 Yörünge Üssü, between Yapay Zekâ Laboratuvarı and Mars Ofisi)',
+  K.STAGE_BY_ID.asama_1e21 && K.STAGE_BY_ID.asama_1e21.name === 'Yörünge Üssü' && K.STAGE_BY_ID.asama_1e21.icon === '🌌'
+  && K.stageRank('asama_1e21') === K.stageRank('yapay_zeka_lab') + 1 && K.stageRank('mars_ofisi') === K.stageRank('asama_1e21') + 1);
 
 // ---------------------------------------------------------------- bilinen kimlikler: mevcut adlar
 const known = K.STAGES.map((s) => [s.id, s.icon + ' ' + s.name]);
 check('every known stage id -> its current name (icon + name), e.g. mars_ofisi -> 🔴 Mars Ofisi, unicorn -> 🦄 Unicorn',
-  known.length === 11 && known.every(([id, lab]) => LB.stageIdLabel(id) === lab) && LB.stageIdLabel('mars_ofisi') === '🔴 Mars Ofisi' && LB.stageIdLabel('unicorn') === '🦄 Unicorn',
+  known.length === 12 && known.every(([id, lab]) => LB.stageIdLabel(id) === lab) && LB.stageIdLabel('mars_ofisi') === '🔴 Mars Ofisi' && LB.stageIdLabel('unicorn') === '🦄 Unicorn',
   known.filter(([id, lab]) => LB.stageIdLabel(id) !== lab));
 check('known id label = legacy stageLabel for the same stage (one naming source)', K.LEGACY_STAGE_IDS.every((id, i) => LB.stageIdLabel(id) === LB.stageLabel(i)));
 
 // ---------------------------------------------------------------- asama_1e21 ve bilinmeyenler
-check('asama_1e21 -> its own placeholder (not the generic one, not the raw id)', LB.stageIdLabel('asama_1e21') === E21 && !/asama|1e21/.test(E21));
+check('asama_1e21 -> 🌌 Yörünge Üssü (its stage name, not the generic one, not the raw id)', LB.stageIdLabel('asama_1e21') === E21 && E21 !== GEN && !/asama|1e21/.test(E21));
 const odd = ['asama_bilinmeyen_x', 'uzay_istasyonu', 'ASAMA_1E21', ' mars_ofisi', '__proto__', 'constructor', 'toString', 'hasOwnProperty', '<img src=x onerror="window.__xss=1">'];
 const oddOut = odd.map((id) => { try { return LB.stageIdLabel(id); } catch (e) { return 'THROW ' + e.message; } });
-check('unknown string ids (asama_bilinmeyen_x, prototype names, case/space variants, <img onerror>) -> generic placeholder', oddOut.every((x) => x === GEN), oddOut);
+check('unknown string ids (asama_bilinmeyen_x, prototype names, case/space variants, <img onerror>) -> generic name', oddOut.every((x) => x === GEN), oddOut);
 check('raw id never shown to the player', odd.every((id, i) => !oddOut[i].includes(id.trim())) && !/[<>]/.test(GEN));
 const bad = [null, undefined, '', 0, 5, 8, NaN, Infinity, -1, true, false, {}, [], ['mars_ofisi'], { id: 'mars_ofisi' }, () => 'mars_ofisi', Symbol('x'), 10n];
 const badOut = bad.map((v) => { try { return LB.stageIdLabel(v); } catch (e) { return 'THROW ' + e.message; } });
-check('null / undefined / "" / numbers / booleans / objects / arrays / functions / Symbol / BigInt -> generic placeholder, no exception', badOut.every((x) => x === GEN), badOut);
+check('null / undefined / "" / numbers / booleans / objects / arrays / functions / Symbol / BigInt -> generic name, no exception', badOut.every((x) => x === GEN), badOut);
 check('stageIdLabel with no argument -> generic', LB.stageIdLabel() === GEN);
 const hostile = {}; Object.defineProperty(hostile, 'stage_id', { enumerable: true, get() { throw new Error('boom'); } });
 let hostileOut; try { hostileOut = LB.rowStageLabel(hostile); } catch (e) { hostileOut = 'THROW ' + e.message; }
@@ -49,8 +50,8 @@ check('rowStageLabel: a row whose stage_id getter throws -> generic, no exceptio
 // ---------------------------------------------------------------- satır: stage_id (v7) / stage (v6); best_stage_id okunmaz
 const row = (o) => Object.assign({ rank: 1, nickname: 'x', score: 10, is_me: false, status: 'ok' }, o);
 check('row: known stage_id -> its name (Unicorn, not the legacy Global Holding)', LB.rowStageLabel(row({ stage: 5, stage_id: 'unicorn' })) === '🦄 Unicorn');
-check('row: stage_id asama_1e21 -> asama_1e21 placeholder (not the legacy Mars Ofisi)', LB.rowStageLabel(row({ stage: 8, stage_id: 'asama_1e21' })) === E21);
-check('row: unknown stage_id -> generic placeholder (no longer the legacy stage label)', LB.rowStageLabel(row({ stage: 5, stage_id: 'asama_bilinmeyen_x' })) === GEN);
+check('row: stage_id asama_1e21 -> 🌌 Yörünge Üssü (not the legacy Mars Ofisi)', LB.rowStageLabel(row({ stage: 8, stage_id: 'asama_1e21' })) === E21);
+check('row: unknown stage_id -> generic name (no longer the legacy stage label)', LB.rowStageLabel(row({ stage: 5, stage_id: 'asama_bilinmeyen_x' })) === GEN);
 check('row: non-string stage_id (number / "" / object) -> generic', [5, '', {}, true].every((v) => LB.rowStageLabel(row({ stage: 5, stage_id: v })) === GEN));
 check('row: best_stage_id is not read (table column only, no RPC returns it): a row with only best_stage_id -> legacy label from stage',
   LB.rowStageLabel(row({ stage: 8, best_stage_id: 'asama_1e21' })) === '🔴 Mars Ofisi' && LB.rowStageLabel(row({ stage: 5, best_stage_id: 'sirketler_grubu' })) === '🌐 Global Holding'
