@@ -6,12 +6,12 @@
 -- mode=full (whole account, both games), explicit DELETEs, all before the auth user:
 --   1 kodhane_saves (trigger writes a 'delete' copy) -> 2 all kodhane_save_backups of the user (incl. that copy; otherwise a
 --   re-created row starts from the old best score) -> 3 kodhane_profiles (+ kodhane_event_log_carry,
---   kodhane_progress_log if they exist)
+--   kodhane_progress_log, kodhane_loss.loss_report if they exist)
 --   -> 4 acik_ofis_saves (trigger copy) -> acik_ofis_save_backups (incl. the copy) -> acik_ofis_profiles -> any other
 --   acik_ofis_* row -> 5 auth.audit_log_entries (payload.actor_id / payload.traits.user_id) -> 6 auth.refresh_tokens,
 --   auth.flow_state, auth.users (identities, sessions ... cascade) -> check: 0 rows left, audit included.
--- mode=kodhane_only (Kodhane data only): 1 kodhane_saves -> 2 kodhane_save_backups -> 3 kodhane_event_log_carry and
---   kodhane_progress_log (progress log) if they exist
+-- mode=kodhane_only (Kodhane data only): 1 kodhane_saves -> 2 kodhane_save_backups -> 3 kodhane_event_log_carry,
+--   kodhane_progress_log (progress log) and kodhane_loss.loss_report (Kayıp bildir, migration 20261003060000) if they exist
 --   -> 4 every session of the user (auth.refresh_tokens, auth.sessions). Keeps auth user, kodhane_profiles (Açık Ofis
 --   nickname), audit log, Açık Ofis. The Kodhane leaderboards (v6, v7) join
 --   kodhane_saves, so the user drops out of them; the Açık Ofis leaderboards do not change.
@@ -69,6 +69,7 @@ declare
   n_ks bigint := 0; k_before bigint; k_after bigint; n_kb bigint := 0; n_kp bigint := 0; n_carry bigint := 0;
   n_as bigint := 0; a_before bigint; a_after bigint; n_ab bigint := 0; n_ap bigint := 0; n_ao_other bigint := 0; n bigint;
   n_audit bigint := 0; n_rt bigint := 0; n_fs bigint := 0; n_users bigint := 0; n_sess bigint := 0; n_plog bigint := 0;
+  n_lr bigint := 0; v_lr boolean := false;
 begin
   select string_agg(x.rel || '=' || x.n, ', ' order by x.rel) filter (where x.cat in ('acik_ofis', 'other') and x.n > 0)
     into v_nonkod
@@ -83,11 +84,12 @@ begin
               when t.cat = 'auth' and t.rel not in ('auth.users', 'auth.refresh_tokens', 'auth.flow_state') then 'cascade'
               else 'delete' end as act_full,
          case when t.rel in ('public.kodhane_saves', 'public.kodhane_save_backups', 'public.kodhane_event_log_carry',
-                             'public.kodhane_progress_log', 'auth.sessions', 'auth.refresh_tokens') then 'delete'
+                             'public.kodhane_progress_log', 'kodhane_loss.loss_report', 'auth.sessions', 'auth.refresh_tokens') then 'delete'
               else 'keep' end as act_kodhane_only
     from (
       select distinct
              case when n.nspname = 'public' and c.relname like 'kodhane\_%' then 'kodhane'
+                  when n.nspname = 'kodhane_loss' and c.relname = 'loss_report' then 'kodhane'   -- Kayıp bildir (20261003060000)
                   when n.nspname = 'public' and c.relname like 'acik\_ofis\_%' then 'acik_ofis'
                   when n.nspname = 'auth' then 'auth'
                   else 'other' end as cat,
@@ -98,6 +100,7 @@ begin
         join pg_catalog.pg_attribute a on a.attrelid = c.oid and a.attnum > 0 and not a.attisdropped
        where c.relkind in ('r', 'p')
          and ((n.nspname = 'public' and (c.relname like 'kodhane\_%' or c.relname like 'acik\_ofis\_%') and a.attname = 'user_id')
+           or (n.nspname = 'kodhane_loss' and c.relname = 'loss_report' and a.attname = 'user_id')
            or (n.nspname = 'auth' and c.relname = 'users' and a.attname = 'id')
            or (n.nspname = 'auth' and a.attname = 'user_id')
            or (n.nspname = 'storage' and c.relname = 'objects' and a.attname in ('owner', 'owner_id'))
@@ -161,11 +164,12 @@ begin
               when t.cat = 'auth' and t.rel not in ('auth.users', 'auth.refresh_tokens', 'auth.flow_state') then 'cascade'
               else 'delete' end as act_full,
          case when t.rel in ('public.kodhane_saves', 'public.kodhane_save_backups', 'public.kodhane_event_log_carry',
-                             'public.kodhane_progress_log', 'auth.sessions', 'auth.refresh_tokens') then 'delete'
+                             'public.kodhane_progress_log', 'kodhane_loss.loss_report', 'auth.sessions', 'auth.refresh_tokens') then 'delete'
               else 'keep' end as act_kodhane_only
     from (
       select distinct
              case when n.nspname = 'public' and c.relname like 'kodhane\_%' then 'kodhane'
+                  when n.nspname = 'kodhane_loss' and c.relname = 'loss_report' then 'kodhane'   -- Kayıp bildir (20261003060000)
                   when n.nspname = 'public' and c.relname like 'acik\_ofis\_%' then 'acik_ofis'
                   when n.nspname = 'auth' then 'auth'
                   else 'other' end as cat,
@@ -176,6 +180,7 @@ begin
         join pg_catalog.pg_attribute a on a.attrelid = c.oid and a.attnum > 0 and not a.attisdropped
        where c.relkind in ('r', 'p')
          and ((n.nspname = 'public' and (c.relname like 'kodhane\_%' or c.relname like 'acik\_ofis\_%') and a.attname = 'user_id')
+           or (n.nspname = 'kodhane_loss' and c.relname = 'loss_report' and a.attname = 'user_id')
            or (n.nspname = 'auth' and c.relname = 'users' and a.attname = 'id')
            or (n.nspname = 'auth' and a.attname = 'user_id')
            or (n.nspname = 'storage' and c.relname = 'objects' and a.attname in ('owner', 'owner_id'))
@@ -234,6 +239,13 @@ begin
   if to_regclass('public.kodhane_progress_log') is not null then
     execute 'delete from public.kodhane_progress_log where user_id = $1' using v_uid;
     get diagnostics n_plog = row_count;
+  end if;
+  -- K3c. Kayıp bildir reports (kodhane_loss.loss_report, migration 20261003060000), if installed: both modes. The FK to
+  --      auth.users (KEY SHARE) waits for the FOR UPDATE above, so no new report can appear during the delete.
+  if to_regclass('kodhane_loss.loss_report') is not null then
+    execute 'delete from kodhane_loss.loss_report where user_id = $1' using v_uid;
+    get diagnostics n_lr = row_count;
+    v_lr := true;
   end if;
 
   if v_mode = 'kodhane_only' then
@@ -304,11 +316,12 @@ begin
               when t.cat = 'auth' and t.rel not in ('auth.users', 'auth.refresh_tokens', 'auth.flow_state') then 'cascade'
               else 'delete' end as act_full,
          case when t.rel in ('public.kodhane_saves', 'public.kodhane_save_backups', 'public.kodhane_event_log_carry',
-                             'public.kodhane_progress_log', 'auth.sessions', 'auth.refresh_tokens') then 'delete'
+                             'public.kodhane_progress_log', 'kodhane_loss.loss_report', 'auth.sessions', 'auth.refresh_tokens') then 'delete'
               else 'keep' end as act_kodhane_only
     from (
       select distinct
              case when n.nspname = 'public' and c.relname like 'kodhane\_%' then 'kodhane'
+                  when n.nspname = 'kodhane_loss' and c.relname = 'loss_report' then 'kodhane'   -- Kayıp bildir (20261003060000)
                   when n.nspname = 'public' and c.relname like 'acik\_ofis\_%' then 'acik_ofis'
                   when n.nspname = 'auth' then 'auth'
                   else 'other' end as cat,
@@ -319,6 +332,7 @@ begin
         join pg_catalog.pg_attribute a on a.attrelid = c.oid and a.attnum > 0 and not a.attisdropped
        where c.relkind in ('r', 'p')
          and ((n.nspname = 'public' and (c.relname like 'kodhane\_%' or c.relname like 'acik\_ofis\_%') and a.attname = 'user_id')
+           or (n.nspname = 'kodhane_loss' and c.relname = 'loss_report' and a.attname = 'user_id')
            or (n.nspname = 'auth' and c.relname = 'users' and a.attname = 'id')
            or (n.nspname = 'auth' and a.attname = 'user_id')
            or (n.nspname = 'storage' and c.relname = 'objects' and a.attname in ('owner', 'owner_id'))
@@ -353,6 +367,9 @@ begin
     v_dlog := case when n_dlog = 1 then 'row written' else 'already listed' end || ' (scope ' || v_scope || ')';
   else
     v_dlog := 'not installed (no row)';
+  end if;
+  if v_lr then   -- own line: the summary line below stays as it was without the loss report migration
+    raise notice 'kodhane account delete: kodhane_loss.loss_report % (Kayıp bildir reports, mode %)', n_lr, v_mode;
   end if;
   if v_mode = 'full' then
     raise notice 'kodhane account delete OK (mode full, approval %): kodhane_saves %, kodhane delete copies %, kodhane_save_backups % (incl. copies), kodhane_event_log_carry %, kodhane_profiles %, acik_ofis_saves %, acik_ofis delete copies %, acik_ofis_save_backups % (incl. copies), acik_ofis_profiles %, other acik_ofis rows %, audit_log_entries %, auth.refresh_tokens %, auth.flow_state %, auth.users % (+ auth cascades); rows left: 0; kodhane_progress_log %; deletion log %',

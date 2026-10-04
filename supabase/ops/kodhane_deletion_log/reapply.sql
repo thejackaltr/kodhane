@@ -12,7 +12,8 @@
 --            Kodhane rows only from BEFORE deleted_at          -> 'kodhane' reapply: the kodhane_only delete
 --            Kodhane rows only from AFTER deleted_at           -> 'newer'   kept (played again after the deletion)
 --            both                                              -> 'mixed'   NOT deleted, reported: Aryen decides
---            (before / after: kodhane_saves.updated_at, kodhane_save_backups.created_at, kodhane_progress_log.created_at;
+--            (before / after: kodhane_saves.updated_at, kodhane_save_backups.created_at, kodhane_progress_log.created_at,
+--             kodhane_loss.loss_report.created_at if installed (20261003060000);
 --             kodhane_event_log_carry rows count as before)
 --            none                                              -> 'nothing'
 -- Any row outside Kodhane / Açık Ofis / auth (act_full = block) stops the full delete -> the whole run rolls back.
@@ -35,6 +36,11 @@ begin
   v_old := v_old + n; v_new := v_new + m;
   if to_regclass('public.kodhane_progress_log') is not null then
     execute 'select count(*) filter (where created_at < $2), count(*) filter (where created_at >= $2) from public.kodhane_progress_log where user_id = $1'
+      into n, m using p_uid, p_at;
+    v_old := v_old + n; v_new := v_new + m;
+  end if;
+  if to_regclass('kodhane_loss.loss_report') is not null then
+    execute 'select count(*) filter (where created_at < $2), count(*) filter (where created_at >= $2) from kodhane_loss.loss_report where user_id = $1'
       into n, m using p_uid, p_at;
     v_old := v_old + n; v_new := v_new + m;
   end if;

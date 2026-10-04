@@ -1,0 +1,25 @@
+INFO|dump_files|84|f67974568043461b4638a8fd4ae76422
+HEAD|grp|runs|checks|before_v44b|runs_with_before|after_v45_f2|after_v45_f3|after_own_curve|runs_with_after_own|sql_vs_sim_mirror_mismatch|accepted_before_refused_after
+GROUP|B44|2|264|0|0|0|0|0|0|0|0
+GROUP|E1off|2|266|14|2|0|0|0|0|0|0
+GROUP|F|12|1875|69|12|0|0|0|0|0|0
+GROUP|F-K1|4|538|34|4|7|7|7|3|0|0
+GROUP|F2|6|802|34|6|0|0|0|0|0|0
+GROUP|F2b|40|5337|246|40|0|0|0|0|0|0
+GROUP|F3|18|1242|126|18|0|0|0|0|0|0
+GROUP||84|10324|523|82|7|7|7|3|0|0
+WHY|E1off|before|stage_ids_ok|14
+WHY|F|before|stage_ids_ok|69
+WHY|F-K1|after_own|A prev|7
+WHY|F-K1|before|A prev|7
+WHY|F-K1|before|stage_ids_ok|27
+WHY|F2|before|stage_ids_ok|34
+WHY|F2b|before|stage_ids_ok|246
+WHY|F3|before|stage_ids_ok|126
+FAILROW|F-K1-gunluk-farm-itibarci|9|A prev
+FAILROW|F-K1-tutkulu-farm-itibarci|4|A prev
+FAILROW|F-K1-tutkulu-farm-itibarci|5|A prev
+FAILROW|F-K1-tutkulu-farm-itibarci|6|A prev
+FAILROW|F-K1-tutkulu-smart-itibarci|4|A prev
+FAILROW|F-K1-tutkulu-smart-itibarci|5|A prev
+FAILROW|F-K1-tutkulu-smart-itibarci|6|A prev
