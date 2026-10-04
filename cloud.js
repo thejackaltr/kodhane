@@ -738,15 +738,15 @@
     push(false).then(function () { C.keepalive = false; }, function () { C.keepalive = false; });
   }
 
-  // v4.5: "Hesap ve bulut kaydı hakkında" bağlantısı ve paneli. Metin Yazı kodhane-hesap-bilgilendirme-yazi-r19.json'dan birebir.
-  // Yapı: her paragraf { id, flag, segments: [{ flag, text }] }. Okuma kuralı (r19): paragrafın flag'i null ya da PRIVACY[flag]
+  // v4.5: "Hesap ve bulut kaydı hakkında" bağlantısı ve paneli. Metin Yazı kodhane-hesap-bilgilendirme-yazi-r20.json'dan birebir.
+  // Yapı: her paragraf { id, flag, segments: [{ flag, text }] }. Okuma kuralı (r19, r20'de aynı): paragrafın flag'i null ya da PRIVACY[flag]
   // açıksa paragraf gösterilir; metni, flag'i null ya da açık olan segment'lerin sırayla tek boşlukla birleşimidir. Sıra numarasına
   // göre süzme yok. Paragraf bayrağı kapalıyken içindeki segment bayrakları etkisizdir. Köşeli parantezli metinler açık yer
   // tutucudur ([4], [5], [7]); olduğu gibi durur.
   // Güvenli davranış: flag'i bilinmeyen (PRIVACY_CONTENT_FLAGS dışında), eksik (anahtar yok) ya da bozuk olan paragraf / segment
   // gösterilmez; metni dize olmayan segment atlanır; id'si ya da segments dizisi olmayan paragraf gösterilmez. Hata fırlatılmaz.
   // Varsayılan KAPALI (PRIVACY.enabled): panel Aryen'in ve avukatın kararı olmadan açılmaz. Kapalıyken bağlantı da panel de DOM'da boş ve gizli.
-  // Bayraklar (r19 PRIVACY_FLAGS, adlar JSON'daki gibi):
+  // Bayraklar (r20 PRIVACY_FLAGS, adlar JSON'daki gibi):
   //   enabled:            Panelin kendisi (bağlantı ve panel). Aryen'in ve avukatın kararı olmadan açılmaz. (varsayılan false)
   //   sharedWithAcikOfis: [0]'daki ortak hesap cümlesi. Hesaplar ayrılınca false. (varsayılan true)
   //   loginLog12m:        [0]'daki 12 ay cümlesi. daad30e + 5233266 canlıda, üç koşul, Yazılım bildirimi. (varsayılan false)
@@ -759,7 +759,7 @@
   var PRIVACY = { enabled: false, sharedWithAcikOfis: true, loginLog12m: false, resetBackup30d: false, earningsLog: false, progressLog12m: false, progressLogDelete: false, deletionList: false, deletionList45d: false };
   var PRIVACY_CONTENT_FLAGS = ["sharedWithAcikOfis", "loginLog12m", "resetBackup30d", "earningsLog", "progressLog12m", "progressLogDelete", "deletionList", "deletionList45d"];
   var ACC_TEXT = {
-    'account.privacySummary': "E-postan yalnızca giriş bağlantısı ve kodu için. İsimsiz sayaç ve ziyaret sayımı hesabına bağlanmaz.", // r19; kodda yeri yok, gösterilmez
+    'account.privacySummary': "E-postan yalnızca giriş bağlantısı ve kodu için. İsimsiz sayaç ve ziyaret sayımı hesabına bağlanmaz.", // r20 (r19 ile aynı); kodda yeri yok, gösterilmez
     'account.privacyLink': "Hesap ve bulut kaydı hakkında",
     'account.privacyTitle': "Hesap ve bulut kaydı hakkında",
     'account.privacyDetails': [
@@ -779,7 +779,7 @@
       ] },
       { id: "[4]", flag: null, segments: [
         { flag: null, text: "Bilgiler Kodhane'nin sunucusunda (kodhane-api.teserix.com) tutulur. Sunucu, bağlantı sırasında IP adresini teknik kayıtlarda görebilir. Bu teknik kayıtlar [TEKNİK KAYIT SAKLAMA SÜRESİ — avukat belirleyecek] sonra silinir." },
-        { flag: null, text: "Hesap penceresini açtığında ya da giriş yapmış olarak oyunu açtığında giriş kütüphanesi jsDelivr adlı dosya dağıtım hizmetinden indirilir; indirme sırasında bağlantı bilgilerin bu hizmete gider." },
+        { flag: null, text: "Giriş için kullanılan kütüphane, girişle ilgili her işlemde jsDelivr adlı dosya dağıtım hizmetinden indirilebilir: Hesap penceresini açtığında, oyunu giriş bağlantısıyla açtığında (bağlantı geçersiz ya da süresi dolmuş olsa bile) ve oturumun açıksa onu sürdürmek için, oyun açılırken de oyun sırasında da. İndirme sırasında bağlantı bilgilerin bu hizmete gider." },
         { flag: null, text: "Oyunun dosyaları, çevrimdışı da açılabilsin diye cihazında saklanır." }
       ] },
       { id: "[5]", flag: null, segments: [

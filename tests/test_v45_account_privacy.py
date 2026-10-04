@@ -1,8 +1,8 @@
-"""Kodhane v4.5 "Hesap ve bulut kaydı hakkında" (Yazı kodhane-hesap-bilgilendirme-yazi-r19.json / .md): varsayılan KAPALI;
-kapalıyken DOM'da görünmez. Yapı { id, flag, segments: [{ flag, text }] }, okuma kuralı r19. Dört birleşim (hepsi kapalı, bugün,
+"""Kodhane v4.5 "Hesap ve bulut kaydı hakkında" (Yazı kodhane-hesap-bilgilendirme-yazi-r20.json / .md): varsayılan KAPALI;
+kapalıyken DOM'da görünmez. Yapı { id, flag, segments: [{ flag, text }] }, okuma kuralı r19 (r20'de aynı). Dört birleşim (hepsi kapalı, bugün,
 B günü, hepsi açık) md'deki metinle boşluk ve noktalama dahil birebir; her bayrak açık/kapalı; bilinmeyen/eksik bayrak güvenli.
 Açıkken 360x640 / 390x844 / 568x320'de yatay taşma ve kesilme yok, kart içinde kaydırma çalışıyor; 360x640'ta satır sayıları.
-Ekran görüntüleri: KODHANE_V45_SHOTS (varsayılan /workspace/kodhane-v45-shots)/r19/r19-<birleşim>-<yer>-360x640.png
+Ekran görüntüleri: KODHANE_V45_SHOTS (varsayılan /workspace/kodhane-v45-shots)/r20/r20-<birleşim>-<yer>-360x640.png
     python3 tests/test_v45_account_privacy.py
 """
 import json
@@ -65,8 +65,8 @@ def save(**kw):
 
 
 import json, re
-R19J = '/workspace/plans/kodhane-hesap-bilgilendirme-yazi-r19.json'
-R19M = '/workspace/plans/kodhane-hesap-bilgilendirme-yazi-r19.md'
+R19J = '/workspace/plans/kodhane-hesap-bilgilendirme-yazi-r20.json'
+R19M = '/workspace/plans/kodhane-hesap-bilgilendirme-yazi-r20.md'
 J = json.load(open(R19J, encoding='utf-8'))
 DET = J['ACC_TEXT']['account.privacyDetails']
 FLAGS = {k: v['default'] for k, v in J['PRIVACY_FLAGS'].items()}
@@ -154,12 +154,12 @@ with sync_playwright() as p:
     ctx, pg, errs = new_page('360x640')
     ev = pg.evaluate
     A = ev('Kodhane.cloud.ACC_TEXT')
-    check('ACC_TEXT = r19 JSON ACC_TEXT (structure + texts verbatim, 13 paragraph objects)', A == J['ACC_TEXT'] and len(A['account.privacyDetails']) == 13)
+    check('ACC_TEXT = r20 JSON ACC_TEXT (structure + texts verbatim, 13 paragraph objects)', A == J['ACC_TEXT'] and len(A['account.privacyDetails']) == 13)
     check('md "Birleşik metinler" = JSON by the reading rule (4 combinations; paragraph and character counts from md headers)',
           all(compose(COMBOS[n]) == MD[n]['paras'] and len(MD[n]['paras']) == MD[n]['n'] and sum(len(t) for _, t in MD[n]['paras']) == MD[n]['chars'] for n in (1, 2, 3, 4)))
-    check('PRIVACY defaults = r19 PRIVACY_FLAGS defaults (enabled false, sharedWithAcikOfis true, others false)', ev('Kodhane.cloud.PRIVACY') == FLAGS, ev('Kodhane.cloud.PRIVACY'))
+    check('PRIVACY defaults = r20 PRIVACY_FLAGS defaults (enabled false, sharedWithAcikOfis true, others false)', ev('Kodhane.cloud.PRIVACY') == FLAGS, ev('Kodhane.cloud.PRIVACY'))
     used = sorted({p['flag'] for p in DET if p['flag']} | {s['flag'] for p in DET for s in p['segments'] if s['flag']})
-    check('flag names: PRIVACY keys = enabled + every flag used in r19 JSON (no earningsLog12m / earningsLogDelete)', sorted(ev('Object.keys(Kodhane.cloud.PRIVACY)')) == sorted(used + ['enabled'])
+    check('flag names: PRIVACY keys = enabled + every flag used in r20 JSON (no earningsLog12m / earningsLogDelete)', sorted(ev('Object.keys(Kodhane.cloud.PRIVACY)')) == sorted(used + ['enabled'])
           and sorted(ev('Kodhane.cloud.PRIVACY_CONTENT_FLAGS')) == used and 'earningsLog12m' not in used and 'earningsLogDelete' not in used, used)
     SRC = open(os.path.join(ROOT, 'cloud.js'), encoding='utf-8').read()
     check('old flat-array machinery removed (PRIVACY_IDS, PRIVACY_KOSULLU, PRIVACY_OPTIONAL, PRIVACY_GATE, index filters)', not any(w in SRC for w in ('PRIVACY_IDS', 'PRIVACY_KOSULLU', 'PRIVACY_OPTIONAL', 'PRIVACY_GATE', 'i === 8', 'i === 0 &&')))
@@ -238,7 +238,7 @@ with sync_playwright() as p:
     ctx.close()
 
     # ---- açık: 3 görünüm x 4 birleşim; taşma, kesilme, kaydırma; 360x640 satır sayısı ve ekran görüntüleri
-    R19SHOTS = os.path.join(SHOTS, 'r19'); os.makedirs(R19SHOTS, exist_ok=True)
+    R19SHOTS = os.path.join(SHOTS, 'r20'); os.makedirs(R19SHOTS, exist_ok=True)
     MEASURE = {}
     for vp in VP:
         ctx, pg, errs = new_page(vp)
@@ -264,12 +264,12 @@ with sync_playwright() as p:
                 MEASURE[NAMES[n]] = {'lines': {x[0]: x[1] for x in ln}, 'total': sum(x[1] for x in ln), 'panelH': scroll['panelH'], 'cardH': scroll['cardH']}
                 ev("document.querySelector('#accountPanel .account-card').scrollTop = 0; document.getElementById('accPrivacyDetails').scrollIntoView({block: 'start'})")
                 pg.wait_for_timeout(150); pg.evaluate("document.querySelectorAll('#toast > *').forEach((t) => t.remove())")
-                pg.screenshot(path=os.path.join(R19SHOTS, 'r19-%s-bas-360x640.png' % NAMES[n]))
+                pg.screenshot(path=os.path.join(R19SHOTS, 'r20-%s-bas-360x640.png' % NAMES[n]))
                 if n >= 3:
                     ev("[...document.querySelectorAll('#accPrivacyDetails p')].find((p) => p.dataset.pid === 'kazanç kaydı').scrollIntoView({block: 'start'})"); pg.wait_for_timeout(120)
-                    pg.screenshot(path=os.path.join(R19SHOTS, 'r19-%s-kazanc-360x640.png' % NAMES[n]))
+                    pg.screenshot(path=os.path.join(R19SHOTS, 'r20-%s-kazanc-360x640.png' % NAMES[n]))
                 ev("[...document.querySelectorAll('#accPrivacyDetails p')].pop().scrollIntoView({block: 'end'})"); pg.wait_for_timeout(120)
-                pg.screenshot(path=os.path.join(R19SHOTS, 'r19-%s-son-360x640.png' % NAMES[n]))
+                pg.screenshot(path=os.path.join(R19SHOTS, 'r20-%s-son-360x640.png' % NAMES[n]))
         ev(SIGN_IN); pg.wait_for_timeout(200)
         if not pg.is_visible('#accPrivacyDetails'): pg.click('#accPrivacyLink'); pg.wait_for_timeout(150)
         r = ev(OVERFLOW, ['#accountPanel', W])
@@ -280,7 +280,7 @@ with sync_playwright() as p:
     json.dump(MEASURE, open(os.path.join(R19SHOTS, 'olcum-360x640.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     tot = {k: v['total'] for k, v in MEASURE.items()}
     print('360x640 satır: %s' % tot)
-    check('360x640 line totals = Yazı r19 (hepsi kapalı 72, bugün 74, B günü 97, hepsi açık 106)', tot == {'hepsi-kapali': 72, 'bugun': 74, 'b-gunu': 97, 'hepsi-acik': 106}, tot)
+    check('360x640 line totals = Yazı r20 (hepsi kapalı 75, bugün 77, B günü 100, hepsi açık 109)', tot == {'hepsi-kapali': 75, 'bugun': 77, 'b-gunu': 100, 'hepsi-acik': 109}, tot)
 
 n_ok = sum(1 for _, ok in results if ok)
 print('\nSUMMARY: %d/%d passed' % (n_ok, len(results)))
