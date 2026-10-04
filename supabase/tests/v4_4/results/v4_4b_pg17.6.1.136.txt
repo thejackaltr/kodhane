@@ -1,0 +1,71 @@
+PASS AO1_acik_ofis_data_leaderboard_functions_after_B_and_tests (diff empty)
+PASS AO2_acik_ofis_after_rollback_B (diff empty)
+PASS G1 B refuses without package A
+PASS H1 v4.4-style upsert (saveVersion 7 >= stored 6) -> 2xx  -- HTTP 200
+PASS H2 v4.3.0-style upsert (no saveVersion) over saveVersion 7 -> HTTP 426  -- HTTP 426
+PASS H3 426 body: code PT426, message save_version_too_old, details name both versions  -- {"code":"PT426","details":"sent saveVersion 0, stored saveVersion 7","hint":"This game version is older than the cloud save. Update the game (reload the page); do not retry this write.","message":"save_version_too_old"}
+PASS H4 v4.3.1-style upsert (saveVersion 4) over 7 -> HTTP 426  -- HTTP 426
+PASS H5 stale revision, same version -> HTTP 409 (v2.2 contract unchanged)  -- HTTP 409 {"code":"PT409","details":"sent revision 5, server revision 6","hint":"Pull the 
+PASS H6 rpc/kodhane_leaderboard_v7 -> 200, rows carry stage_id  -- HTTP 200, [{"rank":1,"nickname":"Test Üç","score":2000000000000000,"stage":6,"stage_id":"teknoloji_devi","is_me":false,"status":
+PASS H7 rpc/kodhane_leaderboard acik_ofis -> 200, v6 keys only (no stage_id)  -- HTTP 200, <body: v6 keys only, data redacted>
+PASS K1_leaderboard_v6_both_games_identical_after_B (diff empty)
+PASS K2_no_data_write_by_B (diff empty)
+PASS K3 live copy: v7 stage_id = legacy mapping of v6 stage for every old record (6 rows, 0 differ)
+PASS O0 B installs kodhane_score_plausible v4.4b 
+PASS O1 extreme saves -> clean false, no 22003  -- X1 t 1.7976931348623157e308=ok:false; X2 t 1e309=ok:false; X3 s/p/cr 1e100, t 1e300=ok:false; X4 ge 1e100, ic 1=ok:false; X5 p/ic/ge 1e100, t 1e300=ok:false; X7 t 1e308=ok:false; X8 t 1.7976931e308=ok:false; X9 ge 1e90=ok:false; X10 ge 1e98=ok:false; X11 ge 1e51, ic 1=ok:false; X12 t 1e300 + 1=ok:false; X13 runEarned 1e301=ok:false; X14 cycleEarned -1e301=ok:false; X15 shares -1e400=ok:false; X16 counters 1e50 + 1=ok:false; X17 p 1e50, ic 1e50, t 1e300 (share cap, no product)=ok:false; X18 cr 1e50 x prev 1e300 (share check, no product)=ok:false; X19 money 1e400 (not read)=ok:false
+PASS O10 the player with the extreme row can read v7 (own row) 
+PASS O2 exactly on the bounds (totalEarned 1e300, counters 1e50): boolean, no error 
+PASS O3 v4.4b = v4.4a on 38400 saves inside the bounds (totalEarned 0..1e300 incl. 9e15, 2^53+1, 1e21, 9.68e21, 1e30)  -- 38400 saves, 0 differ, 718 plausible
+PASS O4 9e15 .. 1e30 still pass: every value has plausible saves in the grid (v4.3 and v4.4 format)  -- 9000000000000000:36 9000000000000000:38 9007199254740992:36 9007199254740992:38 9007199254740993:36 9007199254740993:38 10000000000000000000:48 10000000000000000000:50 1000000000000000000000:28 1000000000000000000000:30 9679236323441331000000:36 9679236323441331000000:38 1000000000000000000000000000000:42 1000000000000000000000000000000:42
+PASS O5 setup: plausible 1e21 save written, best_score 1e21  -- 1000000000000000000000
+PASS O6 player writes the X4 save (ipoSharesEarned 1e100): accepted without 22003 (was a 22003 refusal before v4.4b) 
+PASS O7 implausible: best_score stays 1e21 (the extreme save never enters the leaderboard score) 
+PASS O8 extreme rows written with session_replication_role = replica: kodhane_leaderboard and _v7 answer (no 22003)  -- ok:10 / ok:10
+PASS O9 the extreme current save is not counted: Test Beş listed with its best_score 1e21, Test Dört (best_score 0) not listed  -- Test Beş=1000000000000000000000
+PASS R1 ops/v4_4b_verify.sql all t (7 checks)
+PASS R2 preflight recognises an applied B
+PASS R3_schema_after_rollback_B_equals_A (diff empty)
+PASS R4_fdefs_after_rollback_B_equals_A (diff empty)
+PASS R5_reapply_B (diff empty)
+PASS R6_schema_after_rollback_B_then_A_equals_base (diff empty)
+PASS R7_fdefs_after_rollback_B_then_A_equals_base (diff empty)
+PASS S1 Unicorn save: best_stage 5 (legacy), best_stage_id unicorn 
+PASS S10a admin SQL cannot set best_stage_id either (trigger recomputes it) 
+PASS S10b unknown stage ID rejected by the column check  -- 23514: new row for relation "kodhane_saves" violates check constraint "kodhane_saves_best_stage_id_known"
+PASS S11 v7 stage_id never below its legacy stage (client legacyStageIndex: Unicorn / Şirketler Grubu -> Global Holding)  -- teknoloji_devi=6, global_holding=5, global_holding=5, global_holding=5, global_holding=5, global_holding=5, ajans=3, ajans=3, ev_ofisi=1
+PASS S12 v7 = v6 (all columns but stage_id), no login  -- 9 rows
+PASS S13 v7 = v6 logged in, p_limit 3 (own row appended) 
+PASS S14 own pending row in v7: status pending, stage / stage_id / rank NULL (as v6)  -- pending/-
+PASS S15 players cannot call the vetted stage helper  -- 42501: permission denied for function kodhane_save_vetted_stage_id
+PASS S16 anon + authenticated may call kodhane_leaderboard_v7 
+PASS S2 v7: stage 5 + stage_id unicorn 
+PASS S3 v6 unchanged for the same row (stage 5 = Global Holding for old clients) 
+PASS S4 Şirketler Grubu raises best_stage_id 
+PASS S5 lower stage later (after Yatırım Turu): best_stage_id never decreases 
+PASS S6 a client cannot write best_stage_id (no column grant; the trigger would overwrite it anyway)  -- 42501: permission denied for table kodhane_saves
+PASS S7 implausible Mars claim does not raise best_stage_id 
+PASS S8 unreachable stage ID (Mars at 3e13) does not raise best_stage_id 
+PASS S9 Teknoloji Devi: best_stage 6, best_stage_id teknoloji_devi 
+PASS V1 v4.3.1 write (saveVersion 4) over a v4.4 save (5) -> PT426  -- PT426: save_version_too_old
+PASS V10 stale revision, same version -> v2.2 PT409 unchanged  -- PT409: stale_revision
+PASS V11 saveVersion as string counts as missing (0)  -- PT426: save_version_too_old
+PASS V12 manual SQL as postgres may write an older save 
+PASS V13 manual SQL as supabase_admin exempt  -- supabase_admin
+PASS V14 service_role (service key) exempt 
+PASS V14b (c) service_role writes saveVersion 4 over a stored 5: exempt, accepted 
+PASS V15 kodhane_reset_save on a saveVersion 6 save works (payload has no saveVersion) 
+PASS V16 kodhane_restore_save works 
+PASS V17 after restore the stored saveVersion is the restored one (6): a v4.3.0 write is refused again  -- PT426: save_version_too_old
+PASS V18 first save (INSERT) without saveVersion accepted 
+PASS V19 DISABLE TRIGGER kodhane_saves_a_version_guard switches the guard off (runbook) 
+PASS V2 v4.3.0 write (no saveVersion = 0) over a v4.4 save -> PT426  -- PT426: save_version_too_old
+PASS V3 detail / hint name both versions  -- sent saveVersion 0, stored saveVersion 5
+PASS V4 refused writes change nothing (data, revision) 
+PASS V5 same and higher saveVersion accepted (5 -> 5 -> 6) 
+PASS V6 no saveVersion over no saveVersion accepted (v4.3.0 -> v4.3.0) 
+PASS V7 (a) v4.3.0 write (no saveVersion = 0) over a v4.3.1 save (4) accepted: format 4 saves are not guarded 
+PASS V7b v4.3.1 write (4) over a v4.3.1 save (4) accepted 
+PASS V8 v4.4 write over a v4.3.1 save accepted 
+PASS V8b (b) v4.3.1 write (4) over a v4.4 save (5) -> PT426  -- PT426: save_version_too_old
+PASS V8c data.version is not read: saveVersion 4 + version 5 over 5 -> PT426  -- PT426: save_version_too_old
+PASS V9 stale revision AND older client -> PT426 first (guard fires before the v2.2 revision check)  -- PT426: save_version_too_old

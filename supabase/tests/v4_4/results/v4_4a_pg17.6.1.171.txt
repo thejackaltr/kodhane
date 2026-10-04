@@ -1,0 +1,86 @@
+PASS A1 v4.3.0 client saves (sim, no saveVersion) all plausible  -- 9526 snapshots, 20 runs
+PASS A2 v4.3.1 client saves (sim, saveVersion 4) all plausible  -- 2276 snapshots, 6 runs
+PASS A3a saves without saveVersion (v4.1.1 client sim) all plausible  -- 2276 snapshots, 6 runs
+PASS A3b kodhane-cloud honest_sims.json (v4 era, no saveVersion) all plausible  -- 10 saves
+PASS A4 v4.4.0 client saves (all sim profiles x Halka Arz modes) all plausible  -- 6710 snapshots, 26 runs; old v4.3 rule rejects 4643
+PASS A5 nothing the v4.3 rule accepted is rejected now (all sim snapshots)  -- 20788 snapshots
+PASS A6 v4.4 save re-written by a v4.3.0 tab (version 5 kept, *Id + veri/cip dropped) plausible  -- 6710 snapshots
+PASS AO1_acik_ofis_data_leaderboard_functions (diff empty)
+PASS AO2_acik_ofis_after_rollback (diff empty)
+PASS C count  -- 54
+PASS C legacy IPO 12 x ipoCount + 50 pays (ipo-idle-14gun)  -- v4.3 rule: false
+PASS C legacy IPO Borsa Payı 1e6 (ipo-smart-7gun)  -- v4.3 rule: false
+PASS C legacy IPO cycle earnings > total (ipo-smart-7gun)  -- v4.3 rule: false
+PASS C legacy IPO cycleRounds > prestigeCount (ipo-smart-7gun)  -- v4.3 rule: false
+PASS C legacy IPO cycleRounds > shares (ipo-smart-7gun)  -- v4.3 rule: false
+PASS C legacy IPO earlier cycles without any IPO (ipo-smart-7gun)  -- v4.3 rule: false
+PASS C legacy IPO fewer Borsa Payı than IPOs (ipo-smart-7gun)  -- v4.3 rule: false
+PASS C legacy IPO run earnings > cycle (ipo-smart-7gun)  -- v4.3 rule: false
+PASS C legacy IPO x100 (ipo-smart-7gun)  -- v4.3 rule: false
+PASS C legacy fresh 1e17 after 1 minute  -- v4.3 rule: false
+PASS C legacy fresh total=run=1.234e30  -- v4.3 rule: false
+PASS C legacy fresh total=run=1.5e300  -- v4.3 rule: false
+PASS C legacy honest x1e6 (aktif-1gun-asap)  -- v4.3 rule: false
+PASS C legacy prestigeCount = shares + 5 (aktif-1gun-asap)  -- v4.3 rule: false
+PASS C legacy prestigeCount > shares (aktif-2gun-smart)  -- v4.3 rule: false
+PASS C legacy previous-run earnings +1e30 (aktif-1gun-asap)  -- v4.3 rule: false
+PASS C legacy runEarned > totalEarned (aktif-1gun-asap)  -- v4.3 rule: false
+PASS C legacy shares x10 (aktif-2gun-smart)  -- v4.3 rule: false
+PASS C legacy shares x1000 (aktif-1gun-asap)  -- v4.3 rule: false
+PASS C legacy x100 (aktif-2gun-smart)  -- v4.3 rule: false
+PASS C legacy x3 without prestige history (aktif-2gun-smart)  -- v4.3 rule: false
+PASS C not an object  -- v4.3 rule: false
+PASS C totalEarned 1e309 (above float8)  -- v4.3 rule: false
+PASS C totalEarned negative  -- v4.3 rule: false
+PASS C totalEarned string  -- v4.3 rule: false
+PASS C v2.2 u2: 1e30 on a brand-new save  -- v4.3 rule: false
+PASS C v430live (format 4): Veri Merkezi owned  -- v4.3 rule: true
+PASS C v430live (format 4): stage IDs (unicorn)  -- v4.3 rule: true
+PASS C v430live (format 4): v4.4 accelerated share cap (5x) claimed on format 4  -- v4.3 rule: false
+PASS C v430live (format 4): Çip Fabrikası owned  -- v4.3 rule: true
+PASS C v430live IPO: employee count as string  -- v4.3 rule: true
+PASS C v430live IPO: ipoCount as string  -- v4.3 rule: false
+PASS C v430live IPO: negative employee count  -- v4.3 rule: true
+PASS C v430live IPO: shares 1% above the share cap  -- v4.3 rule: false
+PASS C v430live IPO: shares as string  -- v4.3 rule: false
+PASS C v430live IPO: shares x1000  -- v4.3 rule: false
+PASS C v430live IPO: unknown employee  -- v4.3 rule: true
+PASS C v430live IPO: x100 all earnings  -- v4.3 rule: false
+PASS C v430live first Halka Arz: Borsa Payı 12 x ipoCount + 50 (small older earnings)  -- v4.3 rule: false
+PASS C v440 IPO: employee count as string  -- v4.3 rule: false
+PASS C v440 IPO: ipoCount as string  -- v4.3 rule: false
+PASS C v440 IPO: negative employee count  -- v4.3 rule: false
+PASS C v440 IPO: shares 1% above the share cap  -- v4.3 rule: false
+PASS C v440 IPO: shares as string  -- v4.3 rule: false
+PASS C v440 IPO: shares x1000  -- v4.3 rule: false
+PASS C v440 IPO: unknown employee  -- v4.3 rule: false
+PASS C v440 IPO: x100 all earnings  -- v4.3 rule: false
+PASS C v440 early save: Ar-Ge Kampüsü below 1e13  -- v4.3 rule: true
+PASS C v440 early save: Veri Merkezi below 1e11  -- v4.3 rule: true
+PASS C v440 early save: stageBestId mars_ofisi below 1e23  -- v4.3 rule: true
+PASS C v440 early save: stageId unicorn below 1e11  -- v4.3 rule: true
+PASS C v440 first Halka Arz: Borsa Payı 12 x ipoCount + 50 (small older earnings)  -- v4.3 rule: false
+PASS C v440: stage ID as number  -- v4.3 rule: false
+PASS C v440: unknown stage ID  -- v4.3 rule: false
+PASS C-ok 12 pays per IPO (Mars every cycle) still plausible (ipo-idle-14gun) 
+PASS C-ok v430live IPO save exactly at the share cap is plausible (bound is inclusive) 
+PASS C-ok v440 IPO save exactly at the share cap is plausible (bound is inclusive) 
+PASS F1 compensated save: v4.3 rule false (frozen), v4.4a true  -- shares 1110, prestigeCount 4, cycleRounds 1, ipoCount 1, totalEarned 43419016272800.87
+PASS F2 next write (revision +1, strict) raises best_score past the frozen value  -- 43419016272800.87 -> 43919016272800.87
+PASS F3 stage-up write (Teknoloji Devi at 1.2e15) raises best_stage 5 -> 6  -- best_stage 6, best_score 1200000000000000
+PASS F4 leaderboard shows the moved score and stage 
+PASS F5 same save with shares above the new bound (1320 > sqrt(4 x 4.34e13 / 1e8) + 1 = 1318.9) still false 
+PASS G1 A refuses without Kodhane v2.2
+PASS G2 A refuses to overwrite an unexpected definition
+PASS G3 rollback refuses on an unexpected definition
+PASS K1 kodhane_leaderboard output (both games) identical right after A (0 rows differ)
+PASS L1 live copy: no real player flagged (before A -> after A)  -- 7 saves; v4.3 rule: 6 plausible / 1 not; v4.4a: 7 / 0
+PASS P0 preflight inlines the migration body byte-for-byte (2x)
+PASS P1 preflight recognises an applied A
+PASS R1 A changes exactly one object: kodhane_score_plausible (2 fdef lines)
+PASS R2 ops/v4_4a_verify.sql all t (7 checks)
+PASS R3_schema_after_rollback (diff empty)
+PASS R4_fdefs_acl_comments_after_rollback (diff empty)
+PASS R5_reapply_after_rollback (diff empty)
+PASS R6_schema_after_tests_and_rollback (diff empty)
+PASS R7_fdefs_after_tests_and_rollback (diff empty)
