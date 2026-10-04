@@ -685,7 +685,7 @@
       return true;
     }).catch(function (e) {
       if (isTooOld(e)) { tooOld = e; return false; }
-      if (isStale(e)) { staleErr = e; return false; }
+      if (isStale(e)) { staleErr = e; try { e.sentRevision = rev; } catch (x) {} return false; }
       setStatus('error', friendlyError(e, 'Buluta kaydedilemedi; tekrar denenecek. Oyun bu cihazda kayıtlı.'));
       return false;
     }).then(function (ok) {
@@ -698,14 +698,20 @@
         setStatus('error', (K.uiText && K.uiText('update.olderTab.text')) || '');
         return ok;
       }
-      if (staleErr) { C.lastStale = { code: staleErr.code, message: staleErr.message, status: staleErr.status }; if (!o.quiet) handleStale(staleErr); }
+      if (staleErr) { C.lastStale = { code: staleErr.code, message: staleErr.message, status: staleErr.status, sent: sentRevOf(staleErr) }; if (!o.quiet) handleStale(staleErr); }
       return ok;
     });
     return C.pushing;
   }
   // 409: bu cihaz eski revision'da. Güncel kaydı çek; revision kuralı bulutu seçer (başka cihazda sıfırlandıysa
   // otherDevice metni gösterilir). Döngüye girmemek için 30 sn'de 3'ten fazla 409 olursa durulur.
-  function handleStale() {
+  // 409'u alan yazmanın revision'ı: push'un gönderdiği değer, yoksa details 'sent revision N, server revision M'.
+  function sentRevOf(err) {
+    if (err && typeof err.sentRevision === 'number' && isFinite(err.sentRevision)) return err.sentRevision;
+    var m = err && typeof err.details === 'string' ? /sent revision (\d+)/.exec(err.details) : null;
+    return m ? Number(m[1]) : null;
+  }
+  function handleStale(err) {
     // 409: güncel kaydı bir kez yükle; gerçek oyuncu girdisine kadar (hold) yeniden yazma — iki cihaz/sekme ping-pong yapmasın.
     hold();
     var t = Date.now();
@@ -715,10 +721,11 @@
     C.reconciled = false;
     if (C.staleAt.length > 3) { setStatus('error', 'Buluta kaydedilemedi; tekrar denenecek. Oyun bu cihazda kayıtlı.'); setTimeout(function () { if (C.user && !C.reconciled) reconcile(); }, 60000); return; }
     // v4.5 (P7): 409 bir telafi yüklemesinden olabilir (sunucu revision'ı artırır). Kayıp bildir durumu önce (en fazla 2,5 sn)
-    // yenilenir; adoptSave telafiyse lossReport.applied.staleTab metnini gösterir. Yazma tekrar denenmez, kayıt yeniden çekilir.
+    // yenilenir; gönderilen revision <= applied_revision ise adoptSave lossReport.applied.staleTab metnini gösterir (lossreport.js
+    // staleVerdict). Yazma tekrar denenmez, kayıt yeniden çekilir.
     if (K.lossReport && typeof K.lossReport.beforeStale === 'function') {
       var go = function () { if (C.user && !C.reconciled) reconcile(); };
-      try { K.lossReport.beforeStale().then(go, go); } catch (e) { go(); }
+      try { K.lossReport.beforeStale({ sent: sentRevOf(err) }).then(go, go); } catch (e) { go(); }
       return;
     }
     reconcile();
@@ -1129,7 +1136,7 @@
       }, function (e) { return { data: null, error: { message: String(e && e.message || e) }, status: 0 }; });
     },
     resetSave: function () { return K.beforeReset() || Promise.reject(new Error('not-signed-in')); },
-    restoreSave: restoreSave, latestBackup: latestBackup, handleStale: handleStale, mock: function () { return useMock() ? mock() : null; },
+    restoreSave: restoreSave, latestBackup: latestBackup, handleStale: handleStale, sentRevOf: sentRevOf, mock: function () { return useMock() ? mock() : null; },
     hold: hold, release: releaseHold, gate: gate, staleKind: staleKind,
     TEXT: CLOUD_TEXT, sendErrorKey: sendErrorKey,
     PRIVACY: PRIVACY, ACC_TEXT: ACC_TEXT, PRIVACY_IDS: PRIVACY_IDS, PRIVACY_KOSULLU: PRIVACY_KOSULLU, PRIVACY_OPTIONAL: PRIVACY_OPTIONAL, PRIVACY_GATE: PRIVACY_GATE, privacyItems: privacyItems, privacyParagraphs: privacyParagraphs, renderPrivacy: renderPrivacy, togglePrivacy: togglePrivacy,

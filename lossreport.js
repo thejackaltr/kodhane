@@ -154,6 +154,11 @@
     return fmtDur(Math.ceil(ms / 60000) * 60);
   }
   function errOf(resp) { return (resp && resp.error) || null; }
+  // 429 message -> metin anahtarı (Yazılım Yöneticisi, 4 Ekim: iki sınır da lossReport.limit.tooMany). Sunucu: code PT429,
+  // message loss_report_daily_limit (24 saatte 1) | loss_report_monthly_limit (30 günde 5), details = tekrar deneme zamanı UTC ISO.
+  // Not: Yazı r3 ve Backend istemci notu günlük/aylık için ayrı metin (lossReport.limit.daily / .monthly) öngörüyordu; metinler
+  // TEXT'te duruyor, geri dönmek bu tabloyu değiştirmekten ibaret. Tabloda olmayan message da tooMany'ye düşer.
+  var LIMIT_KEYS = { loss_report_daily_limit: 'lossReport.limit.tooMany', loss_report_monthly_limit: 'lossReport.limit.tooMany' };
   // RPC yanıtı -> { kind, key, field?, retryAt?, defaulted? }. kind: ok | needLogin | invalid | noCloudSave | open | stale | limit | generic
   function classify(resp, now) {
     if (!resp) return { kind: 'generic', key: 'lossReport.error.generic' };
@@ -175,7 +180,7 @@
     }
     if (st === 429) {
       var r = parseRetry(det, now);
-      var key = msg === 'loss_report_daily_limit' ? 'lossReport.limit.daily' : msg === 'loss_report_monthly_limit' ? 'lossReport.limit.monthly' : 'lossReport.limit.tooMany';
+      var key = LIMIT_KEYS.hasOwnProperty(msg) ? LIMIT_KEYS[msg] : 'lossReport.limit.tooMany';   // bilinmeyen / boş message da tooMany
       return { kind: 'limit', key: key, retryAt: r.at, defaulted: r.defaulted };
     }
     return { kind: 'generic', key: 'lossReport.error.generic' };
@@ -212,10 +217,31 @@
     return rows.slice().sort(function (a, b) { return (Date.parse(b && b.created_at) || 0) - (Date.parse(a && a.created_at) || 0); })[0] || null;
   }
 
+  // Eski sekme ayrımı (karar 6). Kesin alan: durum RPC'sinin applied_revision kolonu (Backend 1cd221d, istemci notu §2). Alan
+  // yalnız status = applied iken dolu: geri yüklemenin yazdığı kayıt revision'ı; diğer durumlarda null.
+  // 409 stale_revision'da sekmenin gönderdiği revision N, applied satırlarındaki en büyük applied_revision A ile karşılaştırılır:
+  //   N <= A -> lossReport.applied.staleTab (sekme geri yüklemeden önceki kayıtla açıktı)
+  //   N >  A ya da applied satırı yok -> '' (game.js reset.otherDeviceSync gösterir: 409 başka bir yazıdan)
+  // Alan null / eksikse (eski sunucu), satırlar okunamadıysa ya da N bilinmiyorsa eski sezgiye düşülür:
+  // applied_at > sekme açılışı ve 409'dan önceki durum yenilemesinde yakalanmış olması (S.pendingApplied).
+  function staleVerdict(rows, sent) {
+    if (!Array.isArray(rows) || typeof sent !== 'number' || !isFinite(sent)) return null;
+    var max = null, missing = false;
+    rows.forEach(function (row) {
+      if (!row || row.status !== 'applied') return;            // applied dışı satırın değeri (gelse bile) sayılmaz
+      var a = row.applied_revision;
+      if (typeof a === 'string' && /^\d+$/.test(a)) a = Number(a);   // bigint metin olarak gelirse
+      if (typeof a === 'number' && isFinite(a)) { if (max === null || a > max) max = a; } else missing = true;
+    });
+    if (max !== null && sent <= max) return 'staleTab';
+    if (missing) return null;                                  // alan null/eksik: sezgiye düş
+    return 'sync';
+  }
+
   var LR = {
     TEXT: LOSS_TEXT, TEXT_PENDING: LOSS_TEXT_PENDING, CFG: CFG, ITEMS: ITEMS, SINCE: SINCE, REJECT_CODES: REJECT_CODES,
     text: text, lostSinceISO: lostSinceISO, cleanDescription: cleanDescription, validate: validate, buildArgs: buildArgs,
-    parseRetry: parseRetry, sureText: sureText, classify: classify, statusView: statusView, latest: latest, availability: availability
+    parseRetry: parseRetry, sureText: sureText, classify: classify, statusView: statusView, latest: latest, availability: availability, staleVerdict: staleVerdict
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = LR;
   if (!K) return;
@@ -224,7 +250,7 @@
 
   // ---------------------------------------------------------------- tarayıcı
   // avail: 'unknown' (yoklanmadı / geçici hata) | 'yes' | 'no'. Bölüm yalnız 'yes' iken görünür (kanıtlanana kadar gizli).
-  var S = { rows: null, avail: 'unknown', probing: null, notice: null, form: false, sending: false, retry: null, pendingApplied: null, loadedAt: Date.now(), fetching: null };
+  var S = { rows: null, avail: 'unknown', probing: null, notice: null, form: false, sending: false, retry: null, pendingApplied: null, staleVerdict: null, rowsSeq: 0, loadedAt: Date.now(), fetching: null };
   var el = {};
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
@@ -375,6 +401,7 @@
       setAvail(availability(r));
       if (classify(r).kind === 'ok') {
         S.rows = Array.isArray(r.data) ? r.data : [];
+        S.rowsSeq++;                                           // beforeStale: bu yenileme başarılı mı
         noticeApplied();
       }
       render();
@@ -399,7 +426,6 @@
     return S.probing;
   }
   // Telafi yüklendi: bu sekme yükleme anında açıksa (applied_at > sayfa açılışı) applied.toast; eski sekmenin 409'unda staleTab.
-  // Backend'in kesin alanı bekleniyor
   function noticeApplied() {
     var seen = seenIds();
     (S.rows || []).forEach(function (row) {
@@ -410,18 +436,23 @@
     });
   }
   // game.js adoptSave (409 stale_revision -> güncel kayıt yüklendi) bunu sorar: telafiden geldiyse staleTab metni, değilse ''.
-  // Backend'in kesin alanı bekleniyor
   LR.consumeAppliedForStale = function () {
-    if (!S.pendingApplied) return '';
+    var v = S.staleVerdict; S.staleVerdict = null;
+    if (v === 'staleTab') { S.pendingApplied = null; return text('lossReport.applied.staleTab'); }
+    if (v === 'sync') { S.pendingApplied = null; return ''; }
+    if (!S.pendingApplied) return '';                          // eski sezgi (applied_revision yokken)
     S.pendingApplied = null;
     return text('lossReport.applied.staleTab');
   };
-  // cloud.js handleStale bunu reconcile'dan önce çağırır (en fazla 2,5 sn bekler): telafi yüklendiyse adoptSave staleTab gösterir.
-  // Backend'in kesin alanı bekleniyor
-  // (karar 6: eski sekme ayrımı şimdilik durum yoklamasına dayalı sezgi: applied_at > sekme açılışı ve 409'dan önceki yenileme.)
-  LR.beforeStale = function () {
+  // cloud.js handleStale bunu reconcile'dan önce çağırır (en fazla 2,5 sn bekler). info.sent: 409'u alan yazmanın revision'ı.
+  // Durum yenilenince staleVerdict hesaplanır; adoptSave consumeAppliedForStale ile sonucu alır.
+  LR.beforeStale = function (info) {
+    S.staleVerdict = null;
     if (!signed() || S.avail === 'no' || !CFG.enabled) return Promise.resolve();
-    return Promise.race([refresh(), new Promise(function (r) { setTimeout(r, 2500); })]).then(function () {}, function () {});
+    var sent = info && typeof info.sent === 'number' ? info.sent : null, seq = S.rowsSeq;
+    // Karar yalnız bu yenileme başarılıysa (satırlar taze) verilir; hata / zaman aşımında eski sezgi.
+    return Promise.race([refresh(), new Promise(function (r) { setTimeout(r, 2500); })]).then(function () {}, function () {})
+      .then(function () { S.staleVerdict = S.rowsSeq > seq ? staleVerdict(S.rows, sent) : null; });
   };
   function render() {
     if (!el.section) return;

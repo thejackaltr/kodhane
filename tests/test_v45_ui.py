@@ -309,10 +309,15 @@ with sync_playwright() as p:
     ev("window.__lr.status = { data: [], error: null, status: 200 }")
     det = ev("new Date(Date.now() + 90 * 60000 - 30000).toISOString().replace(/\\.\\d+Z$/, 'Z')")
     r = attempt(ERR(429, 'loss_report_daily_limit', det, 'PT429'))
-    check('429 daily: time from details (UTC ISO) -> "1 saat 30 dakika" (fmtDur, rounded up), button disabled', r['notice'] == T['lossReport.limit.daily'].replace('{sure}', '1 saat 30 dakika') and r['openDisabled'], r)
+    check('429 PT429 loss_report_daily_limit: time from details (UTC ISO) -> limit.tooMany "1 saat 30 dakika" (fmtDur, rounded up), button disabled', r['notice'] == T['lossReport.limit.tooMany'].replace('{sure}', '1 saat 30 dakika') and r['openDisabled'], r)
     ev("document.getElementById('lossSection').scrollIntoView({block: 'center'})"); shot(pg, 'kayip-429', '360x640')
     r = attempt(ERR(429, 'loss_report_monthly_limit', None, 'PT429'))
-    check('429 without details -> safe default 24 h ("1 gün"), monthly text', r['notice'] == T['lossReport.limit.monthly'].replace('{sure}', '1 gün'), r)
+    check('429 PT429 loss_report_monthly_limit without details -> safe default 24 h ("1 gün"), limit.tooMany', r['notice'] == T['lossReport.limit.tooMany'].replace('{sure}', '1 gün'), r)
+    det2 = ev("new Date(Date.now() + 3 * 86400000 + 30000).toISOString().replace(/\\.\\d+Z$/, 'Z')")
+    r = attempt(ERR(429, 'loss_report_monthly_limit', det2, 'PT429'))
+    check('429 monthly with details (3 days) -> limit.tooMany "3 gün 1 dakika"', r['notice'] == T['lossReport.limit.tooMany'].replace('{sure}', '3 gün 1 dakika'), r)
+    r = attempt(ERR(429, 'loss_report_daily_limit', '2026-10-45T08:00:00Z', 'PT429'))
+    check('429 daily with broken ISO details -> default 24 h ("1 gün"), limit.tooMany, no crash', r['notice'] == T['lossReport.limit.tooMany'].replace('{sure}', '1 gün'), r)
     r = attempt(ERR(429, 'too_many', ev("new Date(Date.now() + 5 * 60000).toISOString().replace(/\\.\\d+Z$/, 'Z')"), 'PT429'))
     check('429 unknown message with a time -> limit.tooMany', r['notice'] == T['lossReport.limit.tooMany'].replace('{sure}', '5 dakika'), r)
     ev("Kodhane.lossReport.setRetry({ at: Date.now() + 600, key: 'lossReport.limit.daily' })")
@@ -350,6 +355,34 @@ with sync_playwright() as p:
           and not any('başka bir cihazda' in t for t in toasts(pg)), toasts(pg))
     ev("Kodhane.adoptSave(JSON.parse(Kodhane.serialize()), 'sync')"); pg.wait_for_timeout(150)
     check('a later unrelated 409 -> the usual otherDeviceSync text', any('başka bir cihazda' in t for t in toasts(pg)), toasts(pg))
+    # eski sekme: applied_revision kesin kuralı (Backend 1cd221d). beforeStale({sent}) -> adoptSave('sync') mesajı
+    def stale_msg(rows, sent):
+        ev("document.querySelectorAll('#toast > *').forEach((t) => t.remove())")
+        ev("([rows, sent]) => { __lr.status = { data: rows, error: null, status: 200 }; return Kodhane.lossReport.beforeStale({ sent: sent }); }", [rows, sent])
+        verdict = ev('Kodhane.lossReport.state.staleVerdict')
+        ev("Kodhane.adoptSave(JSON.parse(Kodhane.serialize()), 'sync')"); pg.wait_for_timeout(120)
+        ts = toasts(pg)
+        return ('staleTab' if T['lossReport.applied.staleTab'] in ts else 'sync' if any('başka bir cihazda' in t for t in ts) else 'none'), verdict
+    arow = lambda rev, **kw: dict(base, id='ar%s' % rev, status='applied', applied_at='2026-01-02T00:00:00Z', applied_revision=rev, **kw)
+    check('stale tab: sent == applied_revision -> staleTab (no heuristic needed: restore was before this tab opened)', stale_msg([arow(7)], 7) == ('staleTab', 'staleTab'))
+    check('stale tab: sent < applied_revision -> staleTab', stale_msg([arow(7)], 4) == ('staleTab', 'staleTab'))
+    check('stale tab: sent > applied_revision -> reset.otherDeviceSync', stale_msg([arow(7)], 8) == ('sync', 'sync'))
+    check('stale tab: applied_revision null -> old heuristic (restore before tab opened -> otherDeviceSync)', stale_msg([arow(None)], 5) == ('sync', None))
+    nofield = dict(base, id='nf1', status='applied', applied_at='2026-01-03T00:00:00Z')
+    check('stale tab: applied_revision field missing -> old heuristic (otherDeviceSync here)', stale_msg([nofield], 5) == ('sync', None))
+    fresh2 = dict(base, id='nf2', status='applied', applied_at=ev("new Date(Date.now() + 1000).toISOString()"))
+    check('stale tab: field missing + restore while tab open -> old heuristic still gives staleTab', stale_msg([fresh2], 5) == ('staleTab', None))
+    check('stale tab: non-applied status (approved, value present) -> ignored -> otherDeviceSync', stale_msg([dict(base, id='ap1', status='approved', applied_revision=9)], 5) == ('sync', 'sync'))
+    fresh3 = dict(base, id='nf3', status='applied', applied_at=ev("new Date(Date.now() + 1000).toISOString()"), applied_revision=6)
+    check('stale tab: exact field overrides the heuristic (restore while tab open but sent > applied_revision -> otherDeviceSync)', stale_msg([fresh3], 7) == ('sync', 'sync'))
+    check('stale tab: status RPC fails (503) -> no verdict (old rows not used), heuristic, no crash', (lambda: (ev("__lr.status = { data: null, error: { message: 'x' }, status: 503 }"), ev("Kodhane.lossReport.beforeStale({ sent: 3 }).then(() => Kodhane.lossReport.state.staleVerdict)"))[1])() is None)
+    info = ev("""() => { const LR = Kodhane.lossReport, orig = LR.beforeStale; let got = 'none';
+      LR.beforeStale = (i) => { got = i; return Promise.resolve(); };
+      const C = Kodhane.cloud.state, u = C.user;
+      try { Kodhane.cloud.handleStale({ code: 'PT409', message: 'stale_revision', details: 'sent revision 12, server revision 13', status: 409 }); } catch (e) { got = 'throw ' + e; }
+      C.user = null;   // sahte oturumun istemcisi yok: handleStale'in ardından gelen reconcile çalışmasın
+      return new Promise((r) => setTimeout(r, 50)).then(() => { C.user = u; LR.beforeStale = orig; return got; }); }""")
+    check('cloud.handleStale passes the sent revision from the 409 details to beforeStale({ sent })', info == {'sent': 12}, info)
     ev("__lr.status = { data: null, error: { message: 'Could not find the function public.kodhane_loss_report_status', code: 'PGRST202' }, status: 404 }; Kodhane.lossReport.refresh()")
     pg.wait_for_timeout(150)
     check('server without P7 (status 404 PGRST202) -> section hidden for signed-in players', not pg.is_visible('#lossSection'))
