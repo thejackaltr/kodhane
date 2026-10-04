@@ -279,7 +279,25 @@ docker exec -i -e PGOPTIONS='-c kodhane.deletion_log_allow_loss=on' "$CT" psql -
 o=$(docker exec -i "$CT" sh -s < "$OPS/kodhane_retention_daily.sh" 2>&1); rc=$?
 check "T6b daily script without the deletion log: step 5 skipped, exit 0" "$rc|$(sed -nE 's/^[0-9TZ:-]+ (kodhane retention deletion log .*)/\1/p' <<<"$o")" "0|kodhane retention deletion log skipped: migration 20261003040000 not applied in database postgres"
 P -d template1 -c "drop database postgres with (force)" -c "alter database dl_postgres_orig rename to postgres" >/dev/null
-check "T7 container's own postgres database restored" "$(PA -d postgres -c "select to_regclass('public.kodhane_saves') is null")" t
+# Test environment only: in the .136 image the pg_net 0.20.3 background worker can start in the gap between the drop and
+# the rename (database "postgres" missing) and segfault; the postmaster then restarts every backend (crash recovery, ~1 s)
+# and the next query fails. The live database never drops its own postgres database. So before T7: wait (max 60 s) until
+# the server accepts connections, 3 checks in a row; finish the rename if the restart interrupted it. Timeout = T7 FAIL.
+t7=""; ok=0; t7end=$((SECONDS + 60))
+while (( SECONDS < t7end )); do
+  if [[ "$(PA -d template1 -c "select 1" 2>/dev/null)" == 1 ]]; then
+    ok=$((ok + 1))
+    if (( ok == 1 )) && [[ "$(PA -d template1 -c "select (select count(*) from pg_database where datname = 'postgres') || '|' || (select count(*) from pg_database where datname = 'dl_postgres_orig')" 2>/dev/null)" == "0|1" ]]; then
+      P -d template1 -c "alter database dl_postgres_orig rename to postgres" >/dev/null 2>&1; ok=0
+    fi
+    (( ok >= 3 )) && break
+  else
+    ok=0
+  fi
+  sleep 0.5
+done
+(( ok >= 3 )) || t7="TIMEOUT: the server did not accept connections within 60 s after drop + rename"
+check "T7 container's own postgres database restored" "${t7:-$(PA -d postgres -c "select to_regclass('public.kodhane_saves') is null")}" t
 
 for d in dl_main dl_nolog dl_fen dl_post dl_blk dl_f; do P -d postgres -c "drop database if exists $d with (force)" >/dev/null 2>&1; done
 echo "== done: $PASSN pass / $FAILS fail ($(for k in "${!NT[@]}"; do printf '%s %s, ' "$k" "${NT[$k]}"; done | sed 's/, $//')); image $(docker inspect -f '{{.Config.Image}}' "$CT"); artefacts in $OUT"
