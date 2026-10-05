@@ -98,6 +98,25 @@
     if (me && top.indexOf(me) === -1) pinned = me;
     return { top: top, me: me, pinned: pinned, empty: top.length === 0, meStatus: me ? null : meStatus };
   }
+  // v4.5: sıralama satırındaki aşama kimliğinin (v7 stage_id; v4.5 skor kuralıyla 'asama_1e21' de gelebilir) oyuncuya görünen adı.
+  // Tek yer: bilinen kimlik (game.js STAGE_BY_ID; v4.5'te 'asama_1e21' = 🌌 Yörünge Üssü dahil) kendi adını, bilinmeyen / null / boş /
+  // string olmayan kimlik genel adı verir. Ham kimlik oyuncuya gösterilmez; hiçbir girdide exception atmaz.
+  // Metin her zaman textContent ile basılır (rowNode -> node()).
+  // Metin: Yazı kodhane-v4.5-asama-1e21-yazi-r1 ("leaderboard.stageUnknown": "Yeni aşama", emojisiz: gerçek bir aşamayla karışmasın).
+  var STAGE_TEXT = {
+    'leaderboard.stageUnknown': 'Yeni aşama'
+  };
+  function hasOwn(o, k) { return !!o && Object.prototype.hasOwnProperty.call(o, k); }
+  function stageIdLabel(id) {
+    try {
+      if (typeof id === 'string' && id) {
+        var byId = K.STAGE_BY_ID;
+        var st = hasOwn(byId, id) ? byId[id] : null;
+        if (st && typeof st.name === 'string' && st.name) return (st.icon ? st.icon + ' ' : '') + st.name;
+      }
+    } catch (e) { /* genel ada düşülür */ }
+    return STAGE_TEXT['leaderboard.stageUnknown'];
+  }
   // best_stage sunucuda eski (v4.3) aşama sırasıyla tutulur (0..8); v4.4'te araya aşama girdiği için sıra -> aşama ID'si -> aşama.
   function stageLabel(i) {
     if (typeof i !== 'number' || !isFinite(i) || i < 0) return '';
@@ -105,11 +124,14 @@
     var st = id && K.STAGE_BY_ID ? K.STAGE_BY_ID[id] : (K.LEGACY_STAGE_IDS ? null : (K.STAGES ? K.STAGES[i] : null));
     return st ? st.icon + ' ' + st.name : 'Aşama ' + (Math.floor(i) + 1); // yeni aşamalar eski sürümde de görünsün
   }
-  // v7 satırında stage_id bilinen bir aşama ID'siyse o aşama (Unicorn / Şirketler Grubu dahil); yoksa eski sıra (v6)
+  // v7 satırında aşama kimliği (yalnız stage_id alanı; best_stage_id yalnız tablo sütunu, hiçbir RPC bu adla alan döndürmez) varsa
+  // ad stageIdLabel'dan gelir: bilinmeyen kimlik (ör. v4.5 'asama_1e21') artık eski sıraya (best_stage) düşmez, yer tutucu ada düşer.
+  // Kimlik yoksa (v6 satırı, ya da v7'de NULL) eski sıra (v6 görünümü); o da yoksa genel ad.
   function rowStageLabel(r) {
-    var id = r && typeof r.stage_id === 'string' ? r.stage_id : null;
-    var st = id && K.STAGE_BY_ID && Object.prototype.hasOwnProperty.call(K.STAGE_BY_ID, id) ? K.STAGE_BY_ID[id] : null;
-    return st ? st.icon + ' ' + st.name : stageLabel(r ? r.stage : null);
+    try {
+      if (hasOwn(r, 'stage_id') && r.stage_id != null) return stageIdLabel(r.stage_id);
+      return stageLabel(r ? r.stage : null) || stageIdLabel(null);
+    } catch (e) { return stageIdLabel(null); }
   }
   function ownRankText(rank) { return 'Sen: #' + rank; }
   function rankBadge(rank) { return rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '#' + rank; }
@@ -442,7 +464,7 @@
   K.leaderboard = {
     state: L, refresh: refresh, validateNickname: validateNickname, normalizeNickname: normalizeNickname, nickKey: nickKey, buildView: buildView,
     serverNickError: serverNickError, messages: MESSAGES, statusText: STATUS_TEXT, ownRankText: ownRankText, shareText: shareText,
-    stageLabel: stageLabel, rowStageLabel: rowStageLabel, rankBadge: rankBadge, LIMIT: LIMIT, STALE_MS: STALE_MS, GAME: GAME,
+    stageLabel: stageLabel, stageIdLabel: stageIdLabel, rowStageLabel: rowStageLabel, stageText: STAGE_TEXT, rankBadge: rankBadge, LIMIT: LIMIT, STALE_MS: STALE_MS, GAME: GAME,
     RPC: RPC, RPC_V7: RPC_V7, V7_RETRY_MS: V7_RETRY_MS, v7: v7
   };
 

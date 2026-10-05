@@ -579,3 +579,31 @@ html.nb-open body { padding-bottom: calc(var(--nb-space, 160px) + 8px); }
   /* olay kartı bandın üstündeki alana sığmazsa kendi içinde kayar ("Sonra" ve seçimler ulaşılabilir kalır) */
   html.nb-open .event-card { max-height: calc(100vh - var(--nb-space, 160px) - 8px); overflow-y: auto; overscroll-behavior: contain; padding: 10px 12px; }
 }
+
+/* v4.5 (P7) Kayıp bildir: Hesap penceresi bölümü */
+.loss-section { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); text-align: left; }
+.loss-title { margin: 0 0 6px; font-size: .98rem; }
+.loss-status { background: var(--bg2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; margin: 6px 0; }
+.loss-status-label { display: block; font-size: .86rem; }
+.loss-status-text { margin: 2px 0 0; font-size: .82rem; color: var(--muted); line-height: 1.4; }
+.loss-status[data-status="applied"] .loss-status-label { color: #22d3a6; }
+.loss-status[data-status="rejected"] .loss-status-label { color: #ff8a80; }
+.loss-notice { font-size: .82rem; line-height: 1.4; margin: 6px 0; }
+.loss-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.loss-form { margin-top: 8px; }
+.loss-form fieldset { border: 0; padding: 0; margin: 8px 0; min-width: 0; }
+.loss-form legend, .loss-desc-label { font-size: .86rem; font-weight: 600; padding: 0; margin-bottom: 4px; display: block; }
+.loss-hint, .loss-opt { color: var(--muted); font-weight: 400; font-size: .76rem; }
+.loss-hint { display: block; margin-bottom: 4px; }
+.loss-check, .loss-radio { display: flex; align-items: center; gap: 8px; font-size: .86rem; padding: 4px 0; min-height: 32px; }
+.loss-check input, .loss-radio input { width: 18px; height: 18px; margin: 0; flex: none; }
+.loss-desc { width: 100%; box-sizing: border-box; resize: vertical; min-height: 64px; font: inherit; font-size: .86rem; padding: 8px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg2); color: inherit; }
+.loss-desc-foot { display: flex; justify-content: space-between; gap: 8px; font-size: .74rem; color: var(--muted); margin-top: 2px; }
+.loss-error { color: #ff8a80; font-size: .82rem; min-height: 0; margin: 6px 0 0; }
+.loss-error:empty { display: none; }
+.acc-privacy-details { font-size: .78rem; color: var(--muted); line-height: 1.45; margin-top: 10px; }
+.acc-privacy-link { display: block; margin-top: 8px; text-align: left; }
+.acc-privacy-title { margin: 0 0 6px; font-size: .9rem; color: var(--text); }
+.acc-privacy-details p { margin: 0 0 8px; overflow-wrap: anywhere; }
+/* v4.5: uzun tek parça adlar (ör. Yazı'dan bekleyen [anahtar] yer tutucuları) kartı taşırmasın */
+.ach-name, .ach-desc, .tree-branch h4, .tree-node b, .tree-node small, .upg-name, .stats dt, .stats dd { overflow-wrap: anywhere; }

@@ -131,6 +131,8 @@ class FakeSB:
                 return self.reply(route, 200, [])
             if name == 'kodhane_count_event':
                 return self.reply(route, 200, True)
+            if name == 'kodhane_loss_report_status':   # v4.5 P7: sunucu kurulu varsayılır; bildirim yok
+                return self.reply(route, 200, [])
             if name in self.fail_rpcs:
                 return self.reply(route, 503, {'message': 'service unavailable'})
             st, body = self.saves.rpc(uid, name, json.loads(req.post_data or '{}'))
@@ -342,7 +344,7 @@ with sync_playwright() as p:
     check_pref('guest reset keeps the counter choice (off) and no band', pg, 'off')
     check('v4.4 guest reset keeps the event log and appends a reset entry (shares 3 -> 0, pays 0 -> 0, time)', reset_entry_ok(st.get('eventLog')), st.get('eventLog'))
     check('v4.4 guest reset: startedVersion rewritten to this version (old save had none) -> started_v44 yes',
-          st.get('startedVersion') == ev(pg, 'Kodhane.VERSION') == '4.4.2' and ev(pg, 'Kodhane.treeEventData(Date.now()).started_v44') == 'yes', st.get('startedVersion'))
+          st.get('startedVersion') == ev(pg, 'Kodhane.VERSION') == '4.5.0' and ev(pg, 'Kodhane.treeEventData(Date.now()).started_v44') == 'yes', st.get('startedVersion'))
     ev(pg, 'Kodhane.save()')
     check('v4.4 guest reset: event log in the new local save', reset_entry_ok(json.loads(ev(pg, "localStorage.getItem('%s')" % SAVE_KEY)).get('eventLog')))
     check('settings kept after reset (separate key)', ev(pg, "localStorage.getItem('kodhane_ayarlar_v1') === null || typeof JSON.parse(localStorage.getItem('kodhane_ayarlar_v1')).sound === 'boolean'"))
@@ -436,7 +438,7 @@ with sync_playwright() as p:
     check_pref('signed-in reset keeps the counter choice (on)', pg, 'on')
     check('v4.4 signed-in reset: local event log kept + reset entry', reset_entry_ok(ev(pg, 'Kodhane.state.eventLog')), ev(pg, 'Kodhane.state.eventLog'))
     check('v4.4 signed-in reset: cloud row (after reconcile) carries the same log', reset_entry_ok(row['data'].get('eventLog')), row['data'].get('eventLog'))
-    check('v4.4 signed-in reset: startedVersion = 4.4.2 (VERSION) locally and in the cloud row', ev(pg, 'Kodhane.state.startedVersion') == '4.4.2' and row['data'].get('startedVersion') == '4.4.2',
+    check('v4.4 signed-in reset: startedVersion = 4.5.0 (VERSION) locally and in the cloud row', ev(pg, 'Kodhane.state.startedVersion') == '4.5.0' and row['data'].get('startedVersion') == '4.5.0',
           [ev(pg, 'Kodhane.state.startedVersion'), row['data'].get('startedVersion')])
     check('signed-in: undo bar visible', not pg.is_hidden('#undoBar') and pg.inner_text('#undoText') == COPY['reset.done'])
     pg.click('#undoBtn')

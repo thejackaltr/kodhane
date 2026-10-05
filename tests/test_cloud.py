@@ -233,6 +233,9 @@ class FakeSupabase:
             ok = body.get('p_event') in ('news_leaderboard_shown', 'news_leaderboard_click')
             self.events.append((body.get('p_event'), bool(claims)))
             return self.reply(route, 200, ok)
+        # v4.5 P7: sunucu kurulu varsayılır; bildirim yok. Misafir yoklaması (anon anahtar) gerçek sunucu gibi 401 42501 alır (karar 7)
+        if u.path == '/rest/v1/rpc/kodhane_loss_report_status' and method == 'POST':
+            return self.reply(route, 200, []) if claims else self.reply(route, 401, {'code': 'not_authenticated', 'message': 'not_authenticated'})
         if u.path.startswith('/rest/v1/rpc/') and u.path.rsplit('/', 1)[1] in SAVE_RPC.values() and method == 'POST':
             st, body = self.saves.rpc(claims['sub'] if claims else None, u.path.rsplit('/', 1)[1], json.loads(req.post_data or '{}'))
             return self.reply(route, st, body)
@@ -417,7 +420,7 @@ with sync_playwright() as p:
     check('guest: send button cools down', page.is_disabled('#accSend'))
     page.tap('#accClose')
     check('guest: panel closes', page.is_hidden('#accountPanel'))
-    check('guest: no page/console errors', not perrs and not errs, '; '.join(perrs + errs))
+    check('guest: no page/console errors (P7 guest probe: browser 401 network line allowed)', not perrs and not [e for e in errs if 'status of 401 (Unauthorized)' not in e], '; '.join(perrs + errs))
     ctx.close()
 
     # ------------------------------------------------------------ 2) CDN erişilemezse oyun çalışmaya devam eder
@@ -448,7 +451,7 @@ with sync_playwright() as p:
     check('login: URL cleaned', page.url == BASE + '/', page.url)
     check('login: session persisted', page.evaluate("!!localStorage.getItem('%s')" % STORAGE_KEY))
     row = fake.rows.get(UID_A)
-    check('first login: local save uploaded', row is not None and row['data']['clicks'] == 42 and row['data']['totalEarned'] >= 5000 and row['save_version'] == 5
+    check('first login: local save uploaded', row is not None and row['data']['clicks'] == 42 and row['data']['totalEarned'] >= 5000 and row['save_version'] == 6
           and row['data'].get('clientVersion') == page.evaluate('Kodhane.VERSION'),
           json.dumps(row)[:200] if row else 'no row')
     check('first login: no backup needed', page.evaluate("localStorage.getItem('%s')" % BACKUP_KEY) is None)
@@ -516,7 +519,7 @@ with sync_playwright() as p:
     check('otp: same post-login flow (local save uploaded)', row is not None and row['data']['clicks'] == 64, json.dumps(row)[:120] if row else 'no row')
     check('otp: session persisted, pending cleared, signed-in panel', page.evaluate("!!localStorage.getItem('%s') && !localStorage.getItem('kodhane_auth_pending')" % STORAGE_KEY)
           and page.is_visible('#accSignOut') and page.is_hidden('#accCodeForm'))
-    check('otp: no page/console errors', not perrs and not [e for e in errs if '403' not in e], '; '.join(perrs + errs))
+    check('otp: no page/console errors', not perrs and not [e for e in errs if '403' not in e and 'status of 401 (Unauthorized)' not in e], '; '.join(perrs + errs))
     ctx.close()
 
     # 3d) "E-postayı değiştir" e-posta adımına döner
@@ -817,7 +820,7 @@ with sync_playwright() as p:
     ok = wait_until(page, "document.getElementById('accMsg').textContent.includes('gönderildi')")
     check('prod: magic link request goes to kodhane-api.teserix.com/auth/v1/otp', ok and len(fake.otp) == 1, json.dumps(fake.otp))
     check('prod: magic-link redirect is exactly ' + PAGES, fake.otp and fake.otp[0]['redirect_to'] == PAGES, fake.otp and fake.otp[0]['redirect_to'])
-    check('prod: no page/console errors', not perrs and not errs, '; '.join(perrs + errs))
+    check('prod: no page/console errors (P7 guest probe: browser 401 network line allowed)', not perrs and not [e for e in errs if 'status of 401 (Unauthorized)' not in e], '; '.join(perrs + errs))
     ctx.close()
 
     # ------------------------------------------------------------ 12) Sıralama: misafir (mobil), boş liste, çevrimdışı, hata
@@ -897,9 +900,12 @@ with sync_playwright() as p:
     fake = FakeSupabase()
     fake.v7 = True
     fake.others = [('Unicornçu', 3.1e11, 5), ('GrupBaşkanı', 2.2e13, 5), ('TeknoDev', 4.4e15, 6), ('GlobalH', 5e9, 5), ('Marslı', 8.2e17, 8),
-                   ('GelecekSürüm', 1e9, 5), ('Freelancer1', 500, 0)]
+                   ('GelecekSürüm', 1e9, 5), ('Freelancer1', 500, 0),
+                   # v4.5: skor kuralıyla 'asama_1e21', bilinmeyen kimlik, string olmayan kimlik ve HTML gibi görünen kimlik
+                   ('Rekortmen', 9e21, 8), ('Bilinmez', 2e8, 5), ('SayıKimlik', 1e8, 5), ('HtmlKimlik', 5e7, 5)]
     fake.others.sort(key=lambda r: -r[1])
-    fake.stage_ids = {'Unicornçu': 'unicorn', 'GrupBaşkanı': 'sirketler_grubu', 'GelecekSürüm': 'uzay_istasyonu'}
+    fake.stage_ids = {'Unicornçu': 'unicorn', 'GrupBaşkanı': 'sirketler_grubu', 'GelecekSürüm': 'uzay_istasyonu',
+                      'Rekortmen': 'asama_1e21', 'Bilinmez': 'asama_bilinmeyen_x', 'SayıKimlik': 5, 'HtmlKimlik': '<img src=x onerror="window.__xss2=1">'}
     ctx = b.new_context(locale='tr-TR', service_workers='block', viewport={'width': 360, 'height': 640}, device_scale_factor=1, is_mobile=True, has_touch=True)
     ctx.add_init_script(cfg_script(None, True))
     ctx.add_init_script(seed_script(tel='off'))   # isimsiz sayaç bandı kapalı (ekran görüntüsü)
@@ -908,14 +914,21 @@ with sync_playwright() as p:
     page, errs, perrs = open_page(ctx)
     check('v7: client legacy stage ids = fake / Backend legacy mapping', page.evaluate('Kodhane.LEGACY_STAGE_IDS') == LEGACY_IDS, page.evaluate('Kodhane.LEGACY_STAGE_IDS'))
     page.tap('#bottomNav [data-view="siralama"]')
-    ok = wait_until(page, "document.querySelectorAll('#lbList .lb-row').length === 7")
+    ok = wait_until(page, "document.querySelectorAll('#lbList .lb-row').length === 11")
     lab = dict(zip(page.evaluate("[...document.querySelectorAll('#lbList .lb-name')].map(e => e.textContent)"),
                    page.evaluate("[...document.querySelectorAll('#lbList .lb-stage')].map(e => e.textContent)")))
     check('v7: Unicorn and Şirketler Grubu shown with their own names (stage_id), not Global Holding', ok and lab.get('Unicornçu') == '🦄 Unicorn'
           and lab.get('GrupBaşkanı') == '🏬 Şirketler Grubu', json.dumps(lab, ensure_ascii=False))
     check('v7: other ids rendered from stage_id (Teknoloji Devi, Global Holding, Mars Ofisi, Freelancer)', lab.get('TeknoDev') == '🛰️ Teknoloji Devi'
           and lab.get('GlobalH') == '🌐 Global Holding' and lab.get('Marslı') == '🔴 Mars Ofisi' and lab.get('Freelancer1') == '🏠 Freelancer', json.dumps(lab, ensure_ascii=False))
-    check('v7: unknown stage_id (newer server) falls back to the legacy stage label', lab.get('GelecekSürüm') == '🌐 Global Holding', lab.get('GelecekSürüm'))
+    st_txt = page.evaluate('Kodhane.leaderboard.stageText')
+    gen, e21 = st_txt.get('leaderboard.stageUnknown'), '🌌 Yörünge Üssü'
+    check('v4.5: unknown stage_id (newer server) -> generic "Yeni aşama" (Yazı asama-1e21 r1; no longer the legacy stage label), raw id not shown',
+          gen and lab.get('GelecekSürüm') == gen and lab.get('Bilinmez') == gen and 'uzay' not in json.dumps(lab) and 'bilinmeyen' not in json.dumps(lab), json.dumps(lab, ensure_ascii=False))
+    check('v4.5: stage_id asama_1e21 -> 🌌 Yörünge Üssü (game STAGES; not Mars Ofisi / raw id)', gen == 'Yeni aşama' and e21 != gen and lab.get('Rekortmen') == e21, [lab.get('Rekortmen'), e21])
+    check('v4.5: numeric stage_id -> generic name, list still drawn (11 rows)', ok and lab.get('SayıKimlik') == gen, lab.get('SayıKimlik'))
+    check('v4.5: HTML-looking stage_id stays text: generic label, no <img> in the list, onerror never ran',
+          lab.get('HtmlKimlik') == gen and page.locator('#lbList img').count() == 0 and page.evaluate('window.__xss2') is None and '<img' not in page.inner_html('#lbList'), lab.get('HtmlKimlik'))
     check('v7: called once with exactly {p_limit: 50} (no p_game), v6 not called', fake.v7_calls == [(False, {'p_limit': 50})] and fake.rpc_calls == []
           and page.evaluate('Kodhane.leaderboard.v7.api') == 'v7', [fake.v7_calls, fake.rpc_calls])
     check('v7: 360px, no horizontal overflow', page.evaluate('document.documentElement.scrollWidth') <= 360)
@@ -1126,11 +1139,11 @@ with sync_playwright() as p:
     ctx.route('https://cdn.jsdelivr.net/**', lambda r: r.fulfill(status=200, headers={'content-type': 'application/javascript; charset=utf-8', 'access-control-allow-origin': '*'}, body=SDK_BYTES))
     page, errs, perrs = open_page(ctx)
     ok = wait_until(page, 'Kodhane.cloud.state.reconciled && Kodhane.cloud.state.lastPushAt > 0', 10000)
-    check('426: signed in, first write ok (row v5)', ok and fake.rows[UID_O]['data'].get('saveVersion') == 5)
-    # başka cihazda daha yeni sürüm (saveVersion 6) yazdı; sunucuda sürüm koruması açık
+    check('426: signed in, first write ok (row v6 = v4.5)', ok and fake.rows[UID_O]['data'].get('saveVersion') == 6)
+    # başka cihazda daha yeni sürüm (saveVersion 7) yazdı; sunucuda sürüm koruması açık (v4.5: bu istemci 6)
     fake.saves.version_guard = True
-    newer = dict(fake.rows[UID_O]['data'], saveVersion=6, version=6, clicks=777, totalEarned=99999.0)
-    fake.rows[UID_O] = dict(fake.rows[UID_O], data=newer, save_version=6, revision=fake.rows[UID_O]['revision'] + 1)
+    newer = dict(fake.rows[UID_O]['data'], saveVersion=7, version=7, clicks=777, totalEarned=99999.0)
+    fake.rows[UID_O] = dict(fake.rows[UID_O], data=newer, save_version=7, revision=fake.rows[UID_O]['revision'] + 1)
     row_before = json.dumps(fake.rows[UID_O], sort_keys=True)
     page.evaluate("Kodhane.state.clicks += 5; Kodhane.save()")
     local_before = page.evaluate("localStorage.getItem('%s')" % SAVE_KEY)
@@ -1144,7 +1157,7 @@ with sync_playwright() as p:
     check('426: push fails once (the 426 write), server row unchanged', r is False and fake.count('POST', SAVES_PATH) == posts0 + 1 and json.dumps(fake.rows[UID_O], sort_keys=True) == row_before,
           [r, fake.count('POST', SAVES_PATH) - posts0])
     check('426: recorded as PT426 / 426 / save_version_too_old', page.evaluate('Kodhane.cloud.state.lastTooOld') == {'code': 'PT426', 'message': 'save_version_too_old', 'status': 426,
-          'details': 'sent saveVersion 5, stored saveVersion 6'}, page.evaluate('Kodhane.cloud.state.lastTooOld'))
+          'details': 'sent saveVersion 6, stored saveVersion 7'}, page.evaluate('Kodhane.cloud.state.lastTooOld'))
     band = page.inner_text('#updateBar')
     check('426: olderTab band shown (title, short text at 360px, "Sayfayı yenile"), not the generic error', page.is_visible('#updateBar')
           and page.get_attribute('#updateBar', 'data-test') == 'older-tab-band' and page.inner_text('#updateBar .ub-title') == TT['title']
@@ -1165,7 +1178,7 @@ with sync_playwright() as p:
     page.tap('#bottomNav [data-view="kod"]'); page.wait_for_timeout(200)
     page.screenshot(path=os.path.join(OUT_SHOTS, 'kodhane-v44-eski-sekme-360x640.png'))
     # aynı anda newerSave (daha yeni kayıt okundu) ve servis çalışanı güncellemesi: tek bant, olderTab metni
-    page.evaluate("Kodhane.guardFuture({saveVersion: 6}, 'test'); Kodhane.showUpdate({postMessage() {}})")
+    page.evaluate("Kodhane.guardFuture({saveVersion: 7}, 'test'); Kodhane.showUpdate({postMessage() {}})")
     page.wait_for_timeout(150)
     check('overlap: olderTab + newerSave + SW update -> ONE band, olderTab text only', page.locator('.update-bar:not(.hidden)').count() == 1
           and page.get_attribute('#updateBar', 'data-test') == 'older-tab-band' and page.inner_text('#updateBar .ub-title') == TT['title']

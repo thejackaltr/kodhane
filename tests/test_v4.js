@@ -13,9 +13,9 @@ function fresh() { K.state = K.newState(); return K.state; }
 const CFG = K.CFG, H = CFG.halkaArz, T = CFG.tree;
 
 // ---------------------------------------------------------------- sürüm, aşamalar
-check('version 4.4.2 / save version 5', K.VERSION === '4.4.2' && K.SAVE_VERSION === 5 && fresh().version === 5);
+check('version 4.5.0 / save version 6 (v4.5)', K.VERSION === '4.5.0' && K.SAVE_VERSION === 6 && fresh().version === 6);
 const names = K.STAGES.map((s) => s.name);
-check('11 stages: Unicorn and Şirketler Grubu between Global Holding and Teknoloji Devi (v4.4)', names.length === 11 && names.slice(5).join('|') === 'Global Holding|Unicorn|Şirketler Grubu|Teknoloji Devi|Yapay Zekâ Laboratuvarı|Mars Ofisi', names);
+check('12 stages: Unicorn and Şirketler Grubu (v4.4), Yörünge Üssü before Mars Ofisi (v4.5)', names.length === 12 && names.slice(5).join('|') === 'Global Holding|Unicorn|Şirketler Grubu|Teknoloji Devi|Yapay Zekâ Laboratuvarı|Yörünge Üssü|Mars Ofisi', names);
 check('stage thresholds strictly increasing', K.STAGES.every((s, i) => i === 0 || s.at > K.STAGES[i - 1].at));
 check('new stage messages (spec copy)',
   K.STAGE_BY_ID.teknoloji_devi.msg === "Tebrikler! Artık müşteri aramıyorsunuz, müşteriler sizi arıyor. Hepsi de 'acil' diyor." &&
@@ -72,7 +72,7 @@ check('small numbers unchanged', [0, 5, 12.4, 999, 1000, 1234.5, -2.5e6].map(K.f
   check('index.html Yatırım Turu note: "100 Milyon TL" (= tl(PRESTIGE 1e8)), no Mn/Mr/Tn', html.includes('İlk hisse için bu turda en az ' + K.tl(1e8) + ' kazanmalısın.') &&
     K.tl(1e8) === '100 Milyon TL' && !/\d\s*(Mn|Mr|Tn)\b/.test(html));
   const sw = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
-  check('sw.js cache name moves forward with the version (v4.4.2)', /var CACHE_VERSION = 'v4\.4\.2';/.test(sw)); }
+  check('sw.js cache name moves forward with the version (v4.5.0) and caches lossreport.js', /var CACHE_VERSION = 'v4\.5\.0';/.test(sw) && /'\.\/lossreport\.js'/.test(sw)); }
 
 // ---------------------------------------------------------------- Halka Arz
 fresh();
@@ -102,7 +102,7 @@ round(1e9); round(1e9); round(1e9);
 check('second IPO has no minimum (gain 0 -> refused)', K.ipoGain() === 0 && K.doIpo() === 0 && K.state.ipoCount === 1);
 // save round trip after IPO must not re-run the v3 migration
 const rt = JSON.parse(K.serialize()); K.deserialize(JSON.stringify(rt));
-check('post-IPO save reload keeps cycle fields', K.state.version === 5 && K.state.cycleRounds === 3 && K.state.cycleEarned === 3e9 && K.state.ipoCount === 1);
+check('post-IPO save reload keeps cycle fields', K.state.version === 6 && K.state.cycleRounds === 3 && K.state.cycleEarned === 3e9 && K.state.ipoCount === 1);
 const sv = H.rounds; H.rounds = 5;
 check('IPO round requirement is a setting', !K.ipoUnlocked()); H.rounds = sv;
 const sm = H.mode; H.mode = 'root'; K.state.cycleEarned = H.threshold * Math.pow(2, H.root); K.state.ipoCount = 1;
@@ -111,9 +111,9 @@ const sk = H.k; H.k = 2; check('IPO k is a setting (root mode)', K.ipoGain() ===
 
 // ---------------------------------------------------------------- Borsa Payı Ağacı
 fresh();
-check('tree: 4 branches x 3 nodes', K.TREE.length === 4 && K.TREE.every((b) => b.nodes.length === 3) && K.TREE.map((b) => b.name).join(',') === 'Kod,Ekip,Müşteri,Yatırım');
-check('tree: node costs 1/3/6 from settings', K.TREE.every((b) => b.nodes.map(K.nodeCost).join(',') === '1,3,6'));
-check('tree: full tree costs 40', K.TREE.reduce((a, b) => a + b.nodes.reduce((x, n) => x + K.nodeCost(n), 0), 0) === 40);
+check('tree: 4 branches x 3 nodes + v4.5 Borsa branch', K.TREE.length === 5 && K.TREE.every((b) => b.nodes.length === 3) && K.TREE.slice(0, 4).map((b) => b.name).join(',') === 'Kod,Ekip,Müşteri,Yatırım' && K.TREE[4].id === 'borsa');
+check('tree: node costs 1/3/6 from settings (Borsa 4/5/5, v4.5)', K.TREE.slice(0, 4).every((b) => b.nodes.map(K.nodeCost).join(',') === '1,3,6') && K.TREE[4].nodes.map(K.nodeCost).join(',') === '4,5,5');
+check('tree: full (v4) tree costs 40', K.TREE.slice(0, 4).reduce((a, b) => a + b.nodes.reduce((x, n) => x + K.nodeCost(n), 0), 0) === 40);
 check('tree: poor without pays, second node locked', K.nodeState('kod_1') === 'poor' && K.nodeState('kod_2') === 'locked');
 K.state.ipoShares = 10;
 check('tree: locked node cannot be bought', !K.buyNode('kod_2') && K.state.ipoShares === 10);
@@ -187,7 +187,7 @@ function v3Save(over) {
 const old = v3Save();
 K.deserialize(JSON.stringify(old));
 const m = K.state;
-check('migration: version bumped to 5, loadedVersion 2', m.version === 5 && K.loadedVersion === 2);
+check('migration: version bumped to 6, loadedVersion 2', m.version === 6 && K.loadedVersion === 2);
 check('migration: money, run and total earnings unchanged', m.money === old.money && m.runEarned === old.runEarned && m.totalEarned === old.totalEarned);
 check('migration: all old employees kept, new ones 0', Object.keys(old.gens).every((k) => m.gens[k] === old.gens[k]) && m.gens.veri === 0 && m.gens.arge === 0 && m.gens.cip === 0 && m.gens.yzlab === 0 && m.gens.mars === 0);
 check('migration: upgrades, achievements, shares, prestige kept', JSON.stringify(m.upgrades) === JSON.stringify(old.upgrades) && JSON.stringify(m.achievements) === JSON.stringify(old.achievements) && m.shares === 57 && m.prestigeCount === 4);
@@ -197,11 +197,11 @@ check('migration: cycle = all-time, rounds = prestige count (Halka Arz can unloc
 check('migration: no IPO / tree yet', m.ipoShares === 0 && m.ipoCount === 0 && m.tree.length === 0);
 check('migration: Global Holding player gets the new-stage news', m.stageBest === 5 && JSON.stringify(m.newsPending) === '["yeni_asama"]');
 K.deserialize(K.serialize());
-check('migration: reload of migrated save is stable (no second migration, news still pending)', K.loadedVersion === 5 && K.state.cycleRounds === 4 && JSON.stringify(K.state.newsPending) === '["yeni_asama"]');
+check('migration: reload of migrated save is stable (no second migration, news still pending)', K.loadedVersion === 6 && K.state.cycleRounds === 4 && JSON.stringify(K.state.newsPending) === '["yeni_asama"]');
 K.deserialize(JSON.stringify(v3Save({ stage: 3, runEarned: 2e6, totalEarned: 5e6, prestigeCount: 0, shares: 0 })));
 check('migration: early player gets no new-stage news', K.state.newsPending.length === 0 && K.state.stageBest === 3 && K.state.cycleRounds === 0);
 K.deserialize(JSON.stringify({ version: 1, money: 10, runEarned: 50, totalEarned: 50, gens: { stajyer: 2 } }));
-check('migration: very old v1 save loads', K.state.version === 5 && K.state.gens.stajyer === 2 && K.state.totalEarned === 50);
+check('migration: very old v1 save loads', K.state.version === 6 && K.state.gens.stajyer === 2 && K.state.totalEarned === 50);
 K.deserialize(JSON.stringify(Object.assign(v3Save({ version: 3 }), { tree: ['kod_2', 'kod_1', 'kod_1', 'yok', 'ekip_2'], newsSeen: ['siralama', 'x', 'siralama'], ipoShares: -3, cycleEarned: 1e30 })));
 check('v4 save sanitised: tree order/prefix, known news, no negatives, cycle <= total',
   JSON.stringify(K.state.tree) === '["kod_1"]' && JSON.stringify(K.state.newsSeen) === '["siralama"]' && K.state.ipoShares === 0 && K.state.cycleEarned === K.state.totalEarned, [K.state.tree, K.state.newsSeen]);

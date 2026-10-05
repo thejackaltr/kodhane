@@ -156,7 +156,7 @@ with sync_playwright() as p:
           'blur' in ev("getComputedStyle(document.getElementById('ipoBody')).filter"), ev("getComputedStyle(document.getElementById('ipoBody')).filter"))
     check('lock text', pg.inner_text('#ipoLock') == '🔒 3 yatırım turundan sonra açılır. (0/3)', pg.inner_text('#ipoLock'))
     check('IPO button disabled while locked', pg.is_disabled('#ipoBtn') and pg.inner_text('#ipoBtn') == 'Halka arz et')
-    check('tree visible (blurred) with 12 nodes and titles', ev("document.querySelectorAll('#treeGrid .tree-node').length") == 12 and 'Borsa Payı Ağacı' in pg.inner_text('#ipoSection'))
+    check('tree visible (blurred) with 12 nodes + 3 Borsa nodes (v4.5) and titles', ev("document.querySelectorAll('#treeGrid .tree-node').length") == 15 and 'Borsa Payı Ağacı' in pg.inner_text('#ipoSection'))
     ev("Kodhane.state.cycleRounds = 2; Kodhane.renderAll()")
     check('lock progress (2/3)', pg.inner_text('#ipoLock').endswith('(2/3)'))
     ev("Kodhane.state.cycleRounds = 3; Kodhane.state.cycleStage = 4; Kodhane.state.ipoCount = 1; Kodhane.renderAll()")

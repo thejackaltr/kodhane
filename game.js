@@ -10,13 +10,15 @@
   // ------------------------------------------------------------------
   // Tanımlar (denge değerleri)
   // ------------------------------------------------------------------
-  var VERSION = '4.4.2';
+  var VERSION = '4.5.0';
   // v4.4.2: kaydın 'data.clientVersion' alanı = oyunun sürüm etiketi (VERSION ile birebir, Stats'taki "v4.4.2" ile aynı). Sunucunun
   // kazanç günlüğü (kodhane_progress_log.client_version) ve B paketi okur; biçim ^[0-9A-Za-z._-]{1,32}$. Oyun durumunda (S) tutulmaz:
   // her yazmada saveData() ekler, yüklemede okunmaz (alan yoksa ya da başka sürümün değeri varsa kayıt aynen yüklenir).
   var CLIENT_VERSION = VERSION;
   // kayıt biçimi (3 = oyun v4, 4 = v4.1, 5 = v4.4: aşamalar ID ile). Kayda 'version' ve (v4.3.1'den beri) 'saveVersion' olarak yazılır.
-  var SAVE_VERSION = 5;
+  // v4.5: 6 (itibar 100'ü geçebilir, 150+ çalışan kademeleri, Borsa dalı, asama_1e21). Eski istemci (SAVE_VERSION 5) bu kaydı okuyunca
+  // guardFuture ile yazmayı kapatır; sunucuda B paketi 426 / save_version_too_old ile eski istemcinin yazmasını reddeder.
+  var SAVE_VERSION = 6;
   var SAVE_KEY = 'kodhane_ajans_save_v2';
   var LEGACY_KEYS = ['kodhane_ajans_save_v1'];
   var SETTINGS_KEY = 'kodhane_ayarlar_v1';
@@ -26,8 +28,8 @@
   var CRIT_CHANCE = 0.05;
   var CRIT_MULT = 10;
   var ACH_BONUS = 0.01;        // her başarım kalıcı +%1 üretim
-  var REP_MAX = 100;
-  var REP_OFFER_BONUS = 0.01;  // her itibar puanı müşteri projesi ödemelerine +%1
+  var REP_MAX;                 // v4.5: CFG.v45 rep.max (güvenlik tavanı; itibar artık 100'de durmaz). Aşağıda V45'ten atanır.
+  var REP_OFFER_BONUS;         // v4.5: CFG.v45 rep.perPoint (her itibar puanı müşteri ödemelerine +%1, toplam en fazla rep.cap)
 
   // v4 ayarları: sabit sayı yok, metinler de buradan okur
   var CFG = {
@@ -43,7 +45,7 @@
       // Borsa Payı = max(ilk ? firstMin : 0, bu döngüde ulaşılan en yüksek aşamanın payı (stagePays[aşama ID'si]))
       mode: 'stage',             // 'stage' (seçilen) | 'root': floor(k * (döngü kazancı / threshold)^(1/root)) (karşılaştırma için)
       // v4.4 (E100cd12): aşama ID'si -> Borsa Payı (listede olmayan aşama 0 pay). Simülasyon: tests/balance_v44.js PAYS44.
-      stagePays: { global_holding: 2, unicorn: 3, sirketler_grubu: 4, teknoloji_devi: 5, yapay_zeka_lab: 8, mars_ofisi: 12 },
+      stagePays: { global_holding: 2, unicorn: 3, sirketler_grubu: 4, teknoloji_devi: 5, yapay_zeka_lab: 8, mars_ofisi: 12 }, // + v4.5 asama_1e21 (CFG.v45, aşağıda)
       repeatMinStage: 'teknoloji_devi', // 2. halka arzdan itibaren pay için en az bu aşama (hızlı tekrar = pay çiftliği olmasın)
       k: 1, threshold: 1e14, root: 6,
       firstMin: 1,
@@ -100,12 +102,98 @@
     // v4.4: kayıt içi olay listesi (S.eventLog). Son max olay (FIFO): Halka Arz, Yatırım Turu, Kaydı sıfırla. Her girdi YALNIZCA
     // { type, at (ms), sharesBefore, sharesAfter, paysBefore, paysAfter }. Hiçbir yere gönderilmez (Umami / sayaç yok); yalnızca
     // kaydın parçası olarak (bulut kaydı dahil) durur. Gizlilik metni (telemetry.details) "son 20" der: max değişirse metin de değişmeli.
-    eventLog: { max: 20 }
+    eventLog: { max: 20 },
+    // v4.5 denge (sim r3, kodhane-v45-sim/kodhane-v4.5-config.json). TEK YER: itibar, fiyat eğrisi, çalışan kademeleri, Borsa dalı
+    // ve 1e21 ara aşaması buradan okunur. Etkin önayar 'active' (common + presets[active], önayar anahtarı common'u ezer).
+    // F3'e geçmek yalnız bu değişikliktir: active: 'F3' (testler KODHANE_CFG_OVERRIDE.v45Preset ile seçer; tests/test_v45.js).
+    v45: {
+      active: 'F2',
+      presets: {
+        // F2 (önerilen, plan r3): fiyat eğrisi GD. [başlangıç adedi, büyüme]: o adetten itibaren her yeni birim bu çarpanla pahalanır.
+        F2: { growth: [[0, 1.15], [300, 1.10], [500, 1.05], [1000, 1.025], [3000, 1.0125]], tierMult: 1.25 },
+        // F3 (karşılaştırma, H20x125): 100–299 arası daha dik; geri kalan F2 ile aynı (itibar, Borsa, 1e21 ortak).
+        F3: { growth: [[0, 1.15], [100, 1.20], [300, 1.10], [500, 1.05], [1000, 1.025], [3000, 1.0125]], tierMult: 1.25 }
+      },
+      common: {
+        maxUnits: 10000,         // kademe listesinin sonu (eğri bunun ötesinde son bölümle sürer; 1e308 testi bu adede kadar)
+        // 150+ kademeler: maliyet = çalışan tabanı x costK x (n. birimin taban eğrideki fiyatı / taban); etki x tierMult.
+        // lockAbove üstündeki kademeler lockNode düğümü alınmadan açılmaz. Arayüz yalnız açılan (bir sonraki) kademeyi gösterir.
+        newTiers: [150, 200, 250, 300, 400, 500, 750, 1000, 1500, 2000, 3000, 5000, 7500, 10000],
+        costK: 1, lockAbove: 500, lockNode: 'borsa_3',
+        rep: {
+          max: 1e9,              // güvenlik tavanı
+          perPoint: 0.01, cap: 1, // ödeme bonusu doğrusal %1/puan, en fazla +%100 (bugünkü gibi); 100 üstü itibar yalnız eşikleri açar
+          thr: { E1: 25, E2: 100, E3: 250, E4: 500 },
+          E1: { offerMore: 0.25, eventMore: 0.25 },   // müşteri teklif aralığı ve olay kartı aralığı / (1 + x)
+          E2: { bigChance: 0.10, bigMult: 3 },         // büyük müşteri teklifi: nakit teklifin bu ihtimalle x bigMult ödemesi
+          E3: { enabled: false, penaltyCut: 0.3 },     // KAPALI (karar 3): sim modellemedi; oyunda etkisi yok, avantaj panelinde görünmez
+          E4: { bigChance: 0.25 }                      // E4'te büyük müşteri ihtimali (E2'nin yerine)
+        },
+        borsa: {
+          costs: [4, 5, 5],      // borsa_1..3 Borsa Payı maliyeti (sim r3)
+          growthCut: 0.8,        // borsa_1: fiyat büyüme fazlası x 0,8 (İK Anlaşması ile çarpılır)
+          ipoStartCash: 1e9, ipoStartGens: [['senior', 10], ['tasarimci', 10], ['pm', 5]], // borsa_2: Halka Arz sonrası başlangıç
+          requireFullTree: true  // borsa dalı eski 12 düğüm dolmadan açılmaz
+        },
+        stage1e21: { id: 'asama_1e21', at: 1e21, pay: 9 } // Yapay Zekâ Laboratuvarı ile Mars Ofisi arası; Borsa Payı 9
+      }
+    }
   };
   // Testler için geçersiz kılma (ör. { reset: { undoSeconds: 2 } })
   if (root && root.KODHANE_CFG_OVERRIDE && typeof root.KODHANE_CFG_OVERRIDE === 'object') {
     var CO = root.KODHANE_CFG_OVERRIDE;
     if (CO.reset && typeof CO.reset === 'object') for (var cok in CO.reset) CFG.reset[cok] = CO.reset[cok];
+    if (typeof CO.v45Preset === 'string' && Object.prototype.hasOwnProperty.call(CFG.v45.presets, CO.v45Preset)) CFG.v45.active = CO.v45Preset;
+  }
+  // v4.5: etkin denge (CFG.v45.common + CFG.v45.presets[active]). Oyun yalnız V45'i okur.
+  function v45Resolve(c) {
+    var o = {}, k, p = c.presets[c.active];
+    for (k in c.common) o[k] = c.common[k];
+    for (k in p) o[k] = p[k];
+    o.name = c.active;
+    return o;
+  }
+  var V45 = v45Resolve(CFG.v45);
+  CFG.halkaArz.stagePays[V45.stage1e21.id] = V45.stage1e21.pay;
+  REP_MAX = V45.rep.max;
+  REP_OFFER_BONUS = V45.rep.perPoint;
+  // v4.5 fiyat eğrisi: k adet varken sıradaki birimin fiyatı = taban x exp(growthLog(segs, f, k)); birim i'nin büyümesi
+  // 1 + (G_bölüm(i) - 1) x f. f = 1 taban eğri; İK Anlaşması ve borsa_1 büyüme FAZLASINI küçültür. Kapalı biçim (tablo yok).
+  function growthLog(segs, f, k) {
+    var s = 0;
+    for (var j = 0; j < segs.length && k > segs[j][0]; j++) {
+      var end = j + 1 < segs.length ? segs[j + 1][0] : Infinity;
+      s += (Math.min(k, end) - segs[j][0]) * Math.log(1 + (segs[j][1] - 1) * f);
+    }
+    return s;
+  }
+  // v4.5 metinleri: Yazı kodhane-v4.5-metinler-yazi-r1.json (V45_TEXT) birebir; tek istisna rep.perk.E1 (Product plan r5 kısa hali).
+  // tests/test_v45_texts.js karşılaştırır.
+  // rep.perk.E3: E3 kapalı (karar 3), metni yok; panelde gösterilmez.
+  var V45_TEXT = {
+    "upg.genTier.name": "Kademe {n}",
+    "tree.borsa.name": "Borsa",
+    "tree.borsa_1.name": "Hisse Opsiyonu",
+    "tree.borsa_1.desc": "Maaşın bir kısmı hisseyle ödeniyor. Yeni çalışanların fiyat artışı yavaşlar.",
+    "tree.borsa_2.name": "Güçlü Açılış",
+    "tree.borsa_2.desc": "Borsa güne güçlü açıldı. Her Halka Arz'dan sonra kasada para ve hazır bir ekiple başlarsın.",
+    "tree.borsa_3.name": "Rekor Seans",
+    "tree.borsa_3.desc": "Endeks her gün yeni bir rekor deniyor. Çalışan geliştirmelerinde daha yüksek kademeler açılır.",
+    "tree.borsa.lockedFull": "Önce ağaçtaki diğer dalları tamamla.",
+    "stage.asama_1e21.desc": "Dünya pencerede, Mars ufukta.",
+    "stage.asama_1e21.msg": "Tebrikler! Ofis yörüngeye çıktı. Kahve süzülüyor, toplantılar yine yerinde sayıyor.",
+    "ach.asama_1e21.name": "Fırlatma Başarılı",
+    "ach.asama_1e21.desc": "Yörünge Üssü aşamasına ulaş",
+    "rep.perk.E1": "Teklif ve olaylar daha sık", // Product plan r5: kısa hali (360 px'te tek satır)
+    "rep.perk.E2": "Büyük müşteri teklifleri gelir",
+    "rep.perk.E3": "[rep.perk.E3]", // E3 kapalı (karar 3): metin yok, oyuncuya görünmez
+    "rep.perk.E4": "Büyük müşteriler daha sık gelir",
+    "offer.big": "💎 Büyük müşteri:"
+  };
+  function v45Text(key, vars) {
+    var t = V45_TEXT[key];
+    if (typeof t !== 'string') return '';
+    return t.replace(/\{([a-z]+)\}/g, function (m, k) { return vars && vars[k] !== undefined ? String(vars[k]) : m; });
   }
 
   // v4.2: "Kaydı sıfırla" metinlerinin tamamı (anahtarlar ve yazım, metin yazarının kodhane-reset-copy.json dosyasından birebir).
@@ -241,32 +329,36 @@
   ];
   var DEV_IDS = ['stajyer', 'junior', 'senior', 'ai'];
 
-  // Her çalışan için 5 kademe geliştirme: [eşik, maliyet çarpanı]
-  var GEN_TIERS = [[1, 10], [10, 75], [25, 750], [50, 7500], [100, 75000]];
+  // Her çalışan için kademe geliştirmeleri: [eşik, maliyet çarpanı, etki, kilit düğümü]. İlk 5 (v4) x2; v4.5 150+ kademeler CFG.v45'ten.
+  var GEN_TIERS = [[1, 10], [10, 75], [25, 750], [50, 7500], [100, 75000]].map(function (t) { return [t[0], t[1], 2, null]; })
+    .concat(V45.newTiers.map(function (n) {
+      return [n, V45.costK * Math.exp(growthLog(V45.growth, 1, n - 1)), V45.tierMult, n > V45.lockAbove ? V45.lockNode : null];
+    }));
+  // v4 adları (ilk 5) değişmedi; 6–19 (150..10.000 kademeleri) Yazı kodhane-v4.5-metinler-yazi-r1.json GEN_UPG_NAMES birebir.
   var GEN_UPG_NAMES = {
-    stajyer:  [['Staj Sertifikası', '📜'], ['Bedava Simit', '🥯'], ['Mentorluk Programı', '🧭'], ['Kadro Sözü', '🤝'], ['Staj Efsanesi', '🌟']],
-    junior:   [['Mekanik Klavye Paketi', '⌨️'], ['Code Review Kültürü', '🔍'], ['Eğitim Bütçesi', '📚'], ['Hackathon Haftası', '🏆'], ['Kendi Framework’ü', '🧪']],
-    senior:   [['Sessiz Oda', '🎧'], ['Mimari Toplantısı', '🏛️'], ['Teknik Borç Günü', '🧹'], ['Kıdemli Maaş Paketi', '💼'], ['Emekliliği Unuttu', '🦉']],
-    tasarimci:[['Çizim Tableti', '🖊️'], ['Tasarım Sistemi', '🧩'], ['Renk Paleti Kütüphanesi', '🌈'], ['Ödüllü Portfolyo', '🥇'], ['Piksel Mükemmeliyeti', '🔬']],
-    pm:       [['Kanban Panosu', '🗂️'], ['Çevik Sertifika', '🏃'], ['Toplantısız Cuma', '🚫'], ['Yol Haritası Ustası', '🗺️'], ['Gantt Şeması Sanatı', '📐']],
-    ai:       [['Daha Büyük Bağlam Penceresi', '🧠'], ['İnce Ayarlı Model', '🎛️'], ['Ajan Sürüsü', '🐝'], ['Kendini Test Eden Kod', '✅'], ['Tekillik Toplantısı', '🌀']],
-    sunucu:   [['Sıvı Soğutma', '💧'], ['Otomatik Ölçekleme', '📈'], ['Yeşil Enerji', '🌱'], ['Kendi Veri Merkezin', '🏗️'], ['Kuantum Rafı', '⚛️']],
-    ofis:     [['Berlin Şubesi', '🥨'], ['Dubai Şubesi', '🏙️'], ['Tokyo Şubesi', '🗼'], ['New York Genel Merkezi', '🗽'], ['Ay Üssü Şubesi', '🌙']],
-    veri:     [['Sıcak–Soğuk Koridor', '🌡️'], ['Yedeğin Yedeği', '🪆'], ['Denizaltı Kablosu', '🐙'], ['Kutup Soğutması', '🧊'], ['Uzay Soğutması', '🪐']],
-    arge:     [['Prototip Atölyesi', '🛠️'], ['Patent Duvarı', '📜'], ['Kuluçka Merkezi', '🐣'], ['Kampüs Servisi', '🚌'], ['Uzay Asansörü Taslağı', '🛗']],
-    cip:      [['Temiz Oda Tulumu', '🥼'], ['Silikon Gofret', '🧇'], ['Nanometre Yarışı', '🏁'], ['Çip Kıtlığına Son', '🚚'], ['Kendini Tasarlayan Çip', '♾️']],
-    yzlab:    [['GPU Kümesi', '🎮'], ['Temiz Veri Seti', '🧼'], ['Hizalama Ekibi', '📏'], ['Kendini Eğiten Model', '♻️'], ['Genel Zekâ Toplantısı', '🧠']],
-    mars:     [['Basınçlı Ofis Kubbesi', '🫧'], ['Kızıl Toz Filtresi', '🌪️'], ['Gecikmeli Toplantı Protokolü', '📡'], ['Yerel Kahve Serası', '🌱'], ['Olympus Genel Merkezi', '🏔️']]
+    stajyer:  [["Staj Sertifikası", "📜"], ["Bedava Simit", "🥯"], ["Mentorluk Programı", "🧭"], ["Kadro Sözü", "🤝"], ["Staj Efsanesi", "🌟"], ["Kendi Kupası", "☕"], ["Kahve Makinesi Yetkisi", "🔑"], ["Toplantıda Söz Hakkı", "🎤"], ["Kod Kampı", "🏕️"], ["Staj Akademisi", "🎓"], ["Stajyer Sendikası", "✊"], ["Staj Bursu Vakfı", "💸"], ["Ulusal Staj Ligi", "🎖️"], ["Staj Fuarı Rekoru", "🎪"], ["Kıtalar Arası Staj Değişimi", "✈️"], ["Staj Belgeseli", "🎬"], ["Uzayda Staj Dönemi", "🧑‍🚀"], ["Staj Galaksisi", "🌠"], ["Zaman Yolcusu Stajyer", "⏳"]],
+    junior:   [["Mekanik Klavye Paketi", "⌨️"], ["Code Review Kültürü", "🔍"], ["Eğitim Bütçesi", "📚"], ["Hackathon Haftası", "🏆"], ["Kendi Framework’ü", "🧪"], ["İkinci Monitör", "📺"], ["Kendi Branch'i", "🌿"], ["İlk Canlı Sürüm", "🚢"], ["Gece Yarısı Hotfix'i", "🦇"], ["Topluluk Katkısı", "🤲"], ["Konferans Konuşması", "🎙️"], ["Popüler Kütüphane", "📦"], ["Yıldızlı Depo", "✴️"], ["Kod Okulu Kurucusu", "🏫"], ["Dünya Kodlama Şampiyonu", "🏵️"], ["Kendi Programlama Dili", "🔤"], ["Derleyiciyi Yeniden Yazdı", "⚙️"], ["Hatasız Sprint", "🐞"], ["Kodu Rüyasında Yazıyor", "💤"]],
+    senior:   [["Sessiz Oda", "🎧"], ["Mimari Toplantısı", "🏛️"], ["Teknik Borç Günü", "🧹"], ["Kıdemli Maaş Paketi", "💼"], ["Emekliliği Unuttu", "🦉"], ["Toplantısız Sabahlar", "🌅"], ["Özel Kavrum Kahve", "🫘"], ["Mimari Karar Defteri", "📓"], ["Kod Arkeolojisi", "🏺"], ["Eski Sistem Fısıldayıcısı", "🗿"], ["Teknik Borç Affı", "🕊️"], ["Mimari Kurul Masası", "🎩"], ["Açılış Konuşması", "📣"], ["Yazdığı Kitap", "📘"], ["Bende Çalışıyor Belgesi", "📃"], ["Cuma Günü Canlıya Çıkan", "😎"], ["Yaşayan Dokümantasyon", "📖"], ["Efsane Kod İncelemesi", "🏯"], ["Zamanı Durduran Refactor", "🕰️"]],
+    tasarimci: [["Çizim Tableti", "🖊️"], ["Tasarım Sistemi", "🧩"], ["Renk Paleti Kütüphanesi", "🌈"], ["Ödüllü Portfolyo", "🥇"], ["Piksel Mükemmeliyeti", "🔬"], ["Renk Kalibrasyonu", "🎚️"], ["Yazı Tipi Arşivi", "🔠"], ["Özel İkon Seti", "💠"], ["Hareketli Arayüz", "🎞️"], ["Marka Kılavuzu", "📕"], ["Tasarım Stüdyosu Katı", "🪟"], ["Kullanıcı Testi Odası", "🔎"], ["Sergi Açılışı", "🖼️"], ["Gökdelen Boyu Logo", "🌇"], ["Ulusal Tasarım Ödülü", "🎗️"], ["Yeni Bir Renk Keşfi", "🔮"], ["Ay'a Çizilen Logo", "🌕"], ["Gökkuşağına Revize", "🌦️"], ["Evreni Hizalayan Izgara", "🔲"]],
+    pm:       [["Kanban Panosu", "🗂️"], ["Çevik Sertifika", "🏃"], ["Toplantısız Cuma", "🚫"], ["Yol Haritası Ustası", "🗺️"], ["Gantt Şeması Sanatı", "📐"], ["Renkli Yapışkan Notlar", "🗒️"], ["Sprint Takvimi", "📆"], ["Risk Haritası", "🧯"], ["Kısa Stand-up", "⏱️"], ["Toplantı Odası Rezervi", "🚪"], ["Çapraz Ekip Koordinasyonu", "🔗"], ["Paydaş Diplomasisi", "🎭"], ["Program Ofisi", "🧑‍💼"], ["Toplantı İptal Sanatı", "🙅"], ["Erken Teslim Mucizesi", "🎁"], ["Çok Uluslu Yol Haritası", "🌏"], ["Bütçenin Altında Proje", "💹"], ["Kapsamı Hiç Kaymayan Proje", "🧲"], ["Zaman Çizelgesi Bükücü", "➰"]],
+    ai:       [["Daha Büyük Bağlam Penceresi", "🧠"], ["İnce Ayarlı Model", "🎛️"], ["Ajan Sürüsü", "🐝"], ["Kendini Test Eden Kod", "✅"], ["Tekillik Toplantısı", "🌀"], ["Daha Hızlı Çıkarım", "🏎️"], ["Uzun Süreli Hafıza", "💾"], ["Araç Kullanma Yetkisi", "🧰"], ["Kod Tabanı Haritası", "📍"], ["Kendi Kendine Hata Ayıklama", "🪲"], ["Uykusuz Ajan Ekibi", "🌃"], ["Çok Dilli Ajan", "🗣️"], ["Ajanlar Arası Protokol", "📶"], ["Talepten Önce Çözüm", "🪄"], ["Ajan Kuluçkası", "🥚"], ["Ezber Bozan Model", "🃏"], ["Gezegen Ölçekli Ajan Ağı", "🕸️"], ["Rüya Gören Model", "💭"], ["Kendi Ajanını Yazan Ajan", "🪞"]],
+    sunucu:   [["Sıvı Soğutma", "💧"], ["Otomatik Ölçekleme", "📈"], ["Yeşil Enerji", "🌱"], ["Kendi Veri Merkezin", "🏗️"], ["Kuantum Rafı", "⚛️"], ["Kablo Düzenleyici", "🧶"], ["Yedek Güç Kaynağı", "🔋"], ["Sessiz Fanlar", "🔇"], ["Akıllı Yük Dengeleyici", "⚖️"], ["Sıcak Yedek Sunucu", "♨️"], ["Rüzgâr Enerjili Raflar", "🪁"], ["Dağ İçinde Sunucu", "⛰️"], ["Kesintisiz Çalışma Rekoru", "📊"], ["Yapay Zekâ Destekli Soğutma", "❄️"], ["Okyanus Aşırı Omurga", "🛤️"], ["Ay'da Yedekleme", "🌘"], ["Güneş Enerjili Uydu Rafı", "☀️"], ["Uğultu Senfonisi", "🎻"], ["Işık Hızında Önbellek", "💫"]],
+    ofis:     [["Berlin Şubesi", "🥨"], ["Dubai Şubesi", "🏙️"], ["Tokyo Şubesi", "🗼"], ["New York Genel Merkezi", "🗽"], ["Ay Üssü Şubesi", "🌙"], ["Çok Dilli Resepsiyon", "🛎️"], ["Saat Dilimi Duvarı", "🕒"], ["Vize Uzmanı", "🛂"], ["Dünya Turu Kahve Molası", "🫖"], ["Ada Şubesi", "🏝️"], ["Kutup Şubesi", "🐧"], ["Çöl Şubesi", "🐪"], ["Okyanus Ortası Platform", "🌊"], ["Yüzen Ofis Gemisi", "🛳️"], ["Balon Şubesi", "🎈"], ["Uzay İstasyonu Şubesi", "🔭"], ["Kuyruklu Yıldız Şubesi", "☄️"], ["Halkalı Gezegen Şubesi", "💍"], ["Komşu Galaksi Şubesi", "🎆"]],
+    veri:     [["Sıcak–Soğuk Koridor", "🌡️"], ["Yedeğin Yedeği", "🪆"], ["Denizaltı Kablosu", "🐙"], ["Kutup Soğutması", "🧊"], ["Uzay Soğutması", "🪐"], ["Etiketli Kablolar", "🏷️"], ["Çift Güç Hattı", "🔌"], ["Sıfır Kesinti Planı", "🛡️"], ["Göl Suyuyla Soğutma", "💦"], ["Atık Isıyla Sera", "🍅"], ["Mağara Veri Merkezi", "🪨"], ["Bölgeler Arası Kopya", "🔁"], ["Dağların Altında Arşiv", "⛏️"], ["Dev Disk Dizisi", "💽"], ["Buzul Arşivi", "🌨️"], ["Ay Kraterinde Veri", "🌗"], ["Güneş Yelkenli Yedek", "⛵"], ["Kara Delik Sıkıştırma", "🕳️"], ["Yedeğin Yedeğinin Yedeği", "🎎"]],
+    arge:     [["Prototip Atölyesi", "🛠️"], ["Patent Duvarı", "📜"], ["Kuluçka Merkezi", "🐣"], ["Kampüs Servisi", "🚌"], ["Uzay Asansörü Taslağı", "🛗"], ["Beyaz Tahta Duvarı", "⬜"], ["Fikir Kutusu", "💡"], ["Hızlı Prototip Yazıcısı", "🖨️"], ["Deney Bütçesi", "🧫"], ["Hata Yapma Özgürlüğü", "🎢"], ["Rüzgâr Tüneli", "🌬️"], ["Bilim Kurulu", "🥽"], ["Ar-Ge Şehri", "🌆"], ["Teknoloji Fuarı Yıldızı", "🎡"], ["Işınlanma Prototipi", "🔆"], ["Yerçekimi Laboratuvarı", "🍎"], ["Zaman Makinesi Taslağı", "⏲️"], ["Yeni Element Keşfi", "⚗️"], ["Fizik Kurallarına Revize", "📝"]],
+    cip:      [["Temiz Oda Tulumu", "🥼"], ["Silikon Gofret", "🧇"], ["Nanometre Yarışı", "🏁"], ["Çip Kıtlığına Son", "🚚"], ["Kendini Tasarlayan Çip", "♾️"], ["Toz Önleyici Galoş", "🥾"], ["Daha Keskin Litografi", "🔦"], ["Katlı Devre Tasarımı", "🧱"], ["Gece Gündüz Hattı", "🌓"], ["Atom Ölçekli Transistör", "🔩"], ["Işıkla Çalışan Çip", "🔅"], ["Kendi Kendini Soğutan Çip", "🥶"], ["Gofret Boyu Çip", "🍪"], ["Çip Başkenti", "🏰"], ["Yerçekimsiz Üretim Hattı", "🪶"], ["Yıldız Sıcaklığında Fırın", "🌋"], ["Düşünen Silikon", "🤔"], ["Kendini Onaran Devre", "🩹"], ["Yıldız Tozundan Silikon", "🎇"]],
+    yzlab:    [["GPU Kümesi", "🎮"], ["Temiz Veri Seti", "🧼"], ["Hizalama Ekibi", "📏"], ["Kendini Eğiten Model", "♻️"], ["Genel Zekâ Toplantısı", "🧠"], ["Yeniden Üretilebilir Deney", "📎"], ["Etiketleme Ordusu", "🔖"], ["Makale Teslim Gecesi", "📄"], ["Şeffaf Model", "🫙"], ["Sentetik Veri Fabrikası", "🧴"], ["Model Bahçesi", "🌳"], ["Düşünce Zinciri", "⛓️"], ["Kendi Kendine Makale", "✍️"], ["Çok Duyulu Model", "👁️"], ["Dünya Modeli", "🧿"], ["Bilinç Tartışması", "🗯️"], ["Model Parlamentosu", "🗳️"], ["Evren Simülasyonu", "🎲"], ["Simülasyon İçinde Simülasyon", "🎑"]],
+    mars:     [["Basınçlı Ofis Kubbesi", "🫧"], ["Kızıl Toz Filtresi", "🌪️"], ["Gecikmeli Toplantı Protokolü", "📡"], ["Yerel Kahve Serası", "🌱"], ["Olympus Genel Merkezi", "🏔️"], ["Kızıl Toz Paspası", "🧽"], ["Oksijenli Kahve", "🥤"], ["Mars Saati Takvimi", "🗓️"], ["Basınçlı Toplantı Odası", "🔐"], ["Gezgin Robot Filosu", "🚙"], ["Kubbe Şehir", "🏟️"], ["Buz Madeni Ofisi", "🪣"], ["Mars Asansörü", "🔝"], ["Kızıl Gezegen Kampüsü", "🏜️"], ["Mars Uydusunda Şube", "🌑"], ["Gezegenler Arası Otoyol", "🛣️"], ["Toz Fırtınası Sigortası", "☂️"], ["Yeşil Mars Projesi", "🌵"], ["Asteroit Kuşağı Ofisi", "🛸"]]
   };
 
   var UPGRADES = [];
   GENERATORS.forEach(function (g) {
     GEN_TIERS.forEach(function (t, i) {
-      var nm = GEN_UPG_NAMES[g.id][i];
+      var nm = GEN_UPG_NAMES[g.id][i] || [v45Text('upg.genTier.name', { n: t[0] }), '⭐'];
       UPGRADES.push({
         id: g.id + '_' + (i + 1), name: nm[0], icon: nm[1], cost: g.base * t[1],
-        type: 'gen', target: g.id, mult: 2, req: { gen: g.id, count: t[0] },
-        desc: g.name + ' üretimi x2'
+        type: 'gen', target: g.id, mult: t[2], req: { gen: g.id, count: t[0], node: t[3] || null },
+        desc: g.name + ' üretimi x' + num(t[2])
       });
     });
   });
@@ -313,6 +405,8 @@
     { id: 'sirketler_grubu', name: 'Şirketler Grubu', icon: '🏬', at: 1e13,      tint: '#4fc3f7', desc: 'Bir çatı şirket, altında bir sürü şirket. Hepsinin ayrı bir toplantısı var.', msg: 'Tebrikler! Artık şirketlerinizin de şirketleri var. Organizasyon şeması tek sayfaya sığmıyor.' },
     { id: 'teknoloji_devi',  name: 'Teknoloji Devi', icon: '🛰️', at: 1e15,       tint: '#00e5ff', desc: 'Müşteriler sırada, hepsi acil.', msg: 'Tebrikler! Artık müşteri aramıyorsunuz, müşteriler sizi arıyor. Hepsi de \'acil\' diyor.' },
     { id: 'yapay_zeka_lab',  name: 'Yapay Zekâ Laboratuvarı', icon: '🧬', at: 1e19, tint: '#b388ff', desc: 'Kodu model yazıyor, siz yön veriyorsunuz.', msg: 'Tebrikler! Kodu artık yapay zekâ yazıyor, siz de ona \'biraz daha büyüt\' diyorsunuz.' },
+    // v4.5: ara aşama (ad ve emoji: Yazı kodhane-v4.5-asama-1e21-yazi-r1; açıklama ve tebrik Yazı kodhane-v4.5-metinler-yazi-r1, V45_TEXT). Eşik CFG.v45.
+    { id: V45.stage1e21.id,  name: 'Yörünge Üssü',   icon: '🌌', at: V45.stage1e21.at, tint: '#6a5acd', desc: v45Text('stage.asama_1e21.desc'), msg: v45Text('stage.asama_1e21.msg') },
     { id: 'mars_ofisi',      name: 'Mars Ofisi',     icon: '🔴', at: 1e23,       tint: '#ff5a3c', desc: 'Kızıl gezegende ilk ajans.', msg: 'Tebrikler! Mars\'tasınız. Mesajlar 20 dakikada geliyor, revize talepleri yine de anında.' }
   ];
   var STAGE_BY_ID = {};
@@ -359,11 +453,20 @@
       { id: 'yatirim_1', name: 'Uzaktan Çalışma', desc: function () { return 'Ekip evden de çalışıyor. Çevrimdışı kazanç sınırı ' + CFG.offlineCapHours + ' saatten ' + T.offlineHours1 + ' saate çıkar.'; } },
       { id: 'yatirim_2', name: 'Yatırımcı Güveni', desc: function () { return 'Sunum slaytları artık animasyonlu. Yatırım turu bonusu %' + num(T.shareBoost * 100) + ' güçlenir.'; } },
       { id: 'yatirim_3', name: 'Gece Vardiyası', desc: function () { return 'Ofisin ışığı hiç sönmüyor. Çevrimdışı kazanç sınırı ' + T.offlineHours2 + ' saate çıkar.'; } }
+    ] },
+    // v4.5 Borsa dalı (P4): maliyetler CFG.v45 borsa.costs; eski 12 düğüm dolmadan kilitli. Ad ve açıklamalar Yazı kodhane-v4.5-metinler-yazi-r1 (V45_TEXT).
+    { id: 'borsa', name: v45Text('tree.borsa.name'), icon: '🏦', nodes: [
+      { id: 'borsa_1', name: v45Text('tree.borsa_1.name'), desc: function () { return v45Text('tree.borsa_1.desc'); } },
+      { id: 'borsa_2', name: v45Text('tree.borsa_2.name'), desc: function () { return v45Text('tree.borsa_2.desc'); } },
+      { id: 'borsa_3', name: v45Text('tree.borsa_3.name'), desc: function () { return v45Text('tree.borsa_3.desc'); } }
     ] }
   ];
   var NODE_BY_ID = {};
   TREE.forEach(function (br) { br.nodes.forEach(function (n, i) { n.branch = br.id; n.index = i; n.prev = i ? br.nodes[i - 1].id : null; NODE_BY_ID[n.id] = n; }); });
-  function nodeCost(n) { return CFG.tree.costs[n.index]; }
+  function nodeCost(n) { return n.branch === 'borsa' ? V45.borsa.costs[n.index] : CFG.tree.costs[n.index]; }
+  // v4.5: eski (v4) ağacın düğüm sayısı (12). 'tree_full' olayı ve borsa dalının önkoşulu bununla.
+  var BASE_TREE_COUNT = TREE.reduce(function (a, br) { return a + (br.id === 'borsa' ? 0 : br.nodes.length); }, 0);
+  function baseTreeFull() { return S.tree.filter(function (id) { return NODE_BY_ID[id] && NODE_BY_ID[id].branch !== 'borsa'; }).length >= BASE_TREE_COUNT; }
   var GEN_BY_ID = {};
   GENERATORS.forEach(function (g) { GEN_BY_ID[g.id] = g; });
   GEN_BY_ID.junior.short = 'Junior';
@@ -496,7 +599,16 @@
   // metinler (Yatırım sekmesi, Yatırım Turu / Halka Arz onayları) aynı işlevi kullanır: Yatırımcı Güveni dahil.
   function investorBonus(n) { return shareBonus() * (n === undefined ? S.shares : n); }
   function offerSec() { return hasNode('musteri_2') ? CFG.tree.offerSec : CFG.offerSec; }
-  function offerFreq() { return hasNode('musteri_1') ? 1 / (1 + CFG.tree.offerMore) : 1; } // teklif aralığı çarpanı
+  // v4.5: itibar eşiği (E1..E4) açık mı
+  // Avantaj config'te 'enabled: false' ise (E3, karar 3) hiç açılmaz ve panelde listelenmez.
+  function perkEnabled(e) { var c = V45.rep[e]; return !(c && c.enabled === false); }
+  function repPerk(e) { return perkEnabled(e) && S.reputation >= V45.rep.thr[e]; }
+  // teklif aralığı çarpanı: Sadık Müşteri ve (v4.5) E1 ayrı ayrı / 1,25
+  function offerFreq() { return (hasNode('musteri_1') ? 1 / (1 + CFG.tree.offerMore) : 1) * (repPerk('E1') ? 1 / (1 + V45.rep.E1.offerMore) : 1); }
+  // v4.5: olay kartı aralığı çarpanı (E1)
+  function eventFreq() { return repPerk('E1') ? 1 / (1 + V45.rep.E1.eventMore) : 1; }
+  // v4.5: nakit teklifin büyük müşteri olma ihtimali (E2; E4'te daha yüksek)
+  function bigOfferChance() { return repPerk('E4') ? V45.rep.E4.bigChance : repPerk('E2') ? V45.rep.E2.bigChance : 0; }
   function offerPayMult() { return hasNode('musteri_3') ? CFG.tree.offerPayMult : 1; }
   function unspentMult() { return 1 + CFG.halkaArz.unspentBonus * Math.min(S.ipoShares, CFG.halkaArz.unspentCap); } // harcanmamış Borsa Payı bonusu
   function genUnlocked(g) { return !g.stage || stageAtLeast(S.stageBest, g.stage); }
@@ -557,26 +669,48 @@
   function negSec(sec) { return has('tercuman') ? sec * 0.75 : sec; }
   function meetPct(p) { return has('standup') ? p * 0.8 : p; }
   function addRep(n) { S.reputation = Math.max(0, Math.min(REP_MAX, S.reputation + n)); }
-  function repMult() { return 1 + REP_OFFER_BONUS * S.reputation; }
+  function repMult() { return 1 + Math.min(REP_OFFER_BONUS * Math.max(0, S.reputation), V45.rep.cap); } // v4.5: en fazla +%100
   function addBuff(id, kind, mult, sec, label) {
     S.buffs = S.buffs.filter(function (b) { return b.id !== id; });
     S.buffs.push({ id: id, kind: kind, mult: mult, left: sec, total: sec, label: label });
   }
   function meeting() { S.meetings++; S.noMeetingSec = 0; }
-  function genCost(g, n) {
-    n = n || 1;
-    var cg = costGrowth();
-    var first = g.base * Math.pow(cg, S.gens[g.id]);
-    return first * (Math.pow(cg, n) - 1) / (cg - 1);
+  // v4.5: bölümlü fiyat eğrisi (CFG.v45 growth). f: büyüme fazlası çarpanı (İK Anlaşması 0,14/0,15, borsa_1 x growthCut).
+  function growthF() { return (hasNode('ekip_3') ? (CFG.tree.costGrowth - 1) / (COST_GROWTH - 1) : 1) * (hasNode('borsa_1') ? V45.borsa.growthCut : 1); }
+  // k. birimin bulunduğu bölüm: [büyüme r, bölüm sonu]
+  function growthSeg(k, f) {
+    var G = V45.growth, j = 0;
+    while (j + 1 < G.length && k >= G[j + 1][0]) j++;
+    return [1 + (G[j][1] - 1) * f, j + 1 < G.length ? G[j + 1][0] : Infinity];
   }
+  // n birimin toplam fiyatı (bölüm bölüm geometrik toplam)
+  function costFrom(base, k, n, f) {
+    var c = 0;
+    while (n > 0) {
+      var sg = growthSeg(k, f), r = sg[0], m = Math.min(n, sg[1] - k), p0 = base * Math.exp(growthLog(V45.growth, f, k));
+      c += r === 1 ? p0 * m : p0 * (Math.pow(r, m) - 1) / (r - 1);
+      k += m; n -= m;
+    }
+    return c;
+  }
+  function genCost(g, n) { return costFrom(g.base, S.gens[g.id], n || 1, growthF()); }
   function maxAffordable(g) {
-    var cg = costGrowth();
-    var first = g.base * Math.pow(cg, S.gens[g.id]);
-    if (!genUnlocked(g) || S.money < first) return 0;
-    return Math.floor(Math.log(S.money * (cg - 1) / first + 1) / Math.log(cg));
+    if (!genUnlocked(g)) return 0;
+    var f = growthF(), k0 = S.gens[g.id], k = k0, money = S.money, cnt = 0;
+    while (true) {
+      var sg = growthSeg(k, f), r = sg[0], p0 = g.base * Math.exp(growthLog(V45.growth, f, k));
+      if (!(money >= p0)) break;
+      var room = sg[1] - k, m = r === 1 ? Math.floor(money / p0) : Math.floor(Math.log(money * (r - 1) / p0 + 1) / Math.log(r));
+      m = Math.max(0, Math.min(m, room));
+      if (!m) break;
+      money -= costFrom(g.base, k, m, f); cnt += m; k += m;
+      if (m < room) break;
+    }
+    while (cnt > 0 && costFrom(g.base, k0, cnt, f) > S.money) cnt--; // kayan nokta: toplam paraya sığsın
+    return cnt;
   }
   function upgradeUnlocked(u) {
-    if (u.req.gen) return S.gens[u.req.gen] >= u.req.count;
+    if (u.req.gen) return S.gens[u.req.gen] >= u.req.count && (!u.req.node || hasNode(u.req.node)); // v4.5: 500 üstü kademeler borsa_3 ile
     if (u.req.total) return totalOwned() >= u.req.total;
     return true;
   }
@@ -731,6 +865,8 @@
     keep.cycleEarned = 0; keep.cycleStage = 0;
     var sb = S.shares, pb = S.ipoShares;
     resetTo(keep);
+    // v4.5 borsa_2: Halka Arz sonrası başlangıç kasası ve çalışanlar (CFG.v45 borsa)
+    if (hasNode('borsa_2')) { S.money += V45.borsa.ipoStartCash; V45.borsa.ipoStartGens.forEach(function (x) { S.gens[x[0]] += x[1]; }); }
     logEvent('ipo', sb, S.shares, pb, S.ipoShares);
     return gain;
   }
@@ -739,6 +875,7 @@
     if (!n) return 'none';
     if (hasNode(id)) return 'owned';
     if (n.prev && !hasNode(n.prev)) return 'locked';
+    if (n.branch === 'borsa' && V45.borsa.requireFullTree && !baseTreeFull()) return 'locked'; // v4.5: önce eski 12 düğüm
     return S.ipoShares >= nodeCost(n) ? 'ready' : 'poor';
   }
   function buyNode(id) {
@@ -1017,6 +1154,7 @@
     { id: 'asama_grup', icon: '🏬', name: 'Organizasyon Şeması', desc: 'Şirketler Grubu aşamasına ulaş', test: function () { return stageAtLeast(S.stageBest, 'sirketler_grubu'); } },
     { id: 'asama_6', icon: '🛰️', name: 'Acil Kuyruğu', desc: 'Teknoloji Devi aşamasına ulaş', test: function () { return stageAtLeast(S.stageBest, 'teknoloji_devi'); } },
     { id: 'asama_7', icon: '🧬', name: 'Model Eğitildi', desc: 'Yapay Zekâ Laboratuvarı aşamasına ulaş', test: function () { return stageAtLeast(S.stageBest, 'yapay_zeka_lab'); } },
+    { id: 'asama_1e21', icon: '🌌', name: v45Text('ach.asama_1e21.name'), desc: v45Text('ach.asama_1e21.desc'), test: function () { return stageAtLeast(S.stageBest, V45.stage1e21.id); } },
     { id: 'asama_8', icon: '🔴', name: 'Kızıl Tabela', desc: 'Mars Ofisi aşamasına ulaş', test: function () { return stageAtLeast(S.stageBest, 'mars_ofisi'); } },
     { id: 'localhost', icon: '💻', name: 'Localhost’ta Çalışıyordu', desc: 'Bir sunucu çökmesini atlat', test: function () { return S.serverCrashes >= 1; } },
     { id: 'revize_7', icon: '📑', name: 'Son Revize 7. Kez', desc: '7 revize talebini kabul et', test: function () { return S.revisions >= 7; } },
@@ -1359,8 +1497,8 @@
     var st = STAGES[Math.max(0, Math.min(STAGES.length - 1, stageRankBefore | 0))];
     return { stage_id: st.id, pays: pays, ipo_number: S.ipoCount };
   }
-  var TREE_NODE_COUNT = TREE.reduce(function (a, br) { return a + br.nodes.length; }, 0);
-  function treeFull() { return S.tree.length >= TREE_NODE_COUNT; }
+  var TREE_NODE_COUNT = BASE_TREE_COUNT; // v4.5: 'tree_full' eski 12 düğümü sayar (Borsa dalı ayrı)
+  function treeFull() { return baseTreeFull(); }
   function treeEventData(now) {
     now = now || nowMs();
     var o = {}, st = S.startedAt;
@@ -1392,6 +1530,12 @@
     streakBonus: streakBonus, setToday: function (s) { Core.fakeToday = s || null; },
     UI_TEXT: UI_TEXT, uiText: uiText, guardFuture: guardFuture, writesBlocked: writesBlocked, saveVersionOf: saveVersionOf, get futureSave() { return futureSave; }, markOlderTab: markOlderTab, get olderTab() { return olderTab; }, RESET_TEXT: RESET_TEXT, RESET_SIGNED_ONLY: RESET_SIGNED_ONLY, TEL_TEXT: TEL_TEXT, telText: telText, resetText: resetText, otherDeviceText: otherDeviceText, saveData: saveData,
     meta: meta,
+    // v4.5
+    V45: V45, V45_TEXT: V45_TEXT, v45Text: v45Text, growthLog: growthLog, growthF: growthF, costFrom: costFrom, GEN_TIERS: GEN_TIERS, GEN_UPG_NAMES: GEN_UPG_NAMES, REP_MAX: REP_MAX,
+    repPerk: repPerk, eventFreq: eventFreq, bigOfferChance: bigOfferChance, upgradeUnlocked: upgradeUnlocked, baseTreeFull: baseTreeFull,
+    BASE_TREE_COUNT: BASE_TREE_COUNT, nodeStateText: function (n, st) { return nodeStateText(n, st); }, NODE_BY_ID: NODE_BY_ID, get offer() { return offer; },
+    scheduleEvent: function (first) { scheduleEvent(first); }, get eventNextAt() { return evs.nextAt; },
+    scheduleOffer: function (first) { scheduleOffer(first); }, get offerNextAt() { return offer.nextAt; },
     rng: Math.random, lastCrit: false, fakeToday: null, loadedVersion: null,
     CRIT_CHANCE: CRIT_CHANCE, CRIT_MULT: CRIT_MULT
   };
@@ -1619,7 +1763,10 @@
     applySave(d);
     Core.lastAdopt = sk ? 'otherDevice' : kind;   // uyumluluk: 409/başka sekme = 'otherDevice'
     Core.lastAdoptKind = sk || null;               // 'reset' | 'sync' (staleKind)
-    if (sk === 'reset') toast('🔄 ' + otherDeviceText(signedIn(), sk), 7000);
+    // v4.5 (P7): 409 bir telafi yüklemesinden geldiyse (lossreport.js durumda yeni 'applied' gördü) lossReport.applied.staleTab
+    var lossMsg = sk && Core.lossReport && typeof Core.lossReport.consumeAppliedForStale === 'function' ? Core.lossReport.consumeAppliedForStale() : '';
+    if (lossMsg) toast(lossMsg, 7000);
+    else if (sk === 'reset') toast('🔄 ' + otherDeviceText(signedIn(), sk), 7000);
     else if (sk === 'sync') toast(otherDeviceText(signedIn(), sk), 7000);   // yalnız onaylı metin
     else if (kind === 'undoDone') toast('↩️ ' + resetText('reset.undoDone'), 4500);
     refreshRestoreBox();
@@ -2049,7 +2196,7 @@
       }
     }
     applyTint(Math.max(i, 0));
-    el.repChip.textContent = '⭐ İtibar ' + S.reputation + ' · müşteri ödemeleri +%' + Math.round(S.reputation * REP_OFFER_BONUS * 100);
+    el.repChip.textContent = '⭐ İtibar ' + fmt(S.reputation) + ' · müşteri ödemeleri +%' + Math.round((repMult() - 1) * 100);
     el.achChip.textContent = '🏅 Başarım ' + S.achievements.length + '/' + ACHIEVEMENTS.length + ' · +%' + S.achievements.length + ' üretim';
     el.streakChip.textContent = '🔥 Seri ' + (S.daily.streak || 0) + ' gün';
   }
@@ -2067,7 +2214,9 @@
       ['Alınan geliştirme', S.upgrades.length + ' / ' + UPGRADES.length],
       ['Tamamlanan müşteri projesi', fmt(S.eventsClicked)],
       ['Çözülen olay kartı', fmt(S.eventsResolved)],
-      ['İtibar', S.reputation + ' / ' + REP_MAX],
+      ['İtibar', fmt(S.reputation)],
+      // v4.5 avantaj paneli (P2): eşik açıksa ✓, değilse ilerleme. Satır adları V45_TEXT rep.perk.E1/E2/E4 (Yazı metinler r1); E3 kapalı, listelenmez.
+      ['E1', 'E2', 'E3', 'E4'].filter(perkEnabled).map(function (e) { return [v45Text('rep.perk.' + e), repPerk(e) ? '✓' : fmt(S.reputation) + ' / ' + fmt(V45.rep.thr[e])]; }),
       ['Başarım bonusu', '+%' + S.achievements.length + ' üretim'],
       ['Günlük seri (en iyi)', (S.daily.streak || 0) + ' gün (' + (S.daily.best || 0) + ')'],
       ['Çevrimdışı kazanç', tl(S.offlineEarned)],
@@ -2077,6 +2226,7 @@
       ['Borsa Payı (harcanabilir / toplam)', fmt(S.ipoShares) + ' / ' + fmt(S.ipoSharesEarned)],
       ['Sürüm', 'v' + VERSION]
     ];
+    rows = [].concat.apply([], rows.map(function (r) { return Array.isArray(r[0]) ? r : [r]; })); // v4.5: avantaj satırları grubu açılır
     var html = rows.map(function (r) { return '<div><dt>' + r[0] + '</dt><dd>' + r[1] + '</dd></div>'; }).join('');
     if (el.statsList._html !== html) { el.statsList.innerHTML = html; el.statsList._html = html; }
   }
@@ -2149,7 +2299,8 @@
   }
   function nodeStateText(n, st) {
     if (st === 'owned') return 'Alındı! Bu bonus artık kalıcı.';
-    if (st === 'locked') return 'Önce ' + NODE_BY_ID[n.prev].name + ' gerekli.';
+    if (st === 'locked' && n.prev && !hasNode(n.prev)) return 'Önce ' + NODE_BY_ID[n.prev].name + ' gerekli.';
+    if (st === 'locked') return v45Text('tree.borsa.lockedFull'); // v4.5: borsa dalı, eski 12 düğüm dolmadan
     if (st === 'poor') return nodeCost(n) + ' Borsa Payı gerekiyor. Bir halka arz daha?';
     return nodeCost(n) + ' Borsa Payı ile al';
   }
@@ -2273,9 +2424,12 @@
     offer.until = Date.now() + offer.dur;
     offer.kind = kind || (Math.random() < 0.65 ? 'cash' : 'boost');
     var t = OFFER_TEXTS[Math.floor(Math.random() * OFFER_TEXTS.length)];
+    offer.big = false;
     if (offer.kind === 'cash') {
       offer.amount = Math.max(clickValue() * 40, baseTps() * (60 + Math.random() * 60), 50) * repMult() * offerPayMult();
-      el.coText.textContent = t + ' — ' + tl(offer.amount) + ' ödeme!';
+      // v4.5 E2/E4: büyük müşteri (nakit teklif x bigMult)
+      if (Math.random() < bigOfferChance()) { offer.big = true; offer.amount *= V45.rep.E2.bigMult; }
+      el.coText.textContent = (offer.big ? v45Text('offer.big') + ' ' : '') + t + ' — ' + tl(offer.amount) + ' ödeme!';
     } else {
       el.coText.textContent = t + ' — 30 sn boyunca tüm kazanç x2!';
     }
@@ -2313,7 +2467,7 @@
   var evs = { visible: false, id: null, until: 0, nextAt: 0, nextId: null };
   function scheduleEvent(first) {
     var min = first ? 90 : 150, max = first ? 150 : 270;
-    evs.nextAt = Date.now() + (min + Math.random() * (max - min)) * 1000;
+    evs.nextAt = Date.now() + (min + Math.random() * (max - min)) * eventFreq() * 1000; // v4.5: E1 ile / 1,25
     evs.nextId = pickEvent(evs.id);
   }
   function spawnEvent(id) {

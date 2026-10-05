@@ -19,8 +19,8 @@ const near = (a, b) => Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a), Math.a
 const PAYS = K.STAGES.map((st, i) => K.stagePay(i));
 check('Halka Arz settings: stage mode, pays by stage ID, bonus 1%', H.mode === 'stage' && Object.keys(H.stagePays).every((id) => K.STAGE_BY_ID[id]) && H.unspentBonus === 0.01 && H.firstMin === 1);
 check('stage pays: none before Global Holding, non-decreasing, max 12 (SQL ipo_maxpay)', PAYS.slice(0, 5).every((x) => x === 0) && PAYS.every((x, i) => i === 0 || x >= PAYS[i - 1]) && Math.max(...PAYS) === 12, PAYS);
-check('v4.4 stage pays (E100cd12): GH 2, Unicorn 3, ŞG 4, TD 5, YZ Lab 8, Mars 12', PAYS.join(',') === '0,0,0,0,0,2,3,4,5,8,12', PAYS);
-check('tree total stays 40', K.TREE.reduce((a, b) => a + b.nodes.reduce((x, n) => x + K.nodeCost(n), 0), 0) === 40);
+check('v4.4 stage pays (E100cd12): GH 2, Unicorn 3, ŞG 4, TD 5, YZ Lab 8, Mars 12 + v4.5 Yörünge Üssü 9', PAYS.join(',') === '0,0,0,0,0,2,3,4,5,8,9,12', PAYS);
+check('tree total stays 40 (v4 branches; Borsa branch separate)', K.TREE.filter((b) => b.id !== 'borsa').reduce((a, b) => a + b.nodes.reduce((x, n) => x + K.nodeCost(n), 0), 0) === 40);
 
 // ---------------------------------------------------------------- aşamaya göre pay
 fresh();
@@ -63,7 +63,7 @@ const A = (id) => K.ACHIEVEMENTS.find((a) => a.id === id);
 check('new achievements (copy)', A('asama_6').name === 'Acil Kuyruğu' && A('asama_6').desc === 'Teknoloji Devi aşamasına ulaş' &&
   A('asama_7').name === 'Model Eğitildi' && A('asama_7').desc === 'Yapay Zekâ Laboratuvarı aşamasına ulaş' &&
   A('asama_8').name === 'Kızıl Tabela' && A('asama_8').desc === 'Mars Ofisi aşamasına ulaş');
-check('achievement count 36 (v4.4: +Unicorn, +Şirketler Grubu), ids unique', K.ACHIEVEMENTS.length === 36 && new Set(K.ACHIEVEMENTS.map((a) => a.id)).size === 36);
+check('achievement count 37 (v4.4: +Unicorn, +Şirketler Grubu; v4.5: +asama_1e21), ids unique', K.ACHIEVEMENTS.length === 37 && new Set(K.ACHIEVEMENTS.map((a) => a.id)).size === 37);
 const AI = (id) => K.ACHIEVEMENTS.findIndex((a) => a.id === id);
 check('stage achievements in stage order after Kıtalar Arası', AI('asama_unicorn') === AI('asama_5') + 1 && AI('asama_grup') === AI('asama_5') + 2 && AI('asama_6') === AI('asama_5') + 3);
 fresh(); K.state.stageBest = R('yapay_zeka_lab'); K.state.stage = 2; K.checkAchievements();
@@ -175,7 +175,7 @@ function v4Save(over) {
 const o = v4Save();
 K.deserialize(JSON.stringify(o));
 const s = K.state;
-check('v4 save: version 5, loadedVersion 3', s.version === 5 && K.loadedVersion === 3);
+check('v4 save: version 6, loadedVersion 3', s.version === 6 && K.loadedVersion === 3);
 // v4.4: eski kayıttaki aşama sırası (5 = Global Holding, 6 = Teknoloji Devi) ID üzerinden yeni sıraya çevrilir
 check('v4 save: stage fields converted from the old order', s.stage === R('global_holding') && s.stageBest === R('teknoloji_devi'), [s.stage, s.stageBest]);
 check('v4 save: every other v4 field kept (lossless)', ['money', 'runEarned', 'totalEarned', 'clicks', 'clickEarned', 'playTime', 'startedAt', 'shares', 'prestigeCount', 'reputation', 'ipoShares', 'ipoSharesEarned', 'ipoCount', 'cycleRounds', 'cycleEarned'].every((k) => s[k] === o[k]) &&
@@ -187,7 +187,7 @@ K.deserialize(JSON.stringify(v4Save({ ipoCount: 0, ipoShares: 0, ipoSharesEarned
 check('v4 save before any IPO: cycle = all time, cycleStage = stageBest', K.state.cycleStage === R('teknoloji_devi') && K.ipoGain() === 5);
 check('achievements granted on load for passed stages', (() => { K.checkAchievements(); return K.state.achievements.includes('asama_6') && !K.state.achievements.includes('asama_7'); })());
 K.deserialize(K.serialize());
-check('reload is stable', K.loadedVersion === 5 && K.state.cycleStage === R('teknoloji_devi'));
+check('reload is stable', K.loadedVersion === 6 && K.state.cycleStage === R('teknoloji_devi'));
 K.deserialize(JSON.stringify(Object.assign(v4Save({ version: 4 }), { cycleStage: 99, sectorCool: { kamu: 1e9, yok: 5, oyun: -1 }, followUps: { kafe: 50, emlak: 'x' }, pendingPay: [{ amount: 5, left: 3, label: 'İhale ödemesi' }, { amount: -1, left: 3 }, { amount: 1e40, left: 1e9, label: 'x' }, 'bad'] })));
 check('v4.1 save sanitised', K.state.cycleStage === K.STAGES.length - 1 && JSON.stringify(Object.keys(K.state.sectorCool)) === '["kamu"]' && K.state.sectorCool.kamu === SC.rejectSec &&
   K.state.followUps.kafe === SC.esnaf_kafe.revisions && K.state.followUps.emlak === 1 && K.state.pendingPay.length <= 2 && K.state.pendingPay.every((q) => q.amount > 0 && q.left > 0), [K.state.cycleStage, K.state.sectorCool, K.state.followUps, K.state.pendingPay]);

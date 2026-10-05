@@ -685,7 +685,7 @@
       return true;
     }).catch(function (e) {
       if (isTooOld(e)) { tooOld = e; return false; }
-      if (isStale(e)) { staleErr = e; return false; }
+      if (isStale(e)) { staleErr = e; try { e.sentRevision = rev; } catch (x) {} return false; }
       setStatus('error', friendlyError(e, 'Buluta kaydedilemedi; tekrar denenecek. Oyun bu cihazda kayıtlı.'));
       return false;
     }).then(function (ok) {
@@ -698,14 +698,20 @@
         setStatus('error', (K.uiText && K.uiText('update.olderTab.text')) || '');
         return ok;
       }
-      if (staleErr) { C.lastStale = { code: staleErr.code, message: staleErr.message, status: staleErr.status }; if (!o.quiet) handleStale(staleErr); }
+      if (staleErr) { C.lastStale = { code: staleErr.code, message: staleErr.message, status: staleErr.status, sent: sentRevOf(staleErr) }; if (!o.quiet) handleStale(staleErr); }
       return ok;
     });
     return C.pushing;
   }
   // 409: bu cihaz eski revision'da. Güncel kaydı çek; revision kuralı bulutu seçer (başka cihazda sıfırlandıysa
   // otherDevice metni gösterilir). Döngüye girmemek için 30 sn'de 3'ten fazla 409 olursa durulur.
-  function handleStale() {
+  // 409'u alan yazmanın revision'ı: push'un gönderdiği değer, yoksa details 'sent revision N, server revision M'.
+  function sentRevOf(err) {
+    if (err && typeof err.sentRevision === 'number' && isFinite(err.sentRevision)) return err.sentRevision;
+    var m = err && typeof err.details === 'string' ? /sent revision (\d+)/.exec(err.details) : null;
+    return m ? Number(m[1]) : null;
+  }
+  function handleStale(err) {
     // 409: güncel kaydı bir kez yükle; gerçek oyuncu girdisine kadar (hold) yeniden yazma — iki cihaz/sekme ping-pong yapmasın.
     hold();
     var t = Date.now();
@@ -714,6 +720,14 @@
     clearPushTimer();
     C.reconciled = false;
     if (C.staleAt.length > 3) { setStatus('error', 'Buluta kaydedilemedi; tekrar denenecek. Oyun bu cihazda kayıtlı.'); setTimeout(function () { if (C.user && !C.reconciled) reconcile(); }, 60000); return; }
+    // v4.5 (P7): 409 bir telafi yüklemesinden olabilir (sunucu revision'ı artırır). Kayıp bildir durumu önce (en fazla 2,5 sn)
+    // yenilenir; gönderilen revision <= applied_revision ise adoptSave lossReport.applied.staleTab metnini gösterir (lossreport.js
+    // staleVerdict). Yazma tekrar denenmez, kayıt yeniden çekilir.
+    if (K.lossReport && typeof K.lossReport.beforeStale === 'function') {
+      var go = function () { if (C.user && !C.reconciled) reconcile(); };
+      try { K.lossReport.beforeStale({ sent: sentRevOf(err) }).then(go, go); } catch (e) { go(); }
+      return;
+    }
     reconcile();
   }
   function flush() {
@@ -722,6 +736,125 @@
     C.finalWriter = gate.isWriter();   // son yazma: sekme kapanırken yazıcı bırakılsa da bu push geçer
     C.keepalive = true;
     push(false).then(function () { C.keepalive = false; }, function () { C.keepalive = false; });
+  }
+
+  // v4.5: "Hesap ve bulut kaydı hakkında" bağlantısı ve paneli. Metin Yazı kodhane-hesap-bilgilendirme-yazi-r20.json'dan birebir.
+  // Yapı: her paragraf { id, flag, segments: [{ flag, text }] }. Okuma kuralı (r19, r20'de aynı): paragrafın flag'i null ya da PRIVACY[flag]
+  // açıksa paragraf gösterilir; metni, flag'i null ya da açık olan segment'lerin sırayla tek boşlukla birleşimidir. Sıra numarasına
+  // göre süzme yok. Paragraf bayrağı kapalıyken içindeki segment bayrakları etkisizdir. Köşeli parantezli metinler açık yer
+  // tutucudur ([4], [5], [7]); olduğu gibi durur.
+  // Güvenli davranış: flag'i bilinmeyen (PRIVACY_CONTENT_FLAGS dışında), eksik (anahtar yok) ya da bozuk olan paragraf / segment
+  // gösterilmez; metni dize olmayan segment atlanır; id'si ya da segments dizisi olmayan paragraf gösterilmez. Hata fırlatılmaz.
+  // Varsayılan KAPALI (PRIVACY.enabled): panel Aryen'in ve avukatın kararı olmadan açılmaz. Kapalıyken bağlantı da panel de DOM'da boş ve gizli.
+  // Bayraklar (r20 PRIVACY_FLAGS, adlar JSON'daki gibi):
+  //   enabled:            Panelin kendisi (bağlantı ve panel). Aryen'in ve avukatın kararı olmadan açılmaz. (varsayılan false)
+  //   sharedWithAcikOfis: [0]'daki ortak hesap cümlesi. Hesaplar ayrılınca false. (varsayılan true)
+  //   loginLog12m:        [0]'daki 12 ay cümlesi. daad30e + 5233266 canlıda, üç koşul, Yazılım bildirimi. (varsayılan false)
+  //   resetBackup30d:     [8] paragrafı (30 gün). Kendi üç koşulu, Yazılım bildirimi. (varsayılan false)
+  //   earningsLog:        Kazanç kaydı paragrafı. B ile açılır. (varsayılan false)
+  //   progressLog12m:     Kazanç kaydı C4 (12 ay). Saklama görevinin canlıda ilk temiz çalışması ve silme testi. earningsLog kapalıyken etkisiz. (varsayılan false)
+  //   progressLogDelete:  Kazanç kaydı C6 (silme cümlesi). Silmenin B ile canlıda doğrulanması (Yazılım). earningsLog kapalıyken etkisiz. Panelde C7 yok. (varsayılan false)
+  //   deletionList:       Silme listesi paragrafı. Liste bugün canlıda yok, B ile gelecek. (varsayılan false)
+  //   deletionList45d:    Silme listesi 45 gün cümlesi. 45 günlük liste canlıda kurulup doğrulanınca. deletionList kapalıyken etkisiz. (varsayılan false)
+  var PRIVACY = { enabled: false, sharedWithAcikOfis: true, loginLog12m: false, resetBackup30d: false, earningsLog: false, progressLog12m: false, progressLogDelete: false, deletionList: false, deletionList45d: false };
+  var PRIVACY_CONTENT_FLAGS = ["sharedWithAcikOfis", "loginLog12m", "resetBackup30d", "earningsLog", "progressLog12m", "progressLogDelete", "deletionList", "deletionList45d"];
+  var ACC_TEXT = {
+    'account.privacySummary': "E-postan yalnızca giriş bağlantısı ve kodu için. İsimsiz sayaç ve ziyaret sayımı hesabına bağlanmaz.", // r20 (r19 ile aynı); kodda yeri yok, gösterilmez
+    'account.privacyLink': "Hesap ve bulut kaydı hakkında",
+    'account.privacyTitle': "Hesap ve bulut kaydı hakkında",
+    'account.privacyDetails': [
+      { id: "[0]", flag: null, segments: [
+        { flag: null, text: "Giriş yaparsan e-posta adresini ve bulut kaydını tutarız. Bulut kaydınla birlikte son kaydetme zamanı ve sıralama için en iyi puanın da tutulur. Girişlerin, çıkışların ve giriş e-postası isteklerin de e-posta adresinle birlikte kaydedilir." },
+        { flag: "loginLog12m", text: "Bu giriş kayıtları 12 ay sonra silinir." },
+        { flag: "sharedWithAcikOfis", text: "Bu hesap Açık Ofis oyunuyla ortaktır, orada da aynı hesapla giriş yaparsın." }
+      ] },
+      { id: "[1]", flag: null, segments: [
+        { flag: null, text: "Sıralamaya katılırsan seçtiğin takma ad da hesabınla birlikte tutulur. Takma adın ve puanın sıralamada herkese görünür. E-postan hiçbir yerde görünmez. Kurallara uymayan takma adları sıralamada gizleyebiliriz." }
+      ] },
+      { id: "[2]", flag: null, segments: [
+        { flag: null, text: "E-posta adresini yalnızca sana giriş bağlantısı ve kodu göndermek için kullanırız. Giriş yaptıysan bulut kaydını, telefonda ve bilgisayarda aynı ajansla devam edebilmen için tutarız." }
+      ] },
+      { id: "[3]", flag: null, segments: [
+        { flag: null, text: "Bunları, senin istediğin bulut kaydı hizmetini sunabilmek için işleriz (KVKK madde 5/2-c). E-posta adresini ve takma adını sen yazarsın. Giriş yaptığın sürece bulut kaydın oyundan otomatik gönderilir. Giriş yapmazsan kaydın buluta gitmez, yalnızca bu cihazda, tarayıcında durur; sonradan giriş yaparsan bu kayıt buluta yüklenebilir ve eşitleme sırasında tarayıcında ikinci bir kopyası oluşabilir. Giriş yapmasan da oyun, örneğin sıralamayı göstermek için, Kodhane'nin sunucusuna bağlanır; bu bağlantılar ve sayaçlar aşağıda anlatılıyor." }
+      ] },
+      { id: "[4]", flag: null, segments: [
+        { flag: null, text: "Bilgiler Kodhane'nin sunucusunda (kodhane-api.teserix.com) tutulur. Sunucu, bağlantı sırasında IP adresini teknik kayıtlarda görebilir. Bu teknik kayıtlar [TEKNİK KAYIT SAKLAMA SÜRESİ — avukat belirleyecek] sonra silinir." },
+        { flag: null, text: "Giriş için kullanılan kütüphane, girişle ilgili her işlemde jsDelivr adlı dosya dağıtım hizmetinden indirilebilir: Hesap penceresini açtığında, oyunu giriş bağlantısıyla açtığında (bağlantı geçersiz ya da süresi dolmuş olsa bile) ve oturumun açıksa onu sürdürmek için, oyun açılırken de oyun sırasında da. İndirme sırasında bağlantı bilgilerin bu hizmete gider." },
+        { flag: null, text: "Oyunun dosyaları, çevrimdışı da açılabilsin diye cihazında saklanır." }
+      ] },
+      { id: "[5]", flag: null, segments: [
+        { flag: null, text: "Giriş e-postalarını Resend adlı e-posta gönderim hizmeti gönderir. E-posta adresin bu hizmete yalnızca giriş e-postasını gönderebilmek için iletilir. Gönderim Türkiye dışındaki sunuculardan yapılır: [GÖNDERİM BÖLGESİ — Yazılım teyit edecek]. Yani e-posta adresin bu iş için yurt dışına aktarılır. Aktarımın dayanağı: [YURT DIŞI AKTARIM DAYANAĞI — Aryen/avukat belirleyecek]" }
+      ] },
+      { id: "[6]", flag: null, segments: [
+        { flag: null, text: "İsimsiz sayaç ve ziyaret sayımı hesabına bağlanmaz. Giriş yapsan da bu sayımlara e-postan, takma adın ya da hesap bilgin gitmez." }
+      ] },
+      { id: "[7]", flag: null, segments: [
+        { flag: null, text: "[SAKLAMA SÜRESİ — Aryen belirleyecek] boyunca giriş yapılmazsa hesabın ve bulut kaydın silinir; cihazındaki kayıt, içindeki son olayların listesiyle birlikte yerinde kalır. Aynı cihazda yeniden giriş yaparsan bu kayıt buluta geri yüklenir." }
+      ] },
+      { id: "[8]", flag: "resetBackup30d", segments: [
+        { flag: null, text: "Kaydını sıfırladığında, bulut kaydı kullanıyorsan buluttaki eski kaydın 30 gün oyun içi yedek olarak saklanır. Bu sürede onu geri yükleyebilirsin, sonra bu yedek silinir." }
+      ] },
+      { id: "kazanç kaydı", flag: "earningsLog", segments: [
+        { flag: null, text: "Bulut kaydı kullanıyorsan ilerlemendeki değişiklikler sunucuda ayrıca kaydedilir: hisselerin, Yatırım Turu ve Halka Arz sayıların ya da Borsa Payın arttığında veya azaldığında, Borsa Payı Ağacı'ndaki geliştirmelerin değiştiğinde, kaydını sıfırladığında ya da geri yüklediğinde ve bir telafi yaptığımızda. Her kayıtta olayın adı, hangi oyun öğesiyle ilgili olduğu, değişen bilginin önceki ve sonraki değeri, kaydının numarası, değişikliği oyunun mu yoksa ekibimizin mi (örneğin bir telafi) yaptığı, varsa telafi numarası, kullanıcı kimliğin, oyunun sürümü ve zaman bulunur; e-posta adresin tutulmaz. Bu kayıtları yalnızca hileyi fark etmek ve kaybolan ilerlemeni geri vermek için kullanırız." },
+        { flag: "progressLog12m", text: "Kayıtlar 12 ay saklanır." },
+        { flag: null, text: "Kaydını sıfırlaman bu kayıtları silmez." },
+        { flag: "progressLogDelete", text: "Hesabın ya da Kodhane kaydın silinirse bu kayıtlar da silinir." }
+      ] },
+      { id: "[9]", flag: null, segments: [
+        { flag: null, text: "Hesabının ya da yalnızca Kodhane kaydının silinmesini istersen info@teserix.com adresine yazabilirsin. Talebin yalnızca hesabının kayıtlı e-posta adresinden gelirse işlenir. Hesabının tamamı silindiğinde giriş kayıtların da silinir. Silme seçtiğin verileri sunucudan siler, cihazındaki kaydı silmez. Silinen veriler güvenlik yedeklerinde bir süre daha kalabilir; bu yedekler yalnızca arıza durumunda geri yükleme için kullanılır. Cihazındaki kayıt tarayıcıda kalır; onu da silmek için oyunu her cihazda kapat ve tarayıcında bu sitenin verilerini temizle, yoksa yeniden girişte kayıt buluta geri yüklenir." }
+      ] },
+      { id: "silme listesi", flag: "deletionList", segments: [
+        { flag: null, text: "Hesabın ya da Kodhane kaydın silindiğinde ayrı bir listede yalnızca hesap kimliğini, neyin silindiğini, silme zamanını ve silmenin nasıl yapıldığını gösteren bir referansı tutarız. E-posta adresin bu listede yer almaz. Bu liste, bir arıza sonrası yedekten geri yükleme yaparsak silinen verilerin yeniden silinmesi için kullanılır." },
+        { flag: "deletionList45d", text: "Listedeki bu bilgiler 45 gün sonra silinir; listenin kopyalarında bir süre daha kalabilir." }
+      ] },
+      { id: "veri sorumlusu", flag: null, segments: [
+        { flag: null, text: "Bu bilgilerin veri sorumlusu Teserix Bilişim ve Dijital Çözümler. KVKK'nın 11. maddesindeki haklarını kullanmak için info@teserix.com adresine yazabilirsin." }
+      ] }
+    ]
+  };
+  function privacyFlagOn(f) {
+    if (f === null) return true;                               // bayraksız: her zaman
+    if (typeof f !== 'string' || PRIVACY_CONTENT_FLAGS.indexOf(f) === -1) return false;   // eksik / bilinmeyen / bozuk
+    return PRIVACY[f] === true;
+  }
+  // Gösterilecek paragraflar: [{ id, text }], sırayla.
+  function privacyItems() {
+    var det = ACC_TEXT['account.privacyDetails'], out = [];
+    if (!Array.isArray(det)) return out;
+    det.forEach(function (p) {
+      if (!p || typeof p !== 'object' || typeof p.id !== 'string' || !p.id || !('flag' in p) || !privacyFlagOn(p.flag) || !Array.isArray(p.segments)) return;
+      var parts = [];
+      p.segments.forEach(function (s) {
+        if (!s || typeof s !== 'object' || !('flag' in s) || typeof s.text !== 'string' || !s.text || !privacyFlagOn(s.flag)) return;
+        parts.push(s.text);
+      });
+      if (parts.length) out.push({ id: p.id, text: parts.join(' ') });
+    });
+    return out;
+  }
+  function privacyParagraphs() { return privacyItems().map(function (it) { return it.text; }); }
+  function renderPrivacy() {
+    var link = document.getElementById('accPrivacyLink'), box = document.getElementById('accPrivacyDetails');
+    if (!link || !box) return;
+    if (!PRIVACY.enabled) {
+      link.textContent = ''; link.classList.add('hidden'); link.setAttribute('aria-expanded', 'false');
+      box.innerHTML = ''; box.classList.add('hidden'); box.removeAttribute('data-open');
+      return;
+    }
+    link.textContent = ACC_TEXT['account.privacyLink']; link.classList.remove('hidden');
+    var open = box.getAttribute('data-open') === '1';
+    link.setAttribute('aria-expanded', open ? 'true' : 'false');
+    box.classList.toggle('hidden', !open);
+    box.innerHTML = '';
+    if (!open) return;
+    var h = document.createElement('h4'); h.className = 'acc-privacy-title'; h.textContent = ACC_TEXT['account.privacyTitle']; box.appendChild(h);
+    privacyItems().forEach(function (it) { var e = document.createElement('p'); e.textContent = it.text; e.setAttribute('data-pid', it.id); box.appendChild(e); });
+  }
+  function togglePrivacy() {
+    var box = document.getElementById('accPrivacyDetails');
+    if (!box || !PRIVACY.enabled) return;
+    if (box.getAttribute('data-open') === '1') box.removeAttribute('data-open'); else box.setAttribute('data-open', '1');
+    renderPrivacy();
   }
 
   // Giriş e-postası gönderim hataları (Yazı r1, "Kod gönderim hataları"). Resend kotası üç oyunda ortak.
@@ -997,10 +1130,30 @@
   K.cloud = {
     state: C, config: CFG, push: push, flush: flush, reconcile: reconcile, signOut: signOut, open: openPanel, close: closePanel,
     getClient: getClient, online: online,
+    // v4.5 (P7): oturumlu RPC (lossreport.js). Yanıt { data, error, status } (supabase-js / sahte sunucu).
+    rpc: function (name, args) { if (!C.user) return Promise.resolve({ data: null, error: { message: 'permission denied for function ' + name, code: '42501' }, status: 401 }); return T.rpc(name, args); },
+    // v4.5 (P7, karar 7): oturumsuz RPC, herkese açık anahtarla (sıralamadaki misafir çağrısı gibi; SDK indirilmez). Yalnız
+    // "sunucuda bu fonksiyon var mı" yoklaması için: kuruluysa 401 42501, yoksa 404 PGRST202. Yapılandırma yoksa status 0.
+    anonRpc: function (name, args) {
+      if (useMock()) return mock().rpc(null, name, args);
+      if (!configured || typeof fetch !== 'function') return Promise.resolve({ data: null, error: { message: 'not_configured' }, status: 0 });
+      return fetch(CFG.url + '/rest/v1/rpc/' + name, {
+        method: 'POST',
+        headers: { apikey: CFG.key, Authorization: 'Bearer ' + CFG.key, 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(args || {})
+      }).then(function (res) {
+        return res.text().then(function (t) {
+          var b = null; try { b = t ? JSON.parse(t) : null; } catch (e) {}
+          return res.ok ? { data: b, error: null, status: res.status }
+            : { data: null, error: b && typeof b === 'object' && !Array.isArray(b) ? b : { message: 'HTTP ' + res.status }, status: res.status };
+        });
+      }, function (e) { return { data: null, error: { message: String(e && e.message || e) }, status: 0 }; });
+    },
     resetSave: function () { return K.beforeReset() || Promise.reject(new Error('not-signed-in')); },
-    restoreSave: restoreSave, latestBackup: latestBackup, handleStale: handleStale, mock: function () { return useMock() ? mock() : null; },
+    restoreSave: restoreSave, latestBackup: latestBackup, handleStale: handleStale, sentRevOf: sentRevOf, mock: function () { return useMock() ? mock() : null; },
     hold: hold, release: releaseHold, gate: gate, staleKind: staleKind,
     TEXT: CLOUD_TEXT, sendErrorKey: sendErrorKey,
+    PRIVACY: PRIVACY, PRIVACY_CONTENT_FLAGS: PRIVACY_CONTENT_FLAGS, ACC_TEXT: ACC_TEXT, privacyFlagOn: privacyFlagOn, privacyItems: privacyItems, privacyParagraphs: privacyParagraphs, renderPrivacy: renderPrivacy, togglePrivacy: togglePrivacy,
     BACKUP_KEY: BACKUP_KEY, REV_KEY: REV_KEY, WRITER_KEY: WRITER_KEY, isConfigured: function () { return configured; }
   };
 
@@ -1014,6 +1167,9 @@
     el.verify = el.accVerify; el.resend = el.accResend; el.change = el.accChange;
     if (!el.btn || !el.panel) return;
     el.btn.addEventListener('click', openPanel);
+    var pl = document.getElementById('accPrivacyLink');
+    if (pl) pl.addEventListener('click', togglePrivacy);
+    renderPrivacy();
     el.accClose.addEventListener('click', closePanel);
     el.panel.addEventListener('click', function (e) { if (e.target === el.panel) closePanel(); });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !el.panel.classList.contains('hidden')) closePanel(); });
