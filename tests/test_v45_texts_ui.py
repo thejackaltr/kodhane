@@ -122,7 +122,7 @@ with sync_playwright() as p:
     ev("Kodhane.setView('stats')"); pg.wait_for_timeout(200)
     ev("(t) => { const d = [...document.querySelectorAll('#statsList dt')].find((x) => x.textContent === t); d.id = 'perkE1'; d.scrollIntoView({block: 'center'}); }", VT['rep.perk.E1'])
     m = measure(pg, '#perkE1', '#statsList > div'); MEAS['rep.perk.E1'] = m
-    check('E1 row: %d line(s) at 360x640, no overflow/clip' % m['lines'], m['lines'] <= 2 and not bad(m), m)
+    check('E1 row (plan r5 short text): %d line(s) at 360x640 (expected 1), no overflow/clip' % m['lines'], m['lines'] == 1 and VT['rep.perk.E1'] == 'Teklif ve olaylar daha sık' and not bad(m), m)
     for e in ('E2', 'E4'):
         ev("([t, id]) => { const d = [...document.querySelectorAll('#statsList dt')].find((x) => x.textContent === t); d.id = id; }", [VT['rep.perk.' + e], 'perk' + e])
         m2 = measure(pg, '#perk' + e, '#statsList > div'); MEAS['rep.perk.' + e] = m2

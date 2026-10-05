@@ -19,8 +19,11 @@ const Y_PATH = '/workspace/plans/kodhane-v4.5-metinler-yazi-r1.json';
 const diffs = (a, b) => { const out = []; new Set([...Object.keys(a), ...Object.keys(b)]).forEach((k) => { if (JSON.stringify(a[k]) !== JSON.stringify(b[k])) out.push(k); }); return out; };
 if (fs.existsSync(Y_PATH)) {
   const Y = JSON.parse(fs.readFileSync(Y_PATH, 'utf8'));
-  const dV = diffs(K.V45_TEXT, Y.V45_TEXT);
-  check('V45_TEXT = Yazı r1 V45_TEXT: 18 keys, same order, 0 differences', dV.length === 0 && Object.keys(K.V45_TEXT).length === 18 && JSON.stringify(Object.keys(K.V45_TEXT)) === JSON.stringify(Object.keys(Y.V45_TEXT)), dV);
+  // Product plan r5: rep.perk.E1 kısa hali; Yazı r1'den tek bilinçli fark.
+  const R5 = { 'rep.perk.E1': 'Teklif ve olaylar daha sık' };
+  const dV = diffs(K.V45_TEXT, Object.assign({}, Y.V45_TEXT, R5));
+  check('V45_TEXT = Yazı r1 V45_TEXT + plan r5 E1 override: 18 keys, same order, 0 differences', dV.length === 0 && Object.keys(K.V45_TEXT).length === 18 && JSON.stringify(Object.keys(K.V45_TEXT)) === JSON.stringify(Object.keys(Y.V45_TEXT)), dV);
+  check('rep.perk.E1 = plan r5 short text, old Yazı r1 text gone', K.V45_TEXT['rep.perk.E1'] === 'Teklif ve olaylar daha sık' && Y.V45_TEXT['rep.perk.E1'] !== K.V45_TEXT['rep.perk.E1'] && !SRC.includes(Y.V45_TEXT['rep.perk.E1']), [K.V45_TEXT['rep.perk.E1'], Y.V45_TEXT['rep.perk.E1']]);
   const dL = diffs(L.TEXT_PENDING, Y.LOSS_TEXT_PENDING);
   check('LOSS_TEXT_PENDING = Yazı r1: 2 keys, 0 differences', dL.length === 0 && Object.keys(L.TEXT_PENDING).length === 2, dL);
   const dG = diffs(K.GEN_UPG_NAMES, Y.GEN_UPG_NAMES);

@@ -167,7 +167,8 @@
     }
     return s;
   }
-  // v4.5 metinleri: Yazı kodhane-v4.5-metinler-yazi-r1.json (V45_TEXT) birebir; tests/test_v45_texts.js karşılaştırır.
+  // v4.5 metinleri: Yazı kodhane-v4.5-metinler-yazi-r1.json (V45_TEXT) birebir; tek istisna rep.perk.E1 (Product plan r5 kısa hali).
+  // tests/test_v45_texts.js karşılaştırır.
   // rep.perk.E3: E3 kapalı (karar 3), metni yok; panelde gösterilmez.
   var V45_TEXT = {
     "upg.genTier.name": "Kademe {n}",
@@ -183,7 +184,7 @@
     "stage.asama_1e21.msg": "Tebrikler! Ofis yörüngeye çıktı. Kahve süzülüyor, toplantılar yine yerinde sayıyor.",
     "ach.asama_1e21.name": "Fırlatma Başarılı",
     "ach.asama_1e21.desc": "Yörünge Üssü aşamasına ulaş",
-    "rep.perk.E1": "Müşteri teklifleri ve olayları daha sık gelir",
+    "rep.perk.E1": "Teklif ve olaylar daha sık", // Product plan r5: kısa hali (360 px'te tek satır)
     "rep.perk.E2": "Büyük müşteri teklifleri gelir",
     "rep.perk.E3": "[rep.perk.E3]", // E3 kapalı (karar 3): metin yok, oyuncuya görünmez
     "rep.perk.E4": "Büyük müşteriler daha sık gelir",
