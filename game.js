@@ -1607,7 +1607,10 @@
     offer: function () { tone(880, 0.1, 'sine', 0.05); tone(1175, 0.12, 'sine', 0.05, 0.1); },
     ach: function () { [784, 988, 1319].forEach(function (f, i) { tone(f, 0.18, 'sine', 0.06, i * 0.08); }); }
   };
-  function sfx(name) { if (settings.sound && SFX[name]) { try { SFX[name](); } catch (e) {} } }
+  function sfx(name) {
+    try { document.dispatchEvent(new CustomEvent('kodhane:fx', { detail: name })); } catch (e) {} // görsel katman kancası (fx.js); yalnız sunum
+    if (settings.sound && SFX[name]) { try { SFX[name](); } catch (e) {} }
+  }
   function vibrate(p) { if (settings.vibrate && navigator.vibrate) { try { navigator.vibrate(p); } catch (e) {} } }
 
   function toast(msg, ms) {
@@ -2391,6 +2394,7 @@
   }
   function burst(x, y, gold) {
     if (reduceMotion) return;
+    if (el.floaters.childElementCount > 60) return; // görsel: hızlı tıklamada canlı parçacık/yazı sayısına üst sınır
     var n = gold ? 14 : 7;
     for (var i = 0; i < n; i++) {
       var p = document.createElement('div');
