@@ -8,7 +8,7 @@ RUN python3 tools/make_icons.py . \
  && sed -i "s/__BUILD__/docker-$(date -u +%Y%m%d%H%M%S)/" sw.js \
  && grep -n "var BUILD" sw.js \
  && mkdir /out \
- && cp index.html style.css game.js cloud.js leaderboard.js lossreport.js sw.js manifest.webmanifest \
+ && cp index.html style.css theme.css game.js fx.js cloud.js leaderboard.js lossreport.js sw.js manifest.webmanifest \
        icon.svg icon-192.png icon-512.png apple-touch-icon.png /out/ \
  && cp -r email /out/
 
