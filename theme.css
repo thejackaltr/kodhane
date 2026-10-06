@@ -1,0 +1,208 @@
+/* Kodhane görsel katman (theme.css) — yalnız sunum; style.css'ten SONRA yüklenir ve yalnız üzerine yazar.
+   Kurallar: metin ve sınıf adları değişmez; animasyonlar yalnız transform/opacity; renkler style.css değişkenlerinden
+   (ve color-mix türevlerinden); dış kaynak yok (ikonlar data URI); sonsuz animasyon yalnız görünür teklif balonunda
+   (style.css'teki offerPulse'ın yerine). prefers-reduced-motion: reduce iken hareket yok. */
+:root {
+  --tint: var(--stage-tint, var(--accent));
+  --tint-soft: color-mix(in srgb, var(--tint) 16%, var(--card));
+  --tint-line: color-mix(in srgb, var(--tint) 45%, var(--line));
+  --hi: inset 0 1px 0 #ffffff14;
+  --elev-1: var(--hi), 0 1px 0 #00000040, 0 8px 22px #00000040;
+  --elev-2: inset 0 1px 0 #ffffff1c, 0 14px 36px #00000059;
+  --focus: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent2);
+  --fx-ring: color-mix(in srgb, var(--accent2) 80%, #fff);
+}
+
+/* ---------------------------------------------------------------- 1. Zemin: terminal ızgarası (statik) */
+body::after {
+  content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: .06;
+  background:
+    repeating-linear-gradient(0deg, transparent 0 31px, var(--accent) 31px 32px),
+    repeating-linear-gradient(90deg, transparent 0 31px, var(--accent) 31px 32px);
+  -webkit-mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, #000 0%, transparent 80%);
+          mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, #000 0%, transparent 80%);
+}
+
+/* ---------------------------------------------------------------- 2. Başlık alanı */
+.logo { box-shadow: 0 0 0 1px #ffffff22 inset, 0 6px 18px color-mix(in srgb, var(--accent) 45%, transparent); text-shadow: 0 1px 0 #0005; }
+.brand h1 { background: linear-gradient(90deg, var(--text), color-mix(in srgb, var(--accent2) 55%, var(--text))); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.money { text-shadow: 0 0 18px color-mix(in srgb, var(--accent2) 22%, transparent); }
+.money.spend { text-shadow: 0 0 14px #ff5c7a66; }
+@media (min-width: 768px) {
+  .topbar { position: relative; padding: 4px 2px 12px; }
+  .topbar::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; pointer-events: none;
+    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--tint) 60%, transparent), color-mix(in srgb, var(--accent2) 50%, transparent), transparent); }
+}
+
+/* ---------------------------------------------------------------- 3. Aşama kartı (tonlu zemin, amblem kutusu, derin çubuk) */
+.stage-card {
+  position: relative; border-color: var(--tint-line); box-shadow: var(--elev-1);
+  background:
+    radial-gradient(520px 180px at 0% 0%, color-mix(in srgb, var(--tint) 26%, transparent), transparent 70%),
+    radial-gradient(420px 160px at 100% 100%, color-mix(in srgb, var(--accent2) 10%, transparent), transparent 70%),
+    linear-gradient(135deg, var(--card), var(--card2));
+}
+.stage-icon {
+  background: radial-gradient(circle at 30% 25%, color-mix(in srgb, var(--tint) 40%, #0000), #0004 70%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tint) 55%, transparent), 0 6px 16px #0005;
+}
+.stage-label { color: color-mix(in srgb, var(--tint) 45%, var(--muted)); }
+.stage-bonus { text-shadow: 0 0 12px #ffc85740; }
+.progress { background: #00000066; box-shadow: inset 0 1px 2px #0008, 0 1px 0 #ffffff0d; }
+.progress-fill { position: relative; overflow: hidden; background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--tint) 50%, var(--accent2)), var(--accent2)); box-shadow: 0 0 10px color-mix(in srgb, var(--accent2) 45%, transparent); }
+.progress-fill::after {
+  content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 40%; opacity: 0;
+  background: linear-gradient(90deg, transparent, #ffffff66, transparent); transform: translateX(-120%);
+}
+.progress.fx-shine .progress-fill::after { animation: fxShine .9s ease-out; }
+@keyframes fxShine { from { opacity: 1; transform: translateX(-120%); } to { opacity: 1; transform: translateX(360%); } }
+.chip { background: linear-gradient(180deg, #ffffff0a, #0003); border-color: color-mix(in srgb, var(--tint) 25%, var(--line)); box-shadow: var(--hi); }
+
+/* Aşama atlama: style.css'teki box-shadow 'glow' yerine halka (opacity/transform) */
+.stage-card.levelup { animation: none; }
+.stage-card::before {
+  content: ''; position: absolute; inset: -3px; border-radius: calc(var(--radius) + 3px); pointer-events: none; opacity: 0;
+  border: 3px solid var(--gold); box-shadow: 0 0 40px #ffc85766;
+}
+.stage-card.levelup::before { animation: fxHalo 1.2s ease; }
+@keyframes fxHalo { 0% { opacity: 0; transform: scale(.985); } 35% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(1.01); } }
+
+/* ---------------------------------------------------------------- 4. Paneller ve kartlar */
+.panel {
+  box-shadow: var(--elev-1);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--card) 88%, #fff 3%), var(--card) 120px);
+}
+.panel h2 { display: flex; align-items: center; gap: 8px; }
+.panel h2::before { content: ''; width: 4px; height: 1em; border-radius: 4px; background: linear-gradient(180deg, var(--accent), var(--accent2)); }
+.modal-card, .su-card, .event-card, .undo-bar, .update-bar { box-shadow: var(--elev-2); }
+.gen, .upg {
+  position: relative; box-shadow: var(--hi);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--card2) 92%, #fff 4%), var(--card2));
+  transition: opacity .15s, transform .12s ease;   /* yalnız transform/opacity (box-shadow ve border-color geçişi yok) */
+}
+.gen.affordable { box-shadow: var(--hi), inset 3px 0 0 var(--accent2), 0 0 0 1px #22d3a633, 0 0 16px #22d3a61f; }
+.upg.affordable { box-shadow: var(--hi), inset 3px 0 0 var(--gold), 0 0 0 1px #ffc85733, 0 0 14px #ffc8571f; }
+@media (hover: hover) and (pointer: fine) {
+  .gen:hover:not(:disabled), .upg:hover:not(:disabled) { transform: translateY(-1px); border-color: color-mix(in srgb, var(--accent) 60%, var(--line)); }
+  .ev-choice:hover, .btn:hover:not(:disabled) { transform: translateY(-1px); }
+}
+.gen-icon, .upg-icon { filter: drop-shadow(0 2px 3px #0006); }
+.tabs { background: #00000059; box-shadow: inset 0 1px 2px #0006; }
+.tabs button.active { background: linear-gradient(180deg, color-mix(in srgb, var(--card2) 80%, var(--accent) 20%), var(--card2)); box-shadow: var(--hi), 0 2px 8px #0005; }
+.btn { transition: transform .12s ease, opacity .15s; }
+.btn:active:not(:disabled), .ev-choice:active { transform: scale(.98); }
+.btn.primary { background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 85%, #fff 15%), var(--accent) 45%, #5b3de0); box-shadow: inset 0 1px 0 #ffffff33, 0 6px 18px #7c5cff40; }
+
+/* ---------------------------------------------------------------- 5. "Kod yaz" düğmesi ve paneli */
+.click-panel {
+  background:
+    radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 62%),
+    repeating-linear-gradient(0deg, transparent 0 21px, #ffffff06 21px 22px),
+    var(--card);
+}
+.click-btn {
+  background: radial-gradient(circle at 35% 28%, #b3a2ff, var(--accent) 42%, #4a2fd0 78%, #34209e 100%);
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 18%, transparent), 0 16px 44px #7c5cff59, inset 0 -10px 22px #0005, inset 0 8px 18px #fff4;
+}
+.click-text { text-shadow: 0 2px 6px #0006; }
+/* basış halkası (fx.js .fx-tap/.fx-crit ekler) */
+.click-btn::after {
+  content: ''; position: absolute; inset: -8px; border-radius: 50%; pointer-events: none;
+  border: 2px solid var(--fx-ring); opacity: 0; transform: scale(.9);
+}
+.click-btn.fx-tap::after { animation: fxRing .42s ease-out; }
+.click-btn.fx-crit::after { border-color: var(--gold); border-width: 3px; animation: fxRing .6s ease-out; }
+@keyframes fxRing { from { opacity: .7; transform: scale(.9); } to { opacity: 0; transform: scale(1.28); } }
+
+/* satın alma onayı */
+.gen.fx-bought::after, .upg.fx-bought::after {
+  content: ''; position: absolute; inset: -1px; border-radius: inherit; pointer-events: none;
+  border: 2px solid var(--accent2); animation: fxFade .45s ease-out forwards;
+}
+.upg.fx-bought::after { border-color: var(--gold); }
+@keyframes fxFade { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(1.03); } }
+
+/* ---------------------------------------------------------------- 6. style.css'teki diğer box-shadow animasyonlarının yerine */
+/* Müşteri teklifi: offerPulse (box-shadow) yerine sahte öğede genişleyen halka (transform/opacity). Animasyon adı 'wobble' değil. */
+.client-offer { animation: pop .35s ease-out; }
+.client-offer::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  box-shadow: 0 0 0 3px #ffc85799; opacity: 0; animation: fxPulse 2.4s ease-in-out .35s infinite;
+}
+@keyframes fxPulse { 0% { opacity: .9; transform: scale(1); } 70%, 100% { opacity: 0; transform: scale(1.08, 1.25); } }
+/* Güncelleme bandı: ubFlash (box-shadow) yerine tek seferlik halka */
+.update-bar.ub-flash { animation: none; }
+.update-bar::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; box-shadow: 0 0 0 3px #ffd166aa; opacity: 0; }
+.update-bar.ub-flash::after { animation: fxFade .6s ease-out 1; }
+
+/* ---------------------------------------------------------------- 7. Geçişler ve göstergeler */
+.tab.fx-in { animation: fxIn .22s ease-out; }
+@keyframes fxIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.bottom-nav button::before {
+  content: ''; position: absolute; top: 3px; left: 50%; width: 22px; height: 3px; margin-left: -11px; border-radius: 3px;
+  background: var(--accent2); opacity: 0; transform: scaleX(.3); transition: opacity .2s, transform .2s;
+}
+.bottom-nav button.active::before { opacity: 1; transform: scaleX(1); }
+.chip.fx-pop { animation: fxPop .5s ease-out; }
+.stage-icon.fx-pop { animation: fxPop .7s ease-out; }
+@keyframes fxPop { 0% { transform: scale(1); } 35% { transform: scale(1.12); } 100% { transform: scale(1); } }
+
+/* konfeti katmanı (fx.js; en fazla 28 parça) */
+.fx-layer { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 70; contain: strict; }
+.fx-bit {
+  position: absolute; top: 0; left: 0; width: 8px; height: 12px; border-radius: 2px; opacity: 0;
+  will-change: transform, opacity; animation: fxFall var(--t, 1.6s) cubic-bezier(.2,.6,.4,1) var(--d, 0s) forwards;
+}
+@keyframes fxFall {
+  0% { opacity: 1; transform: translate3d(var(--x0), var(--y0), 0) rotate(0deg); }
+  100% { opacity: 0; transform: translate3d(var(--x1), var(--y1), 0) rotate(var(--r, 540deg)); }
+}
+
+/* ---------------------------------------------------------------- 8. Klavye odak halkası (yerleşimi kaydırmaz) */
+.click-btn:focus-visible, .gen:focus-visible, .upg:focus-visible, .tabs button:focus-visible, .bottom-nav button:focus-visible,
+.qty button:focus-visible, .btn:focus-visible, .account-btn:focus-visible, .tree-node:focus-visible, .ev-choice:focus-visible,
+.ev-later:focus-visible, .acc-close:focus-visible, .client-offer:focus-visible { outline: none; box-shadow: var(--focus); }
+
+/* ---------------------------------------------------------------- 9. Dokunma alanları: en az 44 px */
+.qty button { min-height: 44px; min-width: 44px; }
+.tabs button { min-height: 44px; }
+.ev-later { min-height: 44px; }
+.acc-close { min-width: 44px; min-height: 44px; }
+.lb-refresh { min-height: 44px; }
+.update-bar .btn { min-height: 44px; }
+
+/* ---------------------------------------------------------------- 10. Dar ekran düzeltmeleri */
+/* 360×640: para sayacı satır kırmasın (oran satırının üstüne binmesin). Marka yazısı (Kodhane / Ajans Tycoon) yalnız
+   ≤400 px'te gizlenir, logo kalır; aynı kural style.css'te 20+ karakterlik sayılar için zaten var (.topbar.long-num). */
+@media (max-width: 400px) {
+  .brand > div { display: none; }   /* style.css'teki .topbar.long-num kuralıyla aynı yöntem (görsel-gizli kutu test_v45_ui taşma denetimine takılıyor) */
+  .money { white-space: nowrap; }
+  .rate { white-space: nowrap; }
+}
+/* Yatay kısa ekran (ör. 568×320): YALNIZ "Kod" görünümünde (aşama kartı görünürken) aşama kartı solda, Kod yaz sağda; böylece
+   "Kod yaz" ilk ekranda. Ekip / Geliştir / Sıralama görünümleri tek sütun kalır (4.4.2 liste/kart taşma düzeltmeleri aynen geçerli).
+   :has() desteklemeyen tarayıcıda düzen eskisi gibi tek sütundur. Düğme ölçüsü değişmez (≥200 px; v4.3.1 testi).
+   İzin bandı açıkken style.css'teki html.nb-open kuralları (v4.3.1) daha özgül olduğu için aynen geçerli kalır. */
+@media (max-width: 767px) and (max-height: 520px) and (orientation: landscape) {
+  body:has(> .stage-card:not(.mhide)) { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 8px; align-items: start; }
+  body:has(> .stage-card:not(.mhide)) > * { grid-column: 1 / -1; }   /* varsayılan: tam satır (izin bandı, alt menü, JS'in eklediği öğeler) */
+  body:has(> .stage-card:not(.mhide)) > .stage-card,
+  body:has(> .stage-card:not(.mhide)) > .boost-bar,
+  body:has(> .stage-card:not(.mhide)) > .fal-bar { grid-column: 1; margin-bottom: 8px; }
+  body:has(> .stage-card:not(.mhide)) > .layout { grid-column: 2; grid-row: 2 / span 3; }
+  body:has(> .stage-card:not(.mhide)) .click-panel { padding: 4px 8px 8px; }
+}
+
+/* Zorunlu renk (Windows yüksek kontrast): degrade metin görünmez olmasın */
+@media (forced-colors: active) { .brand h1 { background: none; color: CanvasText; } }
+
+/* ---------------------------------------------------------------- Azaltılmış hareket: tüm görsel katman hareketsiz */
+@media (prefers-reduced-motion: reduce) {
+  .click-btn::after, .gen.fx-bought::after, .upg.fx-bought::after, .progress-fill::after, .update-bar::after { animation: none !important; opacity: 0; }
+  .client-offer, .client-offer::after { animation: none !important; }
+  .client-offer::after { opacity: 1; transform: none; }
+  .stage-card.levelup::before { animation: none !important; opacity: 0; }
+  .fx-layer { display: none; }
+  .tab.fx-in, .chip.fx-pop, .stage-icon.fx-pop { animation: none !important; }
+  .gen:hover, .upg:hover, .btn:hover, .ev-choice:hover { transform: none !important; }
+}

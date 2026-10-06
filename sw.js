@@ -5,7 +5,7 @@
 var BUILD = '__BUILD__';
 var CACHE_VERSION = 'v4.5.0';
 var CACHE = 'kodhane-' + CACHE_VERSION + '-' + BUILD;
-var ASSETS = ['./', './index.html', './style.css', './game.js', './cloud.js', './leaderboard.js', './lossreport.js', './manifest.webmanifest',
+var ASSETS = ['./', './index.html', './style.css', './game.js', './cloud.js', './leaderboard.js', './lossreport.js', './theme.css', './fx.js', './scene.css', './scene.js', './manifest.webmanifest',
   './icon.svg', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', function (e) {
