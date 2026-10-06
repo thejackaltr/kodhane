@@ -1,0 +1,63 @@
+/* Kodhane ofis sahnesi (scene.js) — yalnız sunum. Animasyonlar yalnız transform/opacity; sabit sayıda @keyframes;
+   prefers-reduced-motion: reduce iken hareket yok; .paused iken (sekme gizli, sahne görünmüyor, pencere açık) her şey durur.
+   Sonsuz animasyonlar yalnız boşta duran küçük öğelerde; işe alım / belirme / aşama geçişi tek seferlik. */
+.office-scene {
+  position: relative; margin: 0 0 10px; overflow: hidden; pointer-events: none;
+  border-radius: 14px; border: 1px solid var(--line, #2a3158); background: #171c33; contain: layout paint;
+}
+/* Boyut: masaüstünde Ekip sütununun tam genişliği (400×252 çerçeve), telefonda 400×285 ve masa kümesine yakın kamera. Yatay kısa ekranda yok. */
+.office-scene .sc-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+.office-scene .sc-layer { display: block; }
+.office-scene svg { display: block; width: 100%; height: auto; }
+.office-scene .sc-layer.sc-out { position: absolute; inset: 0; z-index: 1; }
+@media (max-width: 767px) and (max-height: 520px) { .office-scene { display: none; } }
+
+.office-scene .sc-bob, .office-scene .sc-hands, .office-scene .sc-sip, .office-scene .sc-code, .office-scene .sc-tail {
+  transform-box: fill-box;
+}
+/* yazma: kafa/gövde 1 px, eller 1 px (farklı hız) */
+.office-scene .sc-bob { animation: scBob 2.6s ease-in-out infinite; }
+.office-scene .sc-hands { animation: scType .5s ease-in-out infinite; }
+@keyframes scBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1px); } }
+@keyframes scType { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(1.2px); } }
+/* kahve: fincan kalkar, eğilir, iner */
+.office-scene .sc-sip { transform-origin: 50% 100%; animation: scSip 7s ease-in-out infinite; }
+@keyframes scSip {
+  0%, 62%, 92%, 100% { transform: translateY(0) rotate(0); }
+  70%, 84% { transform: translateY(-4px) rotate(-14deg); }
+}
+/* kod balonu: belirir, durur, söner */
+.office-scene .sc-code { transform-origin: 30% 100%; animation: scCode 6s ease-out infinite; }
+@keyframes scCode {
+  0% { transform: scale(.3); opacity: 0; }
+  8%, 38% { transform: scale(1); opacity: 1; }
+  48%, 100% { transform: scale(.85); opacity: 0; }
+}
+/* kedi kuyruğu */
+.office-scene .sc-tail { transform-origin: 0% 100%; animation: scTail 3.2s ease-in-out infinite; }
+@keyframes scTail { 0%, 100% { transform: rotate(-8deg); } 50% { transform: rotate(14deg); } }
+/* sunucu LED'i, çay buharı */
+.office-scene .sc-led { animation: scLed 1.6s steps(2, jump-none) infinite; }
+@keyframes scLed { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+.office-scene .sc-steam { animation: scSteam 3s ease-in-out infinite; }
+@keyframes scSteam { 0%, 100% { opacity: 0; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-2px); } }
+
+/* işe alım: karakter yukarıdan süzülüp sandalyesine oturur; altın halka */
+.office-scene .sc-enter, .office-scene .sc-pop, .office-scene .sc-poof { transform-box: fill-box; transform-origin: 50% 100%; }
+.office-scene .sc-enter { animation: scEnter .75s cubic-bezier(.2, .9, .3, 1.25) both; }
+@keyframes scEnter { 0% { opacity: 0; transform: translateY(-22px) scale(.7); } 55% { opacity: 1; transform: translateY(2px) scale(1.06); } 100% { opacity: 1; transform: none; } }
+.office-scene .sc-poof { transform-origin: 50% 50%; animation: scPoof .8s ease-out both; }
+@keyframes scPoof { 0% { opacity: 0; transform: scale(.3); } 25% { opacity: .95; } 100% { opacity: 0; transform: scale(1.7); } }
+/* yeni geliştirme / tesis: zıplayarak belirir */
+.office-scene .sc-pop { animation: scPop .65s cubic-bezier(.2, .9, .3, 1.35) both; }
+@keyframes scPop { 0% { opacity: 0; transform: scale(.2); } 60% { opacity: 1; transform: scale(1.12); } 100% { opacity: 1; transform: none; } }
+/* aşama geçişi: eski ofis büyüyüp söner, yeni ofis küçükten belirir */
+.office-scene .sc-layer.sc-out { animation: scOut .6s ease-in forwards; }
+.office-scene .sc-layer.sc-in { animation: scIn .7s ease-out both; }
+@keyframes scOut { to { opacity: 0; transform: scale(1.08); } }
+@keyframes scIn { from { opacity: 0; transform: scale(.9); } to { opacity: 1; transform: none; } }
+
+.office-scene.paused * { animation-play-state: paused !important; }
+@media (prefers-reduced-motion: reduce) {
+  .office-scene * { animation: none !important; }
+}
