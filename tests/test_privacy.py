@@ -186,6 +186,10 @@ with sync_playwright() as p:
         opts = dict(locale='tr-TR', service_workers='block')
         opts.update(vp or dict(viewport={'width': 1280, 'height': 800}))
         ctx = b.new_context(**opts)
+        # Ağ arayüzü olmayan sandbox'ta (unshare -rn) Chromium kendini çevrimdışı sayar (navigator.onLine === false) ve
+        # leaderboard.js countEvent isOnline() yüzünden sayaç RPC'sini hiç atmaz. Tüm istekler zaten route ile yerelde
+        # karşılanıyor; bu testte bilerek çevrimdışı senaryo yok, o yüzden onLine'ı true'ya sabitliyoruz.
+        ctx.add_init_script("Object.defineProperty(Navigator.prototype, 'onLine', { get: () => true, configurable: true });")
         host = urlsplit(base).hostname
         prefix = urlsplit(base).path
         ctx.route('https://%s/**' % host, file_route(prefix))
