@@ -18,7 +18,7 @@ function fresh() { K.state = K.newState(); return K.state; }
 function round(earn) { K.earn(earn); return K.doPrestige(); }
 
 // ---------------------------------------------------------------- ayarlar = denge simülasyonu E100cd12
-check('version 4.4.2, save version 5 (unchanged)', K.VERSION === '4.4.2' && K.SAVE_VERSION === 5);
+check('version 4.4.3, save version 5 (unchanged)', K.VERSION === '4.4.3' && K.SAVE_VERSION === 5);
 check('Halka Arz balance = E100cd12 (keep 1.0 floor, bankPending, +10%/pay, cap 40, 12 h)',
   H.keepShares === 1.0 && H.keepMode === 'floor' && H.bankPending === true && H.shareGainPerEarned === 0.10 && H.accelCap === 40 && H.cooldownSec === 43200, H);
 check('stage pays by ID = [0,0,0,0,0,2,3,4,5,8,12]', K.STAGES.map((s, i) => K.stagePay(i)).join(',') === '0,0,0,0,0,2,3,4,5,8,12');
@@ -214,7 +214,10 @@ check('reset.prestigeHint (r3)', K.RESET_TEXT['reset.prestigeHint'] === "Başar�
 {
   const LOGP = "Kaydın, son 20 önemli olayı da kendi içinde tutar: Halka Arz, Yatırım turu ve sıfırlama, ayrıca bu olaylardan önceki ve sonraki hisse ve Borsa Payı sayıların. Bu liste yalnızca kaydının içinde durur. Bulut kaydı kullanıyorsan kaydınla birlikte buluta gider, başka hiçbir yere gönderilmez. Bir destek talebinde neyin ne zaman olduğunu görmek için kullanılır. Kaydını sıfırlasan da bu liste kalır. Hesabın silinirse liste sunucudan silinir, bu cihazdaki kaydınla birlikte cihazında kalır.";
   const iLog = DET.indexOf(LOGP), iCtl = DET.findIndex((x) => x.startsWith('Bu bilgilerin veri sorumlusu'));
-  check('privacy: event-log paragraph (Yazı r1 cümle 1 + reset/deletion sentences) right before the data-controller paragraph, no server-copies paragraph', iLog > 0 && iCtl === iLog + 1 && !DET.some((x) => x.includes('kopyaları')), [iLog, iCtl]);
+  // v4.4.3: aralarında yalnız kazanç kaydı paragrafı (Yazı kazanç kaydı r4, çeşit yaması) olabilir
+  const KGV = Object.values(JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'kodhane-kazanc-kaydi-copy.json'), 'utf8')).variants);
+  check('privacy: event-log paragraph (Yazı r1 cümle 1 + reset/deletion sentences) right before the data-controller paragraph (v4.4.3: or only the kazanç kaydı paragraph between), no server-copies paragraph',
+    iLog > 0 && (iCtl === iLog + 1 || (iCtl === iLog + 2 && KGV.includes(DET[iLog + 1]))) && !DET.some((x) => x.includes('kopyaları')), [iLog, iCtl]);
   check('privacy: Cloudflare paragraph = one sentence (Yazı süresiz r1), no "çerez kullanmaz" / "tanımaya" claim', DET[2] === 'Site Cloudflare üzerinden sunulduğu için sayfa açılışlarını Cloudflare de kendi aracıyla ayrıca sayar.'
     && !DET.some((x) => /çerez|tanımaya/.test(x)));
   check('CFG.eventLog.max = 20 (matches "son 20" in the privacy text)', K.CFG.eventLog.max === 20 && LOGP.includes('son 20'));
@@ -333,7 +336,7 @@ check('reset.prestigeHint (r3)', K.RESET_TEXT['reset.prestigeHint'] === "Başar�
   const fresh441 = (K.state = S, JSON.parse(K.serialize()));   // (ad eski: v4.4.2 kaydı)
   const KEYS442 = KEYS440.slice(); KEYS442.splice(KEYS442.indexOf('saveVersion') + 1, 0, 'clientVersion');   // tek ek alan, saveVersion'ın hemen arkasında
   check('v4.4.2 fresh save: v4.4.0 keys in the same order + only clientVersion (after saveVersion)', JSON.stringify(Object.keys(fresh441)) === JSON.stringify(KEYS442), Object.keys(fresh441).filter((k) => !KEYS440.includes(k)));
-  check('v4.4.2: data.clientVersion = "4.4.2" (= VERSION), saveVersion still 5', fresh441.clientVersion === '4.4.2' && fresh441.clientVersion === K.VERSION && fresh441.saveVersion === 5 && fresh441.version === 5);
+  check('v4.4.2+: data.clientVersion = VERSION ("4.4.3"), saveVersion still 5', fresh441.clientVersion === '4.4.3' && fresh441.clientVersion === K.VERSION && fresh441.saveVersion === 5 && fresh441.version === 5);
   // dolu bir v4.4.0 kaydı (gerçek 879f67b çıktısıyla aynı biçim): yükle -> kaydet; alan kümesi (iç içe) ve değerler aynı (lastSaved hariç)
   let src440 = null;
   try { src440 = require('child_process').execFileSync('git', ['show', '879f67b:game.js'], { cwd: path.join(__dirname, '..'), stdio: ['ignore', 'pipe', 'ignore'] }).toString(); } catch (e) { src440 = null; }
@@ -350,7 +353,7 @@ check('reset.prestigeHint (r3)', K.RESET_TEXT['reset.prestigeHint'] === "Başar�
     const raw0 = K0.serialize(), o0 = JSON.parse(raw0);
     K.deserialize(raw0); const o1 = JSON.parse(K.serialize());
     const noCv = (o) => { const c = JSON.parse(JSON.stringify(o)); delete c.clientVersion; return c; };
-    check('v4.4.0 save (no clientVersion) -> v4.4.2 load+save: identical nested key set and order + clientVersion', JSON.stringify(keysDeep(noCv(o1))) === JSON.stringify(keysDeep(o0)) && o1.clientVersion === '4.4.2',
+    check('v4.4.0 save (no clientVersion) -> v4.4.2 load+save: identical nested key set and order + clientVersion', JSON.stringify(keysDeep(noCv(o1))) === JSON.stringify(keysDeep(o0)) && o1.clientVersion === K.VERSION,
       [keysDeep(o1).filter((k) => !keysDeep(o0).includes(k)), keysDeep(o0).filter((k) => !keysDeep(o1).includes(k))]);
     const strip = (o) => { const c = noCv(o); delete c.lastSaved; return c; };
     check('v4.4.0 save -> v4.4.2 load+save: all values identical (except lastSaved, + clientVersion)', JSON.stringify(strip(o1)) === JSON.stringify(strip(o0)),
@@ -396,10 +399,46 @@ check('reset.prestigeHint (r3)', K.RESET_TEXT['reset.prestigeHint'] === "Başar�
     K1.state.gens.stajyer = 120; K1.state.stageBest = 10; K1.state.stage = 10; K1.state.cycleStage = 10;
     const strip = (o) => { const c = JSON.parse(JSON.stringify(o)); delete c.lastSaved; delete c.clientVersion; return c; };
     const o1 = JSON.parse(K1.serialize()); K.deserialize(JSON.stringify(o1)); const o2 = JSON.parse(K.serialize());
-    check('v4.4.1 save -> v4.4.2 load+save: identical except lastSaved + clientVersion "4.4.2"', K1.VERSION === '4.4.1' && JSON.stringify(strip(o2)) === JSON.stringify(strip(o1)) && o2.clientVersion === '4.4.2' && !K.writesBlocked());
+    check('v4.4.1 save -> this version load+save: identical except lastSaved + clientVersion = VERSION', K1.VERSION === '4.4.1' && JSON.stringify(strip(o2)) === JSON.stringify(strip(o1)) && o2.clientVersion === K.VERSION && !K.writesBlocked());
     K1.deserialize(JSON.stringify(o2)); const o3 = JSON.parse(K1.serialize());
     check('v4.4.2 save -> v4.4.1 load+save: not blocked, identical, clientVersion dropped', !K1.writesBlocked() && JSON.stringify(strip(o3)) === JSON.stringify(strip(o1)) && !('clientVersion' in o3));
   }
+}
+
+// ---------------------------------------------------------------- v4.4.3: gizlilik metnine kazanç kaydı paragrafı (Yazı kazanç kaydı r4)
+// Paragraf İsimsiz sayaç ayrıntılarına (TEL_TEXT['telemetry.details']) girer: olay listesi paragrafından sonra, veri sorumlusu
+// paragrafından önce. Temel dalda yok; çeşit yaması (A-tam / A-c6siz / B-tam / B-c6siz) tek satır ekler. Hesap penceresinde metin yok.
+{ const FX = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'kodhane-kazanc-kaydi-copy.json'), 'utf8'));
+  const APPROVED = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'kodhane-telemetry-copy.json'), 'utf8'))['telemetry.details'];
+  const names = Object.keys(FX.variants), det = K.TEL_TEXT['telemetry.details'];
+  check('fixture: 4 variants A-tam / A-c6siz / B-tam / B-c6siz', JSON.stringify(names) === '["A-tam","A-c6siz","B-tam","B-c6siz"]');
+  const has = (v, c) => v.includes(FX.sentences[c]);
+  check('fixture: 7 sentences C1-C7; each variant = its sentences joined by one space, in order (r4)', JSON.stringify(Object.keys(FX.sentences)) === '["C1","C2","C3","C4","C5","C6","C7"]'
+    && names.every((n) => FX.variants[n] === ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7'].filter((c) => (c !== 'C4' || n.startsWith('A')) && (!['C6', 'C7'].includes(c) || n.endsWith('-tam'))).map((c) => FX.sentences[c]).join(' ')));
+  check('fixture structure: C1-C3, C5 in all; C4 (12 ay) only in A; C6 (silme) + C7 (yedek) only in *-tam, C7 right after C6, last sentence',
+    names.every((n) => ['C1', 'C2', 'C3', 'C5'].every((c) => has(FX.variants[n], c)) && has(FX.variants[n], 'C4') === n.startsWith('A') && has(FX.variants[n], 'C6') === n.endsWith('-tam')
+      && has(FX.variants[n], 'C7') === n.endsWith('-tam')
+      && (n.endsWith('-tam') ? FX.variants[n].endsWith(FX.sentences.C6 + ' ' + FX.sentences.C7) : FX.variants[n].endsWith(FX.sentences.C5))));
+  check('fixture: *-c6siz = *-tam without C6 + C7; B = A without C4', names.filter((n) => n.endsWith('-tam')).every((n) => FX.variants[n.replace('-tam', '-c6siz')] === FX.variants[n].replace(' ' + FX.sentences.C6 + ' ' + FX.sentences.C7, ''))
+    && FX.variants['B-tam'] === FX.variants['A-tam'].replace(' ' + FX.sentences.C4, ''));
+  check('fixture: C2 = Yazı r4 (hangi oyun öğesi, ekibimizin mi (örneğin bir telafi), varsa telafi numarası; e-posta yok)', /olayın adı, hangi oyun öğesiyle ilgili olduğu,/.test(FX.sentences.C2)
+    && FX.sentences.C2.includes('oyunun mu yoksa ekibimizin mi (örneğin bir telafi) yaptığı, varsa telafi numarası,') && !FX.sentences.C2.includes('bir telafinin mi') && FX.sentences.C2.endsWith('e-posta adresin tutulmaz.'));
+  const extra = det.filter((x) => !APPROVED.includes(x));
+  const active = names.filter((n) => extra.length === 1 && extra[0] === FX.variants[n]);
+  console.log('NOTE kazanç kaydı çeşidi: ' + (extra.length ? (active[0] || 'BİLİNMEYEN METİN') : 'yok (temel dal)'));
+  check('telemetry.details = the 6 approved paragraphs (order kept) + at most one kazanç kaydı paragraph, exactly one fixture variant, verbatim',
+    JSON.stringify(det.filter((x) => APPROVED.includes(x))) === JSON.stringify(APPROVED) && (extra.length === 0 || active.length === 1), extra);
+  if (extra.length) {
+    const i = det.indexOf(extra[0]);
+    check('kazanç kaydı paragraph right after the event-log paragraph ("Kaydın, son 20 ...") and before the data controller paragraph (last)',
+      det[i - 1] === APPROVED[4] && /^Kaydın, son 20/.test(det[i - 1]) && det[i + 1] === APPROVED[5] && /veri sorumlusu/.test(det[i + 1]) && i === det.length - 2, i);
+  }
+  const tam = active.length === 1 && active[0].endsWith('-tam');
+  check('backup sentence (C7, "yedek") only in the *-tam paragraph, right after C6; nowhere else in the privacy text (Yazı r3/r4)',
+    det.every((x) => !/yedek/i.test(x) || (tam && x === extra[0])) && (!tam || extra[0].endsWith(FX.sentences.C6 + ' ' + FX.sentences.C7)) && (tam || !extra.some((x) => x.includes(FX.sentences.C7))), active);
+  check('kazanç kaydı paragraph: no e-mail address / service name / other game name', extra.every((l) => !/@|Supabase|Açık Ofis|Teserix/.test(l)));
+  check('account panel text gone: no ACC_TEXT / accText / accProgressLog in game.js or index.html',
+    !('ACC_TEXT' in K) && !('accText' in K) && !/ACC_TEXT|accProgressLog|privacyDetails/.test(fs.readFileSync(path.join(__dirname, '..', 'game.js'), 'utf8') + fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8')));
 }
 
 console.log(`\n${pass}/${pass + fail} passed`);

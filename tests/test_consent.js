@@ -51,7 +51,11 @@ const on = (st) => { st.setItem('kodhane_tel_notice', '1'); st.setItem('kodhane_
   check('telText: details is a list of non-empty paragraphs (copy), unknown key -> ""', Array.isArray(K.telText('telemetry.details')) && K.telText('telemetry.details').length >= 1 &&
     K.telText('telemetry.details').every((p) => typeof p === 'string' && p.trim()) && K.telText('nope') === '');
   const approved = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'kodhane-telemetry-copy.json'), 'utf8'));
-  check('TEL_TEXT: exactly the approved final copy (fixture, character for character)', JSON.stringify(K.TEL_TEXT) === JSON.stringify(approved));
+  // v4.4.3: kazanç kaydı paragrafı (Yazı kazanç kaydı r4, çeşit yaması) ayrı fixture'dan; onu çıkarınca metin onaylı kopyayla birebir aynı
+  const kgv = Object.values(JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'kodhane-kazanc-kaydi-copy.json'), 'utf8')).variants);
+  const telNoKg = JSON.parse(JSON.stringify(K.TEL_TEXT)); telNoKg['telemetry.details'] = telNoKg['telemetry.details'].filter((x) => !kgv.includes(x));
+  check('TEL_TEXT: exactly the approved final copy (fixture, character for character; v4.4.3 kazanç kaydı paragraph aside)', JSON.stringify(telNoKg) === JSON.stringify(approved)
+    && K.TEL_TEXT['telemetry.details'].length - telNoKg['telemetry.details'].length <= 1);
   check('TEL_TEXT: no [TASLAK] placeholders left', !/TASLAK/.test(JSON.stringify(K.TEL_TEXT)) && !/TASLAK/.test(fs.readFileSync(path.join(__dirname, '..', 'game.js'), 'utf8')));
   check('TEL_TEXT: curly quotes “Tamam” and emoji kept', K.telText('telemetry.details')[3].indexOf('“Tamam” dedikten') !== -1 && K.telText('settings.telemetryOn').indexOf('📊') === 0);
   check('reset copy: "Kalacaklar" names the privacy settings', K.RESET_TEXT['reset.keepList'].indexOf('Ses, titreşim ve gizlilik ayarların') !== -1 &&

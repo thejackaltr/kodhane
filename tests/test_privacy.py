@@ -28,6 +28,7 @@ COUNT_PATH = '/rest/v1/rpc/kodhane_count_event'
 BASES = [('root', 'https://kodhane.teserix.com/'), ('subpath', 'https://thejackaltr.github.io/kodhane/')]
 results = []
 COPY = json.load(open(os.path.join(ROOT, 'tests', 'fixtures', 'kodhane-telemetry-copy.json'), encoding='utf-8'))
+KG = json.load(open(os.path.join(ROOT, 'tests', 'fixtures', 'kodhane-kazanc-kaydi-copy.json'), encoding='utf-8'))   # v4.4.3 (Yazı kazanç kaydı r4)
 
 
 def check(name, cond, info=''):
@@ -560,6 +561,89 @@ with sync_playwright() as p:
         else:
             check('[prefs] on: prestige/IPO events (investment_round, ipo_complete) reached Umami', c['umami_send'] >= 3, c)
         ctx.close()
+
+    # ================================================================ 6) [kazanç] v4.4.3: kazanç kaydı paragrafı gizlilik metninde (Yazı kazanç kaydı r4)
+    # Paragraf İsimsiz sayaç ayrıntılarında (Gizlilik > Ayrıntılar), olay listesi paragrafından sonra, veri sorumlusundan önce.
+    # Temel dalda yok; çeşit yaması (A-tam / A-c6siz / B-tam / B-c6siz) ekler, test çeşidi metinden bulur. Hesap penceresinde metin yok.
+    # 360x640 ve 568x320: yatay taşma 0, paragraf kesilmiyor, kaydırınca tamamı kartın içinde okunuyor; okunabilirlik ölçüleri + ekran görüntüsü.
+    KGM = """() => {
+      const card = document.getElementById('modalCard'), C = card.getBoundingClientRect();
+      const ps = [...document.querySelectorAll('.tel-details p')];
+      const lum = (c) => { const m = c.match(/[\\d.]+/g).map(Number); const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+        return { L: 0.2126 * f(m[0]) + 0.7152 * f(m[1]) + 0.0722 * f(m[2]), a: m.length > 3 ? m[3] : 1 }; };
+      let bgEl = card, bg = getComputedStyle(card).backgroundColor;
+      while (bgEl && lum(bg).a === 0) { bgEl = bgEl.parentElement; bg = bgEl ? getComputedStyle(bgEl).backgroundColor : 'rgb(255,255,255)'; }
+      return { doc: document.documentElement.scrollWidth, vw: innerWidth, vh: innerHeight, cardSW: card.scrollWidth, cardCW: card.clientWidth,
+        cardTop: Math.round(C.top), cardBottom: Math.round(C.bottom), cardSH: card.scrollHeight, cardCH: card.clientHeight, oy: getComputedStyle(card).overflowY,
+        ps: ps.map((p, i) => { const r = p.getBoundingClientRect(), cs = getComputedStyle(p), lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.2;
+          const a = lum(cs.color), b = lum(bg), hi = Math.max(a.L, b.L), lo = Math.min(a.L, b.L);
+          return { i, text: p.textContent, sw: p.scrollWidth, cw: p.clientWidth, sh: p.scrollHeight, ch: p.clientHeight, w: Math.round(r.width), h: Math.round(r.height),
+            font: parseFloat(cs.fontSize), lh: Math.round(lh * 10) / 10, lines: Math.round(r.height / lh), contrast: Math.round((hi + 0.05) / (lo + 0.05) * 100) / 100,
+            inside: r.left >= C.left - 0.5 && r.right <= C.right + 0.5, visible: r.top >= Math.max(C.top, 0) - 0.5 && r.bottom <= Math.min(C.bottom, innerHeight) + 0.5 }; }) };
+    }"""
+    kg_measures = {}
+    for vname in ('360x640', '568x320'):
+        vp = dict(VIEWPORTS)[vname]
+        net = Net()
+        ctx = new_ctx(base, net, vp=vp, quiet=True, init="localStorage.setItem('kodhane_tel_notice','1'); localStorage.setItem('kodhane_tel','off');")
+        pg = open_page(ctx, base)
+        tagk = '[kazanç][%s]' % vname
+        stats_tab(pg, True)
+        pg.click('#telDetailsBtn'); pg.wait_for_selector('.tel-details'); pg.wait_for_timeout(400)
+        m = pg.evaluate(KGM)
+        texts = [x['text'] for x in m['ps']]
+        found = [n for n, t in KG['variants'].items() if t in texts]
+        variant = found[0] if len(found) == 1 else ('temel' if not found else None)
+        check(tagk + ' privacy text: no kazanç kaydı paragraph (base) or exactly one Yazı r4 variant, verbatim (%s)' % variant, variant is not None, found)
+        check(tagk + ' the 6 approved paragraphs still shown, in order', [t for t in texts if t in COPY['telemetry.details']] == COPY['telemetry.details'], texts)
+        tam = bool(variant) and variant.endswith('-tam')
+        check(tagk + ' backup sentence (C7, "yedek") only in the *-tam paragraph, right after C6 (%s)' % ('var' if tam else 'yok'),
+              all('yedek' not in t.lower() or (tam and t == KG['variants'][variant]) for t in texts)
+              and (not tam or KG['variants'][variant].endswith(KG['sentences']['C6'] + ' ' + KG['sentences']['C7'])), [t[:80] for t in texts if 'yedek' in t.lower()])
+        ok_w = m['doc'] <= vp['viewport']['width'] and m['cardSW'] <= m['cardCW'] + 1 and all(x['sw'] <= x['cw'] + 1 and x['inside'] for x in m['ps'])
+        check(tagk + ' no horizontal overflow (page %d / %d, card %d / %d, every paragraph inside the card)' % (m['doc'], vp['viewport']['width'], m['cardSW'], m['cardCW']), ok_w,
+              [x for x in m['ps'] if not (x['sw'] <= x['cw'] + 1 and x['inside'])])
+        check(tagk + ' card inside the viewport (top %d, bottom %d, vh %d), scrolls inside itself when long (%d / %d px, overflow-y %s)' % (m['cardTop'], m['cardBottom'], m['vh'], m['cardSH'], m['cardCH'], m['oy']),
+              m['cardTop'] >= 0 and m['cardBottom'] <= m['vh'] and (m['cardSH'] <= m['cardCH'] + 1 or m['oy'] in ('auto', 'scroll')), m)
+        rec = {'variant': variant, 'card': [m['cardCH'], m['cardSH']], 'paragraphs': len(texts)}
+        if variant not in ('temel', None):
+            i = texts.index(KG['variants'][variant])
+            x = m['ps'][i]
+            check(tagk + ' kazanç paragraph after the event-log paragraph and before the data controller paragraph (last)',
+                  texts[i - 1] == COPY['telemetry.details'][4] and texts[i + 1] == COPY['telemetry.details'][5] and i == len(texts) - 2, i)
+            check(tagk + ' kazanç paragraph not clipped (scrollHeight %d <= clientHeight %d)' % (x['sh'], x['ch']), x['sh'] <= x['ch'] + 1, x)
+            pg.evaluate("(i) => document.querySelectorAll('.tel-details p')[i].scrollIntoView({ block: 'start' })", i)
+            pg.wait_for_timeout(250)
+            m2 = pg.evaluate(KGM)
+            x2 = m2['ps'][i]
+            fits = x2['h'] <= min(m2['cardBottom'], m2['vh']) - max(m2['cardTop'], 0)
+            if not fits:   # paragraf kart yüksekliğinden uzun: başı ve sonu ayrı ayrı görünür olmalı
+                pg.screenshot(path=os.path.join(SHOTS, 'kodhane-kazanc-%s-%s-bas.png' % (variant, vname)))
+                pg.evaluate("(i) => document.querySelectorAll('.tel-details p')[i].scrollIntoView({ block: 'end' })", i)
+                pg.wait_for_timeout(250)
+                m3 = pg.evaluate(KGM)
+                end_ok = m3['ps'][i]['h'] > 0 and pg.evaluate("""(i) => { const p = document.querySelectorAll('.tel-details p')[i], r = p.getBoundingClientRect(),
+                    C = document.getElementById('modalCard').getBoundingClientRect(); return r.bottom <= Math.min(C.bottom, innerHeight) + 0.5 && r.bottom >= Math.max(C.top, 0); }""", i)
+            else:
+                end_ok = x2['visible']
+            check(tagk + ' kazanç paragraph readable by scrolling the card (%s; %d px high in a %d px card)' % ('fits at once' if fits else 'start, then end', x2['h'], m2['cardCH']), end_ok, x2)
+            pg.screenshot(path=os.path.join(SHOTS, 'kodhane-kazanc-%s-%s.png' % (variant, vname)))
+            cpl = round(len(x['text']) / max(1, x['lines']))
+            check(tagk + ' readability: font %.1f px >= 12, line-height %.1f, %d lines, ~%d chars/line, contrast %.2f >= 4.5' % (x['font'], x['lh'], x['lines'], cpl, x['contrast']),
+                  x['font'] >= 12 and x['contrast'] >= 4.5, x)
+            rec.update({'index': i, 'chars': len(x['text']), 'width': x['w'], 'height': x['h'], 'font': x['font'], 'lineHeight': x['lh'], 'lines': x['lines'], 'charsPerLine': cpl, 'contrast': x['contrast']})
+        else:
+            pg.screenshot(path=os.path.join(SHOTS, 'kodhane-kazanc-temel-%s.png' % vname))
+        pg.click('[data-test=tel-details-close]'); pg.wait_for_timeout(200)
+        # Hesap penceresinde kazanç kaydı metni yok (tam metin de özet de; özet cümlesi Yazı'dan beklenir)
+        pg.click('#accountBtn'); pg.wait_for_selector('#accountPanel:not(.hidden)'); pg.wait_for_timeout(250)
+        acc = pg.inner_text('#accountPanel')
+        check(tagk + ' account panel: no kazanç kaydı text (no #accProgressLog, no C1 sentence)', pg.query_selector('#accProgressLog') is None and KG['sentences']['C1'] not in acc, acc[:200])
+        pg.keyboard.press('Escape')
+        kg_measures[vname] = rec
+        check(tagk + ' no page errors', not pg.errs, pg.errs)
+        ctx.close()
+    note('[kazanç] measurements: ' + json.dumps(kg_measures, ensure_ascii=False))
     b.close()
 
 passed = sum(r[1] for r in results)
