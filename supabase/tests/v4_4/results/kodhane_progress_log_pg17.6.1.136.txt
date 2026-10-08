@@ -1,0 +1,145 @@
+PASS [a] B1 v2.2 refuses a write without a new revision on a strict row (PT409 stale_revision) -> no log row, save unchanged  -- stale_revision||e74f409cdd2d159536374bba96b47cf52
+PASS [a] B2 without B the same older-format write is accepted and logged (A only)  -- yatirim_turu:shares:1>5|saveVersion 4
+PASS [a] B3 next v4.4 write logged  -- yatirim_turu:shares:5>6
+PASS [a] B4 lower revision (PT409) -> no log row  -- 1|
+PASS [a] C1 bad parameters (days null/0/-1/3651, batch null/0/50001) -> 22023, nothing deleted  --  22023 22023 22023 22023 22023 22023 22023|200
+PASS [a] C2 batches of 10: 10, (oldest first: max g left 15), 10, 5, 0  -- 10 15 10 5 0 
+PASS [a] C3 rows younger than the retention and the real log rows stay  -- 203
+PASS [a] C4 boundary: only rows strictly older than now() - 30 days go (exactly 30 days stays)  -- 1 b1,b3 
+PASS [a] C5 service_role may run it; authenticated / anon may not  -- 0|42501|42501
+PASS [a] C6 default (no argument): 365 days, 5000 per batch -> the 366-day row goes, the 364-day row stays  -- 1 d364 
+PASS [a] E1 telafi: supabase_admin + kodhane.progress_event = telafi + kodhane.progress_ref -> approval_ref on every row  -- telafi:shares:11>40 telafi:ipoCount:0>5|supabase_admin|KD-TLF-2026-10-03-01,KD-TLF-2026-10-03-01
+PASS [a] E10 other values of the setting ('TELAFI', ' telafi', 'telafi;', 'yes') -> not telafi  -- yatirim_turu:shares:45>46 yatirim_turu:shares:46>47 yatirim_turu:shares:47>48 yatirim_turu:shares:48>49
+PASS [a] E11 set_config(..., true) ends with its transaction (same session, next write is not telafi, no reference)  -- telafi:shares:49>60 yatirim_turu:shares:60>61|KD-TLF-2026-10-03-01,-
+PASS [a] E12 telafi flag without a valid reference (none, empty, month 13, lower case, 2026-02-31, NN 1 digit, suffix, space, prefix) -> write refused (22023), not swallowed  --  1 1 1 1 1 1 1 1 1||e11fc247f8a27bc011b5dec47221d33556
+PASS [a] E13 the refusal is SQLSTATE 22023 (no WARNING-and-keep)  -- 22023
+PASS [a] E14 reference without the telafi flag (admin) -> field event, approval_ref NULL  -- yatirim_turu:shares:61>72|-
+PASS [a] E15 player sets flag + reference itself -> write accepted as a normal player write, NOT telafi, approval_ref NULL  -- yatirim_turu:shares:72>73|-|0
+PASS [a] E16 table rule: approval_ref set exactly on telafi rows, all in KD-TLF format  -- 0/0/5
+PASS [a] E17 CHECK constraint: telafi row without reference / reference on a non-telafi row -> 23514 (even for an admin insert)  -- 23514 23514
+PASS [a] E2 telafi as service_role (v4.5 restore path)  -- telafi:shares:40>41|service_role
+PASS [a] E3 telafi as postgres (Dokploy / manual SQL)  -- telafi:shares:41>42|postgres
+PASS [a] E4 admin write WITHOUT the setting -> field event, actor recorded  -- yatirim_turu:shares:42>43|supabase_admin
+PASS [a] E5 player sets kodhane.progress_event = telafi itself -> NOT telafi (role authenticated)  -- yatirim_turu:shares:43>44|authenticated
+PASS [a] E7 player + setting + SECURITY DEFINER RPC (kodhane_reset_save) -> sifirlama, not telafi; every field back to 0  -- sifirlama:shares:44>0 sifirlama:ipoCount:5>0 sifirlama:ipoShares:1>0 sifirlama:ipoSharesEarned:1>0
+PASS [a] E8 kodhane_restore_save -> geri_yukleme  -- geri_yukleme:shares:0>44 geri_yukleme:ipoCount:0>5 geri_yukleme:ipoShares:0>1 geri_yukleme:ipoSharesEarned:0>1
+PASS [a] E9 the next normal write (new transaction) is a normal field event again  -- yatirim_turu:shares:44>45
+PASS [a] F0 first saves with every logged field at 0 (INSERT) -> no row  -- 0
+PASS [a] F1 cycleRounds: increase 0 -> 3 and decrease 3 -> 1, one row each, event yatirim_turu  -- yatirim_turu:cycleRounds:0>3 / yatirim_turu:cycleRounds:3>1
+PASS [a] F1 ipoCount: increase 0 -> 3 and decrease 3 -> 1, one row each, event halka_arz  -- halka_arz:ipoCount:0>3 / halka_arz:ipoCount:3>1
+PASS [a] F1 ipoShares: increase 0 -> 3 and decrease 3 -> 1, one row each, event borsa_payi  -- borsa_payi:ipoShares:0>3 / borsa_payi:ipoShares:3>1
+PASS [a] F1 ipoSharesEarned: increase 0 -> 3 and decrease 3 -> 1, one row each, event borsa_payi  -- borsa_payi:ipoSharesEarned:0>3 / borsa_payi:ipoSharesEarned:3>1
+PASS [a] F1 prestigeCount: increase 0 -> 3 and decrease 3 -> 1, one row each, event yatirim_turu  -- yatirim_turu:prestigeCount:0>3 / yatirim_turu:prestigeCount:3>1
+PASS [a] F1 shares: increase 0 -> 3 and decrease 3 -> 1, one row each, event yatirim_turu  -- yatirim_turu:shares:0>3 / yatirim_turu:shares:3>1
+PASS [a] F10 Halka Arz in one write: four rows, one per changed field, shares kept -> no row  -- yatirim_turu:cycleRounds:4>0 halka_arz:ipoCount:0>1 borsa_payi:ipoShares:0>3 borsa_payi:ipoSharesEarned:0>3
+PASS [a] F11 update without a data change (revision / updated_at only) -> no row  -- 
+PASS [a] F2 decrease ipoCount 2 -> 0 is logged  -- halka_arz:ipoCount:2>0
+PASS [a] F3 write that changes no logged field (totalEarned, money ...) -> no row  -- 
+PASS [a] F4 same values written again -> no row  -- 
+PASS [a] F5 0 -> missing and missing -> 0: no row (missing counts as 0)  -- |
+PASS [a] F6 non-number: '0' -> 'abc' no row; 'abc' -> 5 logged as -/5; 5 -> 'x' logged as 5 -> NULL  -- |yatirim_turu:prestigeCount:->5 yatirim_turu:prestigeCount:5>-
+PASS [a] F7 rev_before / rev_after = save revision before / after; client_version from saveVersion  -- 30>31|saveVersion 5|authenticated
+PASS [a] F8 data.clientVersion (string) is used when the client sends it; longer than 32 characters -> NULL  -- 4.4.1,-
+PASS [a] F8b clientVersion: space / <> / empty / number / array -> NULL; [0-9A-Za-z._-] kept; JSON null and missing -> saveVersion fallback  -- -,-,-,-,-,4.4.2-rc.1_b,saveVersion 5,saveVersion 5
+PASS [a] F9 first insert with values: one row per non-zero field, rev_before NULL  -- yatirim_turu:shares:->7 halka_arz:ipoCount:->1 agac:tree:0>1:kod_1 rev null>1
+PASS [a] M1 migration applies (own transaction, no -1)
+PASS [a] M2 idempotent: second run OK, schema unchanged
+PASS [a] M3 table: owner | RLS on | not forced | policies  -- postgres|true|false|0
+PASS [a] M4 trigger: AFTER INSERT OR UPDATE FOR EACH ROW, enabled; function security definer, owner postgres, search_path ''  -- 21|O|true|postgres|search_path=""
+PASS [a] M5 columns (no e-mail / nickname column)  -- id,user_id,rev_before,rev_after,client_version,event,field,old_value,new_value,node_id,actor_role,created_at,approval_ref
+PASS [a] M6 approval_ref constraint (telafi <=> reference, format) and cleanup default 365 days  -- 1|p_retention_days integer DEFAULT 365, p_batch_size integer DEFAULT 5000
+PASS [a] P1 anon + authenticated: no table privilege at all  -- 0
+PASS [a] P2 service_role: SELECT only  -- true,false,false,false,false
+PASS [a] P3 identity sequence: no USAGE / SELECT / UPDATE for anon, authenticated, service_role  -- 0
+PASS [a] P4 function ACLs: cleanup postgres + service_role; trigger function postgres only  -- {postgres=X/postgres,service_role=X/postgres} {postgres=X/postgres}
+PASS [a] P5 authenticated: select / insert / update / delete / cleanup -> 42501  -- 42501 42501 42501 42501 42501
+PASS [a] P6 anon: select / insert / cleanup -> 42501  -- 42501 42501 42501
+PASS [a] P7 RLS without policy: even a mistaken GRANT SELECT shows a player 0 rows (own row exists)  -- 0
+PASS [a] R1 rollback with rows and without confirmation -> refused, nothing dropped  -- refused|the table has N row(s) that would be lost|true/true
+PASS [a] R2 rollback with kodhane.progress_log_allow_loss=on (twice): public schema = before the migration
+PASS [a] R3 save writes work after the rollback
+PASS [a] R4 re-apply after rollback: same schema as the first apply
+PASS [a] T1 buyNode: ipoShares 3 -> 2 + node kod_1  -- borsa_payi:ipoShares:3>2 agac:tree:0>1:kod_1
+PASS [a] T2 two nodes in one write: one row each, array order, old/new = node counts  -- agac:tree:1>3:ekip_1 agac:tree:1>3:kod_2
+PASS [a] T3 removed nodes (overwrite by an older state) are logged too  -- agac:tree:3>1:ekip_1 agac:tree:3>1:kod_2
+PASS [a] T4 only node-like strings count (numbers, objects, junk, duplicates ignored)  -- agac:tree:1>2:yatirim_3
+PASS [a] T5 1000 new node ids in one write: at most 64 distinct ids are read (62 rows)  -- 62|64
+PASS [a] T6 tree not an array -> treated as empty (removal of kod_1)  -- agac:tree:1>0:kod_1
+PASS [a] X1 log insert fails (injected CHECK) -> save write succeeds, WARNING, no row  -- ok|1||5/7
+PASS [a] X2 a refusing BEFORE trigger is not swallowed (v2.2 PT409 still refuses while the log fails)  -- 1|7
+PASS [a] X3 log owner without INSERT (42501) -> save write succeeds, WARNING, no row  -- ok|1|
+PASS [a] X4 logging resumes after the failure is fixed  -- yatirim_turu:shares:9>10
+PASS [a] X5 telafi write while the log insert fails -> NOT swallowed: write refused (23514), save unchanged  -- 1|0|7859c4ca95a871ce84701bded4140e535
+PASS [ab] B1 v2.2 refuses a write without a new revision on a strict row (PT409 stale_revision) -> no log row, save unchanged  -- stale_revision||e6140dc1e55630d70da7efa04710f6bd2
+PASS [ab] B2 B refuses an older client's write (PT426 save_version_too_old) -> no log row, save unchanged  -- save_version_too_old||e6140dc1e55630d70da7efa04710f6bd2
+PASS [ab] B3 B accepts a v4.4 write -> logged  -- yatirim_turu:shares:1>6
+PASS [ab] B4 lower revision (PT409) -> no log row  -- 1|
+PASS [ab] C1 bad parameters (days null/0/-1/3651, batch null/0/50001) -> 22023, nothing deleted  --  22023 22023 22023 22023 22023 22023 22023|199
+PASS [ab] C2 batches of 10: 10, (oldest first: max g left 15), 10, 5, 0  -- 10 15 10 5 0 
+PASS [ab] C3 rows younger than the retention and the real log rows stay  -- 202
+PASS [ab] C4 boundary: only rows strictly older than now() - 30 days go (exactly 30 days stays)  -- 1 b1,b3 
+PASS [ab] C5 service_role may run it; authenticated / anon may not  -- 0|42501|42501
+PASS [ab] C6 default (no argument): 365 days, 5000 per batch -> the 366-day row goes, the 364-day row stays  -- 1 d364 
+PASS [ab] E1 telafi: supabase_admin + kodhane.progress_event = telafi + kodhane.progress_ref -> approval_ref on every row  -- telafi:shares:11>40 telafi:ipoCount:0>5|supabase_admin|KD-TLF-2026-10-03-01,KD-TLF-2026-10-03-01
+PASS [ab] E10 other values of the setting ('TELAFI', ' telafi', 'telafi;', 'yes') -> not telafi  -- yatirim_turu:shares:45>46 yatirim_turu:shares:46>47 yatirim_turu:shares:47>48 yatirim_turu:shares:48>49
+PASS [ab] E11 set_config(..., true) ends with its transaction (same session, next write is not telafi, no reference)  -- telafi:shares:49>60 yatirim_turu:shares:60>61|KD-TLF-2026-10-03-01,-
+PASS [ab] E12 telafi flag without a valid reference (none, empty, month 13, lower case, 2026-02-31, NN 1 digit, suffix, space, prefix) -> write refused (22023), not swallowed  --  1 1 1 1 1 1 1 1 1||77fc9d6bd2ae42d0a266d59e614d55c656
+PASS [ab] E13 the refusal is SQLSTATE 22023 (no WARNING-and-keep)  -- 22023
+PASS [ab] E14 reference without the telafi flag (admin) -> field event, approval_ref NULL  -- yatirim_turu:shares:61>72|-
+PASS [ab] E15 player sets flag + reference itself -> write accepted as a normal player write, NOT telafi, approval_ref NULL  -- yatirim_turu:shares:72>73|-|0
+PASS [ab] E16 table rule: approval_ref set exactly on telafi rows, all in KD-TLF format  -- 0/0/5
+PASS [ab] E17 CHECK constraint: telafi row without reference / reference on a non-telafi row -> 23514 (even for an admin insert)  -- 23514 23514
+PASS [ab] E2 telafi as service_role (v4.5 restore path)  -- telafi:shares:40>41|service_role
+PASS [ab] E3 telafi as postgres (Dokploy / manual SQL)  -- telafi:shares:41>42|postgres
+PASS [ab] E4 admin write WITHOUT the setting -> field event, actor recorded  -- yatirim_turu:shares:42>43|supabase_admin
+PASS [ab] E5 player sets kodhane.progress_event = telafi itself -> NOT telafi (role authenticated)  -- yatirim_turu:shares:43>44|authenticated
+PASS [ab] E7 player + setting + SECURITY DEFINER RPC (kodhane_reset_save) -> sifirlama, not telafi; every field back to 0  -- sifirlama:shares:44>0 sifirlama:ipoCount:5>0 sifirlama:ipoShares:1>0 sifirlama:ipoSharesEarned:1>0
+PASS [ab] E8 kodhane_restore_save -> geri_yukleme  -- geri_yukleme:shares:0>44 geri_yukleme:ipoCount:0>5 geri_yukleme:ipoShares:0>1 geri_yukleme:ipoSharesEarned:0>1
+PASS [ab] E9 the next normal write (new transaction) is a normal field event again  -- yatirim_turu:shares:44>45
+PASS [ab] F0 first saves with every logged field at 0 (INSERT) -> no row  -- 0
+PASS [ab] F1 cycleRounds: increase 0 -> 3 and decrease 3 -> 1, one row each, event yatirim_turu  -- yatirim_turu:cycleRounds:0>3 / yatirim_turu:cycleRounds:3>1
+PASS [ab] F1 ipoCount: increase 0 -> 3 and decrease 3 -> 1, one row each, event halka_arz  -- halka_arz:ipoCount:0>3 / halka_arz:ipoCount:3>1
+PASS [ab] F1 ipoShares: increase 0 -> 3 and decrease 3 -> 1, one row each, event borsa_payi  -- borsa_payi:ipoShares:0>3 / borsa_payi:ipoShares:3>1
+PASS [ab] F1 ipoSharesEarned: increase 0 -> 3 and decrease 3 -> 1, one row each, event borsa_payi  -- borsa_payi:ipoSharesEarned:0>3 / borsa_payi:ipoSharesEarned:3>1
+PASS [ab] F1 prestigeCount: increase 0 -> 3 and decrease 3 -> 1, one row each, event yatirim_turu  -- yatirim_turu:prestigeCount:0>3 / yatirim_turu:prestigeCount:3>1
+PASS [ab] F1 shares: increase 0 -> 3 and decrease 3 -> 1, one row each, event yatirim_turu  -- yatirim_turu:shares:0>3 / yatirim_turu:shares:3>1
+PASS [ab] F10 Halka Arz in one write: four rows, one per changed field, shares kept -> no row  -- yatirim_turu:cycleRounds:4>0 halka_arz:ipoCount:0>1 borsa_payi:ipoShares:0>3 borsa_payi:ipoSharesEarned:0>3
+PASS [ab] F11 update without a data change (revision / updated_at only) -> no row  -- 
+PASS [ab] F2 decrease ipoCount 2 -> 0 is logged  -- halka_arz:ipoCount:2>0
+PASS [ab] F3 write that changes no logged field (totalEarned, money ...) -> no row  -- 
+PASS [ab] F4 same values written again -> no row  -- 
+PASS [ab] F5 0 -> missing and missing -> 0: no row (missing counts as 0)  -- |
+PASS [ab] F6 non-number: '0' -> 'abc' no row; 'abc' -> 5 logged as -/5; 5 -> 'x' logged as 5 -> NULL  -- |yatirim_turu:prestigeCount:->5 yatirim_turu:prestigeCount:5>-
+PASS [ab] F7 rev_before / rev_after = save revision before / after; client_version from saveVersion  -- 30>31|saveVersion 5|authenticated
+PASS [ab] F8 data.clientVersion (string) is used when the client sends it; longer than 32 characters -> NULL  -- 4.4.1,-
+PASS [ab] F8b clientVersion: space / <> / empty / number / array -> NULL; [0-9A-Za-z._-] kept; JSON null and missing -> saveVersion fallback  -- -,-,-,-,-,4.4.2-rc.1_b,saveVersion 5,saveVersion 5
+PASS [ab] F9 first insert with values: one row per non-zero field, rev_before NULL  -- yatirim_turu:shares:->7 halka_arz:ipoCount:->1 agac:tree:0>1:kod_1 rev null>1
+PASS [ab] M1 migration applies (own transaction, no -1)
+PASS [ab] M2 idempotent: second run OK, schema unchanged
+PASS [ab] M3 table: owner | RLS on | not forced | policies  -- postgres|true|false|0
+PASS [ab] M4 trigger: AFTER INSERT OR UPDATE FOR EACH ROW, enabled; function security definer, owner postgres, search_path ''  -- 21|O|true|postgres|search_path=""
+PASS [ab] M5 columns (no e-mail / nickname column)  -- id,user_id,rev_before,rev_after,client_version,event,field,old_value,new_value,node_id,actor_role,created_at,approval_ref
+PASS [ab] M6 approval_ref constraint (telafi <=> reference, format) and cleanup default 365 days  -- 1|p_retention_days integer DEFAULT 365, p_batch_size integer DEFAULT 5000
+PASS [ab] P1 anon + authenticated: no table privilege at all  -- 0
+PASS [ab] P2 service_role: SELECT only  -- true,false,false,false,false
+PASS [ab] P3 identity sequence: no USAGE / SELECT / UPDATE for anon, authenticated, service_role  -- 0
+PASS [ab] P4 function ACLs: cleanup postgres + service_role; trigger function postgres only  -- {postgres=X/postgres,service_role=X/postgres} {postgres=X/postgres}
+PASS [ab] P5 authenticated: select / insert / update / delete / cleanup -> 42501  -- 42501 42501 42501 42501 42501
+PASS [ab] P6 anon: select / insert / cleanup -> 42501  -- 42501 42501 42501
+PASS [ab] P7 RLS without policy: even a mistaken GRANT SELECT shows a player 0 rows (own row exists)  -- 0
+PASS [ab] R1 rollback with rows and without confirmation -> refused, nothing dropped  -- refused|the table has N row(s) that would be lost|true/true
+PASS [ab] R2 rollback with kodhane.progress_log_allow_loss=on (twice): public schema = before the migration
+PASS [ab] R3 save writes work after the rollback
+PASS [ab] R4 re-apply after rollback: same schema as the first apply
+PASS [ab] T1 buyNode: ipoShares 3 -> 2 + node kod_1  -- borsa_payi:ipoShares:3>2 agac:tree:0>1:kod_1
+PASS [ab] T2 two nodes in one write: one row each, array order, old/new = node counts  -- agac:tree:1>3:ekip_1 agac:tree:1>3:kod_2
+PASS [ab] T3 removed nodes (overwrite by an older state) are logged too  -- agac:tree:3>1:ekip_1 agac:tree:3>1:kod_2
+PASS [ab] T4 only node-like strings count (numbers, objects, junk, duplicates ignored)  -- agac:tree:1>2:yatirim_3
+PASS [ab] T5 1000 new node ids in one write: at most 64 distinct ids are read (62 rows)  -- 62|64
+PASS [ab] T6 tree not an array -> treated as empty (removal of kod_1)  -- agac:tree:1>0:kod_1
+PASS [ab] X1 log insert fails (injected CHECK) -> save write succeeds, WARNING, no row  -- ok|1||4/7
+PASS [ab] X2 a refusing BEFORE trigger is not swallowed (B PT426 still refuses while the log fails)  -- 1|7
+PASS [ab] X3 log owner without INSERT (42501) -> save write succeeds, WARNING, no row  -- ok|1|
+PASS [ab] X4 logging resumes after the failure is fixed  -- yatirim_turu:shares:9>10
+PASS [ab] X5 telafi write while the log insert fails -> NOT swallowed: write refused (23514), save unchanged  -- 1|0|e102a2d4c4a438c490600f73dea6e8414
+PASS [once] M0 wrong target (no public.kodhane_saves) -> error, nothing created

@@ -4,3 +4,15 @@ apple-touch-icon.png
 __pycache__/
 node_modules/
 tests/.cache/
+.env
+.env.*
+*.dump
+*.sql.gz
+*.tar.zst
+*.zst
+dumps/
+backups/
+*.bak
+
+# local live-target environment (real values, never committed; template supabase/sb_env.example.sh)
+sb_env.sh

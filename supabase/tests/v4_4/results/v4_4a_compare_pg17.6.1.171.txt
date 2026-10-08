@@ -1,0 +1,12 @@
+PASS C1_pass_no_change (exit 0, 'RESULT PASS')
+PASS C2_rule_changed (exit 1, 'rule result false -> true')
+PASS C3_player_write_in_window (exit 0, 'player write in the window')
+PASS C3b overtaken row: rank-only move explained
+PASS C4_score_changed_outside_window (exit 1, 'WITHOUT a player write')
+PASS C5_row_vanished (exit 1, 'vanished')
+PASS C6_row_appeared (exit 1, 'appeared')
+PASS C7_rule_changed_player_in_window (exit 1, 'rule result false -> true \(player wrote in the window\)')
+PASS C8_unreadable (exit 3, 'RESULT WARN')
+PASS N1 no nickname in any compare output
+PASS N2 no nickname in the snapshot
+PASS S1 seed: 3 honest true, compensated false under v4.3 (true,true,true,false)

@@ -1,0 +1,62 @@
+PASS B1 rollback without loss confirmation -> refused (log has rows), nothing changed
+PASS B1b_schema_unchanged (diff empty)
+PASS B2 rollback with KODHANE_ALLOW_PROGRESS_LOG_LOSS=on
+PASS B3_schema_after_rollback_equals_pre_install (diff empty)
+PASS B4_objects_after_rollback_equal_preflight (diff empty)
+PASS B5_other_data_unchanged_by_rollback (diff empty)
+PASS B6 saves written while B was installed survive the rollback
+PASS D1 delete-path-check (READ ONLY catalog proof + ops file md5)
+PASS D2 kodhane_reset_save keeps the log rows (1 before) and adds 'sifirlama' rows (2/1)
+PASS D3 a save-row DELETE (admin; players have no DELETE) leaves the log rows (2): only account deletion removes them
+PASS D4-full account delete: the uid's 1 log rows -> 0, other users' rows identical, verify OK
+PASS D4-kodhane_only account delete: the uid's 2 log rows -> 0, other users' rows identical, verify OK
+PASS F1_restored_schema_equals_backup_time (diff empty)
+PASS F2_restored_data_equals_backup_time (diff empty)
+PASS F3 (why the prelude) naive pg_restore --clean in place adds 24 GRANT lines (default privileges), so the package does not use it
+PASS F4 restore without KODHANE_RESTORE_CONFIRM -> refused
+PASS F5 restore step (prelude + pg_restore --clean --if-exists, one transaction)
+PASS F6_in_place_schema_equals_backup_time (diff empty)
+PASS F7_in_place_data_equals_backup_time (diff empty)
+PASS F8 after the full restore: preflight PASS (back at A, B / progress log absent)
+PASS G1 preflight on the installed DB -> STOP (B / progress log present)
+PASS G2 install.sql run again by hand (script gate bypassed) -> STOP inside the transaction (A md5)
+PASS G2b_schema_unchanged (diff empty)
+PASS N1 preflight without package A -> STOP (md5)
+PASS N1b dryrun without a passed preflight -> refused
+PASS N2 a stored saveVersion 6 -> preflight STOP
+PASS N3 restored DB: preflight PASS again
+PASS N4 a session holding a lock on kodhane_saves: dryrun gives up after lock_timeout 5 s
+PASS N4b_nothing_changed (diff empty)
+PASS N5 after the lock is gone: dryrun PASS
+PASS P1 v4.4 save (sv 5) + v4.3.1 write -> PT426 save_version_too_old
+PASS P2 format 4 save (sv 4) + v4.3.1 write -> accepted (not guarded)
+PASS P3 v4.4.2 write -> accepted
+PASS P4 progress log: rows of the two accepted writes only (4.4.2,saveVersion 4 / 2)
+PASS R0 package A on the rehearsal DB: md5 969e1dc203fa1877a57e2cf3fcc2727c (= live)
+PASS R0b A ignores data.clientVersion (client push before B is harmless for the leaderboard)
+PASS S1 build (inputs = inputs.md5)
+PASS S2 backup
+PASS S2-backup
+PASS S2-build
+PASS S2-dryrun
+PASS S2-fn_md5_equal_to_run1 (diff empty)
+PASS S2-install
+PASS S2-preflight
+PASS S2-verify
+PASS S2b backup name kodhane-shared-YYYYMMDD-HHMM.dump, mode 600, .md5 ok (toc TABLE 34, TABLE DATA 35; database tables 34)
+PASS S3 preflight
+PASS S4 dryrun
+PASS S4b_dryrun_left_schema_unchanged (diff empty)
+PASS S4c_dryrun_left_data_unchanged (diff empty)
+PASS S5 install (B, then progress log, one transaction)
+PASS S5b_install_wrote_no_data (diff empty)
+PASS S6 verify (synthetic player, rolled back)
+PASS S6b_verify_left_no_data (diff empty)
+PASS S6c after verify: progress log empty, no synthetic user
+PASS T1 deltest create (kodhane-deltest-20261003-040308@example.invalid)
+PASS T2 deltest write: LOGROWS|2|agac|deltest
+PASS T3 guard: a real player's uid in testuser.txt -> STOP (e-mail), nothing deleted
+PASS T4 guard: right uid + e-mail, other created_at -> STOP
+PASS T5 after T3/T4 the test user's rows are still there (guards deleted nothing)
+PASS T6 deltest delete (preflight -> delete full -> verify -> 0 rows): 0 rows of the test uid left; other users' log rows 2 intact
+PASS T7 all other log rows identical after the delete test

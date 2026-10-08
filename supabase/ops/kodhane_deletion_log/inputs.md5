@@ -1,0 +1,4 @@
+239fb2e12309e9d3e90907982491a8fa  migrations/20261003040000_v4_4_kodhane_deletion_log.sql
+bfdde1f849b56577473f4dda528d3d90  rollback/20261003040000_v4_4_kodhane_deletion_log.rollback.sql
+af68df3621b901712e29118169e3da6e  ops/kodhane_deletion_log/install_verify.sql
+22f3f9f12693fe75b2752bac46af11e0  ops/kodhane_deletion_log/preflight.sql

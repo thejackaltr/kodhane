@@ -1,0 +1,25 @@
+PASS C1_pass_no_change (exit 0, 'RESULT PASS')
+PASS C2_rule_changed (exit 1, 'rule result false -> true')
+PASS C3_player_write_in_window (exit 0, 'player write in the window')
+PASS C3b overtaken row: rank-only move explained
+PASS C4_score_changed_outside_window (exit 1, 'WITHOUT a player write')
+PASS C5_row_vanished (exit 1, 'vanished')
+PASS C6_row_appeared (exit 1, 'appeared')
+PASS C7_rule_changed_player_in_window (exit 1, 'rule result false -> true \(player wrote in the window\)')
+PASS C8_unreadable (exit 3, 'RESULT WARN')
+PASS K1 no allow list left in compare / preflight; scores report keeps fa7c + a3a7 rows
+PASS N1 no nickname in any compare output
+PASS N2 no nickname in the snapshot
+PASS R1 scores report runs read only; absent saves reported as not found (rev empty, rule f, vetted 0, n 0)
+PASS S1 seed: 3 honest true, compensated false under v4.3 (true,true,true,false)
+PASS Z1_no_change (exit 0, 'RESULT PASS \(no rule result changed')
+PASS Z1_no_change preflight PASS, 'newly_flagged 0; newly_accepted 0 \(4 saves, no rule result changes\)'
+PASS Z2_single_false_to_true (exit 1, 'save kodhane [0-9a-f]{16}: rule result false -> true$')
+PASS Z2_single_false_to_true preflight STOP, 'newly_accepted 1 \(must be 0\)'
+PASS Z3_single_false_to_true_player_write (exit 1, 'rule result false -> true \(player wrote in the window\)')
+PASS Z3_single_false_to_true_player_write preflight STOP, 'newly_accepted 1'
+PASS Z4_newly_flagged (exit 1, 'rule result true -> false$')
+PASS Z4_newly_flagged preflight STOP, 'newly_flagged 1 \(must be 0\)'
+PASS Z5_write_in_window_no_rule_change (exit 0, 'score changed, player write in the window')
+PASS Z5_write_in_window_no_rule_change preflight PASS
+PASS Z6 preflight after A: STOP (live rule is not v4.3)

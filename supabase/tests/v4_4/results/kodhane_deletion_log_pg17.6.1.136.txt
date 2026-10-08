@@ -1,0 +1,71 @@
+PASS D1 full delete: list row (scope account, info: prefix), notice  -- 0|11111111/account/info:TEST-ONAY-1|deletion log row written (scope account)
+PASS D1b deleted_at = time of the delete transaction  -- true
+PASS D2 kodhane_only delete: second row (scope kodhane)  -- 0|11111111/account/info:TEST-ONAY-1 33333333/kodhane/info:TEST-ONAY-3
+PASS D3 account delete verify: listed (both modes)  -- 00|deletion log: listed (scope account) deletion log: listed (scope kodhane) 
+PASS D4 approval_ref 'TEST,ONAY' -> refused, nothing deleted, no list row
+PASS D4 approval_ref 'TEST@example.invalid' -> refused, nothing deleted, no list row
+PASS D5 delete fails at the last step (auth.users) -> rolled back, no list row (same transaction)
+PASS D6 without the migration the delete works as before (no row)  -- 0|deletion log not installed (no row)
+PASS D6b verify without the migration: OK, 'not installed'
+PASS F1 one character changed, old .md5 -> md5 mismatch  -- BAD|kodhane-deletion-log-20261003T010236Z.csv: md5 does not match (file changed or damaged); nothing changed
+PASS F10 dry run on the restored backup: would delete u1 + u3 + u4, ROLLBACK, data unchanged  -- 0|account|2|audit|0|orphan|0|kodhane|1|7ff029be409b3c14142ed82fdf833e92
+PASS F11 restored DB without the migration (backup older than the install) -> STOP: install the migration first  -- 1|1
+PASS F2 truncated file (new .md5) -> malformed / no final newline  -- BAD|kodhane-deletion-log-20261003T010236Z.csv: no final newline (truncated?); nothing changed
+PASS F3 wrong header (new .md5)  -- BAD|kodhane-deletion-log-20261003T010236Z.csv: header is not user_id,scope,deleted_at_utc,approval_ref; nothing changed
+PASS F4 e-mail in a row (new .md5)  -- BAD|kodhane-deletion-log-20261003T010236Z.csv line 2: malformed row; nothing changed
+PASS F5 .md5 missing  -- BAD|kodhane-deletion-log-20261003T010236Z.csv: no .md5 file; nothing changed
+PASS F6 unexpected file name (given explicitly) -> refused, nothing changed
+PASS F7 one bad file among good ones -> the whole run refused  -- BAD|kodhane-deletion-log-20261003T000000Z.csv line 2: malformed row; nothing changed
+PASS F8 well-formed row with a future time (new .md5) -> SQL check refuses, rolled back  -- ERROR:  kodhane deletion log reapply: invalid file rows (22222222-2222-4222-8222-222222222222/account); nothin; nothing changed
+PASS F9 no export files -> STOP
+PASS K1 restore of a backup with u3's NEW save (after the deletion): reapply keeps it (newer), verify 0  -- 0|kodhane|newer|1|RESTORE|DELETION_LOG|PASS
+PASS K2 u3 with Kodhane rows from before AND after the deletion: reapply exit 3 (committed, MIXED, not deleted), verify FAIL  -- 3/1|1|kept|1
+PASS K3 listed account without auth user but with an audit row: verify FAIL (audit), reapply deletes it, 0 left  -- 1/0|1||REAPPLY|PASS
+PASS K4 a row outside Kodhane / Açık Ofis (FK to auth.users) -> BLOCKED, whole reapply rolled back (list rows too)  -- 1|1|815f249c80146a38360ea56d41adbe1b
+PASS M1 install step (local): build, preflight, dry run PASS; after the dry run nothing exists  --  BUILD|PASS PREFLIGHT|PASS DRYRUN|PASS|t
+PASS M1b build pins the migration md5 (239fb2e12309)
+PASS M2 install + verify PASS (12 install checks: owner, ACLs, columns, CHECKs, RLS forced, 45 days, functions)  --  INSTALL|PASS VERIFY|PASS|12
+PASS M3 migration again (idempotent), verify still PASS  -- VERIFY|PASS
+PASS M4 anon / authenticated / service_role: table and cleanup function -> permission denied  --  anon:denied/denied authenticated:denied/denied service_role:denied/denied
+PASS M4b postgres (owner, BYPASSRLS) reads the forced-RLS table  -- 0
+PASS M5 CHECKs: e-mail, comma, empty ref, ref without prefix, unknown scope -> refused  --  refused refused refused refused refused
+PASS M6 rollback refuses while the list has rows (nothing dropped)
+PASS M6b rollback with KODHANE_ALLOW_DELETION_LOG_LOSS=on: schema back to before the install (diff lines)  -- ROLLBACK|PASS|0
+PASS M6c rollback twice (idempotent)
+PASS M7 package B install.sql unchanged (deefef0e...) and without the deletion log  -- deefef0e5c52cc3679dc997374d2edbb|0
+PASS M7b package B build PASS (inputs.md5 pins the new account delete files)
+PASS R1 kodhane_v44b_install.sh restore <pre-deletion backup>: export from the current DB (unchanged) -> restore -> reapply -> verify  -- 0|1|RESTORE|PASS REAPPLY|PASS VERIFY|PASS|0 left RESTORE|DELETION_LOG|PASS 
+PASS R1b reapply summary: account 1 deleted again, kodhane 1 deleted again, 2 list rows re-added  -- file_rows|2|entries|2|list_rows_added|2|list_rows_missing_before|2|account|1|audit|0|orphan|0|kodhane|1|newer|0|mixed|0|nothing|0
+PASS R2 list after restore + reapply: both rows with the original time and reference  -- 11111111/account/info:TEST-ONAY-1 33333333/kodhane/info:TEST-ONAY-3|2026-10-03T01:02:32.574959Z,2026-10-03T01:02:33.029658Z
+PASS R3 u1: no row anywhere (auth, both games, audit)  -- 
+PASS R3b u3: no Kodhane row, sessions closed; kept: auth user, profile, Açık Ofis, audit  -- auth.audit_log_entries=1 auth.users=1 public.acik_ofis_profiles=1 public.acik_ofis_saves=1 public.kodhane_profiles=1
+PASS R3c u3 kept rows identical to before the deletion  -- public.kodhane_profiles=700acc5535b7bbc49bf820d43fbdc396:1
+PASS R4 other users (u2, u4, every table incl. progress log and audit) identical to before the deletions  -- 59e96c5a181a/19
+PASS R4b u4 (not listed) untouched: Kodhane save, backups, profile, auth  -- auth.audit_log_entries=1 auth.users=1 public.kodhane_profiles=1 public.kodhane_progress_log=9 public.kodhane_save_backups=1 public.kodhane_saves=1
+PASS R5 second reapply: nothing to do, data identical (pg_dump --data-only md5)  -- 0|list_rows_added|0|account|0|audit|0|orphan|0|kodhane|0|newer|0|mixed|0|nothing|2|b5f7fc2b782d12f381a00d4b7c9c0d82
+PASS R5b verify: 0 left  -- 0|VERIFY|PASS|0 left
+PASS R6 install checks after the restore (ACLs, RLS, owner as installed)  -- VERIFY|PASS
+PASS R6b reapply SQL carries the delete's DO block verbatim and the same <kodhane_del_counts> block as preflight / delete / verify
+PASS R7 backup taken AFTER the deletions (pg_restore into a new DB): reapply is a no-op, verify 0  -- 00|3d31b112b282066e5fcfe3c27385b848|VERIFY|PASS|0 left
+PASS R8 deletion after the last export (u4): restore step 0 writes a new export from the current DB, reapply deletes u1, u3, u4  -- 0|1|file_rows|5|entries|3|account|2|audit|0|kodhane|1|RESTORE|DELETION_LOG|PASS
+PASS R8b u4 gone again, u1 gone, u2 untouched  -- ||59e96c5a181a
+PASS R9 export before the restore fails (directory not writable) -> STOP before the restore, DB unchanged  -- 1|1|c90736a229426478afa90327fde7aa28
+PASS T1 cleanup as postgres: the 46-day row goes, the 44-day row stays (45 days)  -- 1|info:T1-keep
+PASS T2 service_role cannot run the cleanup  -- 1
+PASS T3 Dokploy variants: one line each, = existing command + the cleanup step at the end  -- 2|prefix-ok
+PASS T3b no single quote, dollar, backtick or backslash (safe in sh -c '...')
+PASS T3c retention runbook contains both variants verbatim
+PASS T4 deletion log not installed: variant fails at the LAST step (exit 1), earlier steps ran  -- 1|1|1
+PASS T5 Dokploy variants as root -> psql -U postgres: 2 old rows deleted, then 0; exit 0  -- 0|deletion_log_rows | 2|0|deletion_log_rows | 0|1
+PASS T6 daily script step 5: deletion log cleanup  -- 0|kodhane retention deletion log OK: deletion_log 1 row(s) older than 45 days deleted
+PASS T6b daily script without the deletion log: step 5 skipped, exit 0  -- 0|kodhane retention deletion log skipped: migration 20261003040000 not applied in database postgres
+PASS T7 container's own postgres database restored  -- t
+PASS X1 export: exit 0, dir 700, csv 600, md5 600, 2 rows, header  -- 0|700|600|600|2|user_id,scope,deleted_at_utc,approval_ref
+PASS X1b md5 file matches; no e-mail / nickname in the file
+PASS X2 second export, list unchanged: no new file  -- 0|1|1
+PASS X3 the new file name exists already -> exit 4, not overwritten  -- 4|1|3
+PASS X4 changed list -> new file; a 50-day-old file is pruned (45 days), the previous one stays  -- 0|2|old-gone|1
+PASS X5 database without the migration -> STOP, no file  -- 1|1|1
+PASS X6 wrong target (fenomen_saves present) -> STOP, no file  -- 1|1|1
+PASS X7 the export resets the directory to 700  -- 0|700
+== done: 70 pass / 0 fail (X 8, T 10, R 16, M 12, K 4, F 11, D 9); image public.ecr.aws/supabase/postgres:17.6.1.136; artefacts in /tmp/dl-out

@@ -4,3 +4,5 @@ screenshots
 tests
 *.log
 __pycache__
+supabase
+docs

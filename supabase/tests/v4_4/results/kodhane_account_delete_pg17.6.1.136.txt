@@ -1,0 +1,168 @@
+PASS [ab] C-D1 both delete triggers write a 'delete' copy with the best score (Kodhane, Açık Ofis)  -- 1/500000000 1/70000
+PASS [ab] C-D2 control: if the 'delete' copy stayed, a re-created row would start at the old best score (5e8)
+PASS [ab] C-E3 token of another user with identical rows, e-mail and created_at (only the id differs) -> refused  -- ERROR:  kodhane account delete: rows or account (id / e-mail / created_at) changed since the preflight (expect 144f6ba51827, now 2f1cea40f161); run the preflight again. N; nothing changed
+PASS [ab] C-M1 no mode, user with Açık Ofis rows -> BLOCKED  -- ERROR:  kodhane account delete BLOCKED: mode missing (-v mode=full | kodhane_only); nothing deleted. Non-Kodhane rows: public.acik_ofis_profiles=1, public.acik_ofis_save_; nothing changed
+PASS [ab] C-M2 no mode, Kodhane-only user -> refused  -- ERROR:  kodhane account delete BLOCKED: mode missing (-v mode=full | kodhane_only); nothing deleted; nothing changed
+PASS [ab] C-M3 mode='' -> refused  -- ERROR:  kodhane account delete BLOCKED: mode missing (-v mode=full | kodhane_only); nothing deleted. Non-Kodhane rows: public.acik_ofis_profiles=1, public.acik_ofis_save_; nothing changed
+PASS [ab] C-M4 unknown mode -> refused  -- ERROR:  kodhane account delete: unknown mode "everything" (full | kodhane_only); nothing deleted; nothing changed
+PASS [ab] C-M5 mode=KODHANE (typo, no underscore) -> refused  -- ERROR:  kodhane account delete: unknown mode "kodhane" (full | kodhane_only); nothing deleted; nothing changed
+PASS [ab] C-M6 verify without mode -> error
+PASS [ab] C-M7 verify with unknown mode -> error
+PASS [ab] C-P1 preflight lists both games separately + auth + audit  -- kodhane: saves=1 backups=1 profiles=1; acik_ofis: saves=1 backups=1 profiles=1; audit=3; auth: users=1 identities=1 sessions=1 refresh_tokens=2 flow_state=1 one_time_tokens=1 mfa_factors=1
+PASS [ab] C-P2 preflight: backups by reason and leaderboard state per game
+PASS [ab] C-P3 preflight verdict for both modes + expect token
+PASS [ab] C-P4 e-mail masked, no nickname in the preflight
+PASS [ab] C-P5 expect token covers Açık Ofis rows too (one extra AO backup changes it)
+PASS [ab] C-P6 preflight changes nothing
+PASS [ab] F-B0 full refuses when another (non-Kodhane, non-AO) table references the user  -- ERROR:  kodhane account delete BLOCKED: rows outside Kodhane / Açık Ofis (public.zz_other_game=1) would be cascaded with the auth user. Nothing deleted; nothing changed
+PASS [ab] F-B1 other users unchanged (17 tables incl. audit log)
+PASS [ab] F-B2 Kodhane leaderboard: u1's row gone, the others identical
+PASS [ab] F-B3 both Açık Ofis leaderboards: u1's rows gone, the others identical
+PASS [ab] F-B4 kodhane_leaderboard_v7: u1's row gone, the others identical
+PASS [ab] F-B5 public + auth schema diff empty
+PASS [ab] F-B6 u4 delete: other users and Açık Ofis unchanged
+PASS [ab] F-E1 auth e-mail changed since the preflight -> refused  -- ERROR:  kodhane account delete: rows or account (id / e-mail / created_at) changed since the preflight (expect 40c10eb66610, now dbd2863ae03e); run the preflight again. N; nothing changed
+PASS [ab] F-E2 auth created_at changed since the preflight -> refused  -- ERROR:  kodhane account delete: rows or account (id / e-mail / created_at) changed since the preflight (expect 40c10eb66610, now cfed12a10d30); run the preflight again. N; nothing changed
+PASS [ab] F-E2b e-mail / created_at restored -> the same token again
+PASS [ab] F-E4 last_sign_in_at + a new audit row since the preflight: the token stays the same
+PASS [ab] F-F1 failure at the last step (auth.users) after Kodhane + Açık Ofis + audit deletes  -- ERROR:  kd test: injected failure in users; nothing changed
+PASS [ab] F-F2 failure at acik_ofis_profiles (after the Kodhane steps)  -- ERROR:  kd test: injected failure in acik_ofis_profiles; nothing changed
+PASS [ab] F-F3 no 'delete' copy (either game) left behind by the failed runs
+PASS [ab] F-G1 no approval_ref  -- ERROR:  approval_ref missing; nothing changed
+PASS [ab] F-G2 empty approval_ref  -- ERROR:  kodhane account delete: approval_ref (Aryen's approval reference) is required; nothing deleted; nothing changed
+PASS [ab] F-G3 confirm_uid differs  -- ERROR:  kodhane account delete: confirm_uid does not match uid; nothing deleted; nothing changed
+PASS [ab] F-G4 expect token wrong  -- ERROR:  kodhane account delete: rows or account (id / e-mail / created_at) changed since the preflight (expect 000000000000, now 40c10eb66610); run the preflight again. N; nothing changed
+PASS [ab] F-G5 unknown auth user  -- ERROR:  kodhane account delete: auth user 99999999-9999-4999-8999-999999999999 not found; nothing deleted (run the verify); nothing changed
+PASS [ab] F-G6 Açık Ofis rows changed since the preflight -> refused  -- ERROR:  kodhane account delete: rows or account (id / e-mail / created_at) changed since the preflight (expect 40c10eb66610, now 2db90224abb1); run the preflight again. N; nothing changed
+PASS [ab] F-R1 full delete: every step with the expected count, in-transaction check 0 rows
+PASS [ab] F-R2 full delete of a Kodhane-only user (0 Açık Ofis rows, 1 audit row)
+PASS [ab] F-S1 re-created account: only the new auth.users row (0 game rows, 0 audit rows)
+PASS [ab] F-S2 backups visible to the re-created user: Kodhane 0, Açık Ofis 0
+PASS [ab] F-S3 old backup ids cannot be restored in either game (PT404)
+PASS [ab] F-S4 new saves start from the new scores only (Kodhane 4.5e8 not 5e8, Açık Ofis 5e4 not 7e4)
+PASS [ab] F-S5 Kodhane leaderboard: only the new score
+PASS [ab] F-S6 same e-mail, new id: 0 backups, best_score = new save (old 8e8 not back)
+PASS [ab] F-V1 verify full: 0 rows in all 18 counted tables, audit log included
+PASS [ab] F-V2 verify full fails when rows are left (u2)
+PASS [ab] F-V3 verify full u4: 0 rows
+PASS [ab] K-A1 Açık Ofis byte-identical: data, kodhane_leaderboard('acik_ofis') + acik_ofis_leaderboard (nickname 'Iki Oyunlu Uc' still there), functions, triggers
+PASS [ab] K-A2 Açık Ofis still byte-identical after the new Kodhane save
+PASS [ab] K-B1 other users unchanged
+PASS [ab] K-B2 public + auth schema diff empty
+PASS [ab] K-E1 auth e-mail changed since the preflight -> refused  -- ERROR:  kodhane account delete: rows or account (id / e-mail / created_at) changed since the preflight (expect 81fbcfa852e1, now 81e5097bcd05); run the preflight again. N; nothing changed
+PASS [ab] K-E2 auth created_at changed since the preflight -> refused  -- ERROR:  kodhane account delete: rows or account (id / e-mail / created_at) changed since the preflight (expect 81fbcfa852e1, now 0cc1d93278fb); run the preflight again. N; nothing changed
+PASS [ab] K-E2b e-mail / created_at restored -> the same token again
+PASS [ab] K-E4 new login since the preflight (last_sign_in_at, a new session, an audit row): the token stays the same
+PASS [ab] K-F1 failure at step 2 (kodhane_save_backups) after step 1 + trigger copy  -- ERROR:  kd test: injected failure in kodhane_save_backups; nothing changed
+PASS [ab] K-F2 failure right after step 1 (kodhane_saves row gone, copy written)  -- ERROR:  kd test: injected failure in kodhane_saves; nothing changed
+PASS [ab] K-F3 no 'delete' copy (either game) left behind by the failed runs
+PASS [ab] K-G1 no approval_ref  -- ERROR:  approval_ref missing; nothing changed
+PASS [ab] K-G2 empty approval_ref  -- ERROR:  kodhane account delete: approval_ref (Aryen's approval reference) is required; nothing deleted; nothing changed
+PASS [ab] K-G3 confirm_uid differs  -- ERROR:  kodhane account delete: confirm_uid does not match uid; nothing deleted; nothing changed
+PASS [ab] K-G4 expect token wrong  -- ERROR:  kodhane account delete: rows or account (id / e-mail / created_at) changed since the preflight (expect 000000000000, now 81fbcfa852e1); run the preflight again. N; nothing changed
+PASS [ab] K-G5 unknown auth user  -- ERROR:  kodhane account delete: auth user 99999999-9999-4999-8999-999999999999 not found; nothing deleted (run the verify); nothing changed
+PASS [ab] K-G6 Açık Ofis rows changed since the preflight -> refused  -- ERROR:  kodhane account delete: rows or account (id / e-mail / created_at) changed since the preflight (expect 81fbcfa852e1, now 954142a6891e); run the preflight again. N; nothing changed
+PASS [ab] K-K1 kept rows identical: kodhane_profiles, Açık Ofis save/profile/backups, auth rows, audit log
+PASS [ab] K-K2 only the kept rows remain: kodhane_saves 0, kodhane_save_backups 0, kodhane_profiles 1, auth.users 1
+PASS [ab] K-L1 kodhane_leaderboard v6 (anon): u3's row gone although the profile stays, the others identical
+PASS [ab] K-L2 kodhane_leaderboard v6 as u3 herself: no row, no own pending row
+PASS [ab] K-L3 kodhane_leaderboard_v7 (anon): u3's row gone, the others identical
+PASS [ab] K-L4 kodhane_leaderboard_v7 as u3: no row
+PASS [ab] K-O1 every session of u3 closed: auth.sessions 0, auth.refresh_tokens 0 (session-bound and unbound)
+PASS [ab] K-O2 sessions and refresh tokens of other users untouched (u2: 1 session, 1 refresh token, rows identical)
+PASS [ab] K-R1 kodhane_only delete with the pre-login token: saves 1, delete copy 1, backups 2, carry 0, refresh tokens 3, sessions 3
+PASS [ab] K-S1 new Kodhane save: 0 old backups, best_score = new save 4e8 (old 4.5e8 not back)
+PASS [ab] K-S2 old Kodhane backup id cannot be restored (PT404)
+PASS [ab] K-S3 Kodhane leaderboard shows the new score only, same nickname
+PASS [ab] K-S4 v7 shows the new score only
+PASS [ab] K-V1 verify kodhane_only: Kodhane saves/backups 0  -- kept: auth.audit_log_entries=2, auth.users=1, public.acik_ofis_profiles=1, public.acik_ofis_saves=1, public.kodhane_profiles=1; deletion log: not installed
+PASS [ab] K-V2 verify full still fails after kodhane_only (kept rows are real)
+PASS [abl] L-0 every seeded user has progress log rows (10/4/11/10)
+PASS [abl] L-E1 the player keeps playing after the preflight (new log rows): the expect token stays the same
+PASS [abl] L-F1 full delete: summary reports kodhane_progress_log 10
+PASS [abl] L-F2 u1's log rows 0, verify full OK, other users' log rows identical
+PASS [abl] L-F3 auth user deleted directly (GoTrue admin delete): log rows cascade (FK on delete cascade)
+PASS [abl] L-K1 kodhane_only delete: summary reports kodhane_progress_log 12
+PASS [abl] L-K2 u3's log rows 0, other users' log rows identical
+PASS [abl] L-K3 verify kodhane_only OK
+PASS [abl] L-K4 verify kodhane_only fails on a leftover log row  -- ERROR:  kodhane account delete verify (kodhane_only): rows left for 33333333-3333-4333-8333-333333333333: public.kodhane_progress_log=1
+PASS [abl] L-K5 a new Kodhane save after kodhane_only starts a fresh log (first insert rows only: 3/3)
+PASS [abl] L-P1 preflight lists public.kodhane_progress_log (11 rows of u3), deleted in both modes
+PASS [abl] L-P2 kodhane_only verdict counts the log rows (saves 1 + backups 1 + log 11)
+PASS [base] C-D1 both delete triggers write a 'delete' copy with the best score (Kodhane, Açık Ofis)  -- 1/500000000 1/70000
+PASS [base] C-D2 control: if the 'delete' copy stayed, a re-created row would start at the old best score (5e8)
+PASS [base] C-E3 token of another user with identical rows, e-mail and created_at (only the id differs) -> refused  -- ERROR:  kodhane account delete: rows or account (id / e-mail / created_at) changed since the preflight (expect 144f6ba51827, now 2f1cea40f161); run the preflight again. N; nothing changed
+PASS [base] C-M1 no mode, user with Açık Ofis rows -> BLOCKED  -- ERROR:  kodhane account delete BLOCKED: mode missing (-v mode=full | kodhane_only); nothing deleted. Non-Kodhane rows: public.acik_ofis_profiles=1, public.acik_ofis_save_; nothing changed
+PASS [base] C-M2 no mode, Kodhane-only user -> refused  -- ERROR:  kodhane account delete BLOCKED: mode missing (-v mode=full | kodhane_only); nothing deleted; nothing changed
+PASS [base] C-M3 mode='' -> refused  -- ERROR:  kodhane account delete BLOCKED: mode missing (-v mode=full | kodhane_only); nothing deleted. Non-Kodhane rows: public.acik_ofis_profiles=1, public.acik_ofis_save_; nothing changed
+PASS [base] C-M4 unknown mode -> refused  -- ERROR:  kodhane account delete: unknown mode "everything" (full | kodhane_only); nothing deleted; nothing changed
+PASS [base] C-M5 mode=KODHANE (typo, no underscore) -> refused  -- ERROR:  kodhane account delete: unknown mode "kodhane" (full | kodhane_only); nothing deleted; nothing changed
+PASS [base] C-M6 verify without mode -> error
+PASS [base] C-M7 verify with unknown mode -> error
+PASS [base] C-P1 preflight lists both games separately + auth + audit  -- kodhane: saves=1 backups=1 profiles=1; acik_ofis: saves=1 backups=1 profiles=1; audit=3; auth: users=1 identities=1 sessions=1 refresh_tokens=2 flow_state=1 one_time_tokens=1 mfa_factors=1
+PASS [base] C-P2 preflight: backups by reason and leaderboard state per game
+PASS [base] C-P3 preflight verdict for both modes + expect token
+PASS [base] C-P4 e-mail masked, no nickname in the preflight
+PASS [base] C-P5 expect token covers Açık Ofis rows too (one extra AO backup changes it)
+PASS [base] C-P6 preflight changes nothing
+PASS [base] F-B0 full refuses when another (non-Kodhane, non-AO) table references the user  -- ERROR:  kodhane account delete BLOCKED: rows outside Kodhane / Açık Ofis (public.zz_other_game=1) would be cascaded with the auth user. Nothing deleted; nothing changed
+PASS [base] F-B1 other users unchanged (17 tables incl. audit log)
+PASS [base] F-B2 Kodhane leaderboard: u1's row gone, the others identical
+PASS [base] F-B3 both Açık Ofis leaderboards: u1's rows gone, the others identical
+PASS [base] F-B5 public + auth schema diff empty
+PASS [base] F-B6 u4 delete: other users and Açık Ofis unchanged
+PASS [base] F-E1 auth e-mail changed since the preflight -> refused  -- ERROR:  kodhane account delete: rows or account (id / e-mail / created_at) changed since the preflight (expect 40c10eb66610, now dbd2863ae03e); run the preflight again. N; nothing changed
+PASS [base] F-E2 auth created_at changed since the preflight -> refused  -- ERROR:  kodhane account delete: rows or account (id / e-mail / created_at) changed since the preflight (expect 40c10eb66610, now ed12774a04e7); run the preflight again. N; nothing changed
+PASS [base] F-E2b e-mail / created_at restored -> the same token again
+PASS [base] F-E4 last_sign_in_at + a new audit row since the preflight: the token stays the same
+PASS [base] F-F1 failure at the last step (auth.users) after Kodhane + Açık Ofis + audit deletes  -- ERROR:  kd test: injected failure in users; nothing changed
+PASS [base] F-F2 failure at acik_ofis_profiles (after the Kodhane steps)  -- ERROR:  kd test: injected failure in acik_ofis_profiles; nothing changed
+PASS [base] F-F3 no 'delete' copy (either game) left behind by the failed runs
+PASS [base] F-G1 no approval_ref  -- ERROR:  approval_ref missing; nothing changed
+PASS [base] F-G2 empty approval_ref  -- ERROR:  kodhane account delete: approval_ref (Aryen's approval reference) is required; nothing deleted; nothing changed
+PASS [base] F-G3 confirm_uid differs  -- ERROR:  kodhane account delete: confirm_uid does not match uid; nothing deleted; nothing changed
+PASS [base] F-G4 expect token wrong  -- ERROR:  kodhane account delete: rows or account (id / e-mail / created_at) changed since the preflight (expect 000000000000, now 40c10eb66610); run the preflight again. N; nothing changed
+PASS [base] F-G5 unknown auth user  -- ERROR:  kodhane account delete: auth user 99999999-9999-4999-8999-999999999999 not found; nothing deleted (run the verify); nothing changed
+PASS [base] F-G6 Açık Ofis rows changed since the preflight -> refused  -- ERROR:  kodhane account delete: rows or account (id / e-mail / created_at) changed since the preflight (expect 40c10eb66610, now 2db90224abb1); run the preflight again. N; nothing changed
+PASS [base] F-R1 full delete: every step with the expected count, in-transaction check 0 rows
+PASS [base] F-R2 full delete of a Kodhane-only user (0 Açık Ofis rows, 1 audit row)
+PASS [base] F-S1 re-created account: only the new auth.users row (0 game rows, 0 audit rows)
+PASS [base] F-S2 backups visible to the re-created user: Kodhane 0, Açık Ofis 0
+PASS [base] F-S3 old backup ids cannot be restored in either game (PT404)
+PASS [base] F-S4 new saves start from the new scores only (Kodhane 4.5e8 not 5e8, Açık Ofis 5e4 not 7e4)
+PASS [base] F-S5 Kodhane leaderboard: only the new score
+PASS [base] F-S6 same e-mail, new id: 0 backups, best_score = new save (old 8e8 not back)
+PASS [base] F-V1 verify full: 0 rows in all 18 counted tables, audit log included
+PASS [base] F-V2 verify full fails when rows are left (u2)
+PASS [base] F-V3 verify full u4: 0 rows
+PASS [base] K-A1 Açık Ofis byte-identical: data, kodhane_leaderboard('acik_ofis') + acik_ofis_leaderboard (nickname 'Iki Oyunlu Uc' still there), functions, triggers
+PASS [base] K-A2 Açık Ofis still byte-identical after the new Kodhane save
+PASS [base] K-B1 other users unchanged
+PASS [base] K-B2 public + auth schema diff empty
+PASS [base] K-E1 auth e-mail changed since the preflight -> refused  -- ERROR:  kodhane account delete: rows or account (id / e-mail / created_at) changed since the preflight (expect 81fbcfa852e1, now 81e5097bcd05); run the preflight again. N; nothing changed
+PASS [base] K-E2 auth created_at changed since the preflight -> refused  -- ERROR:  kodhane account delete: rows or account (id / e-mail / created_at) changed since the preflight (expect 81fbcfa852e1, now 5cf23f4c349b); run the preflight again. N; nothing changed
+PASS [base] K-E2b e-mail / created_at restored -> the same token again
+PASS [base] K-E4 new login since the preflight (last_sign_in_at, a new session, an audit row): the token stays the same
+PASS [base] K-F1 failure at step 2 (kodhane_save_backups) after step 1 + trigger copy  -- ERROR:  kd test: injected failure in kodhane_save_backups; nothing changed
+PASS [base] K-F2 failure right after step 1 (kodhane_saves row gone, copy written)  -- ERROR:  kd test: injected failure in kodhane_saves; nothing changed
+PASS [base] K-F3 no 'delete' copy (either game) left behind by the failed runs
+PASS [base] K-G1 no approval_ref  -- ERROR:  approval_ref missing; nothing changed
+PASS [base] K-G2 empty approval_ref  -- ERROR:  kodhane account delete: approval_ref (Aryen's approval reference) is required; nothing deleted; nothing changed
+PASS [base] K-G3 confirm_uid differs  -- ERROR:  kodhane account delete: confirm_uid does not match uid; nothing deleted; nothing changed
+PASS [base] K-G4 expect token wrong  -- ERROR:  kodhane account delete: rows or account (id / e-mail / created_at) changed since the preflight (expect 000000000000, now 81fbcfa852e1); run the preflight again. N; nothing changed
+PASS [base] K-G5 unknown auth user  -- ERROR:  kodhane account delete: auth user 99999999-9999-4999-8999-999999999999 not found; nothing deleted (run the verify); nothing changed
+PASS [base] K-G6 Açık Ofis rows changed since the preflight -> refused  -- ERROR:  kodhane account delete: rows or account (id / e-mail / created_at) changed since the preflight (expect 81fbcfa852e1, now 954142a6891e); run the preflight again. N; nothing changed
+PASS [base] K-K1 kept rows identical: kodhane_profiles, Açık Ofis save/profile/backups, auth rows, audit log
+PASS [base] K-K2 only the kept rows remain: kodhane_saves 0, kodhane_save_backups 0, kodhane_profiles 1, auth.users 1
+PASS [base] K-L1 kodhane_leaderboard v6 (anon): u3's row gone although the profile stays, the others identical
+PASS [base] K-L2 kodhane_leaderboard v6 as u3 herself: no row, no own pending row
+PASS [base] K-O1 every session of u3 closed: auth.sessions 0, auth.refresh_tokens 0 (session-bound and unbound)
+PASS [base] K-O2 sessions and refresh tokens of other users untouched (u2: 1 session, 1 refresh token, rows identical)
+PASS [base] K-R1 kodhane_only delete with the pre-login token: saves 1, delete copy 1, backups 2, carry 0, refresh tokens 3, sessions 3
+PASS [base] K-S1 new Kodhane save: 0 old backups, best_score = new save 4e8 (old 4.5e8 not back)
+PASS [base] K-S2 old Kodhane backup id cannot be restored (PT404)
+PASS [base] K-S3 Kodhane leaderboard shows the new score only, same nickname
+PASS [base] K-V1 verify kodhane_only: Kodhane saves/backups 0  -- kept: auth.audit_log_entries=2, auth.users=1, public.acik_ofis_profiles=1, public.acik_ofis_saves=1, public.kodhane_profiles=1; deletion log: not installed
+PASS [base] K-V2 verify full still fails after kodhane_only (kept rows are real)
+PASS [files] C-T0 counts query byte-identical in preflight (2) / delete (3) / verify (2); identity part of the token identical in preflight / delete
+PASS [files] C-T0b preflight / verify: read only transaction, no write statement

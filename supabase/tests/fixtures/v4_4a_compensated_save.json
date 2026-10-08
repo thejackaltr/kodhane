@@ -1,0 +1,39 @@
+{
+ "_note": "Anonymous reduced copy of a compensated Kodhane save (1100 shares added by hand after a v4.3 Halka Arz): game counters only, timestamps rounded to the hour, no user id / nickname. Used by run_v4_4a_tests.sh when the full local copy is absent.",
+ "data": {
+  "version": 4,
+  "totalEarned": 43419016272800.87,
+  "runEarned": 2503391505270.2563,
+  "cycleEarned": 2514964696161.745,
+  "shares": 1110,
+  "prestigeCount": 4,
+  "cycleRounds": 1,
+  "ipoCount": 1,
+  "ipoSharesEarned": 2,
+  "ipoShares": 2,
+  "stage": 5,
+  "stageBest": 5,
+  "cycleStage": 5,
+  "startedAt": 1790589600000,
+  "lastSaved": 1790701200000,
+  "gens": {
+   "ai": 55,
+   "pm": 55,
+   "arge": 0,
+   "mars": 0,
+   "ofis": 26,
+   "yzlab": 0,
+   "junior": 100,
+   "senior": 100,
+   "sunucu": 41,
+   "stajyer": 100,
+   "tasarimci": 85
+  },
+  "tree": []
+ },
+ "save_version": 4,
+ "revision": 1053,
+ "strict_revision": true,
+ "best_score": 43419016272800.87,
+ "best_stage": 5
+}

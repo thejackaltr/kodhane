@@ -1,0 +1,82 @@
+PASS A1 12 months + 1 day deleted, 12 months - 1 day kept: returned count  -- 3
+PASS A10 a rolled back call: returns 2 inside the transaction, deletes nothing  -- 2|2
+PASS A2 rows left per tag (old / young / null created_at / recent)  -- 0/2/1/2
+PASS A3 returned count = rows actually deleted  -- 3
+PASS A4 nothing older than 12 months: a second call returns 0  -- 0
+PASS A5 batch limit: 25 old rows with batch 10 -> 10, 10, 5, 0  -- 10 10 5 0 
+PASS A6 oldest rows first: batch 2 takes the 500-day rows, then the 450-day rows  -- 2/0/2
+PASS A7 batch -1 refused (22023), nothing deleted
+PASS A7 batch 0 refused (22023), nothing deleted
+PASS A7 batch 50001 refused (22023), nothing deleted
+PASS A7 batch null refused (22023), nothing deleted
+PASS A8 batch 50000 (the maximum) accepted  -- 4
+PASS A9 default batch (no argument) works  -- 3
+PASS B0 retention setting is 30 days in both games  -- 30 days/30 days
+PASS B1 kodhane_cleanup_save_backups(): 30 days + 1 day deleted (delete copy included), returned count  -- 2
+PASS B2 Kodhane backups left (29 days kept, delete copy included)  -- delete29,manual29,restore0
+PASS B3 acik_ofis backups untouched by the Kodhane cleanup  -- delete29,delete31,manual29,reset31,restore0
+PASS B4 acik_ofis_cleanup_save_backups(): returned count  -- 2
+PASS B5 Açık Ofis backups left  -- delete29,manual29,restore0
+PASS B6 second run deletes nothing  -- 0/0
+PASS D0 both command files are exactly one line  -- 1/1
+PASS D0b no single quote, dollar, backtick or backslash in either command: safe inside sh -c '...' as is
+PASS D0c first command: -X -P pager=off -U postgres -d postgres -v ON_ERROR_STOP=1, three functions, no progress log  -- none missing
+PASS D0d runbook contains both commands verbatim (own lines)
+PASS D0e second command = first command verbatim + progress log steps at the end (kodhane_cleanup_progress_log(365, 5000))
+PASS D1 image default user (Config.User empty -> root) and the user docker exec runs as  -- [] root
+PASS D2 pg_hba (.136, /etc/postgresql/pg_hba.conf): local socket rules  -- local all supabase_admin trust; local all all peer map=supabase_map
+PASS D2b pg_ident supabase_map: OS user root -> db role postgres (peer, no password)  -- postgres>postgres root>postgres
+PASS D3 as root: psql -U postgres over the local socket, no password (PGPASSWORD / PGHOST unset)  -- postgres true
+PASS J0 throwaway postgres database = live schema + audit migration, no progress log (as in production: -d postgres)
+PASS J0b progress log migration applied (from here on the second command)
+PASS J1 docker exec <c> sh -c '<command>' (default user root): counts on stdout, exit code  -- rc=0 kodhane_save_backups=2 acik_ofis_save_backups=2 audit_log_entries=12001 audit_batches=3 audit_left_over_12m=0 progress_log_rows=12001 progress_log_batches=3 progress_log_left_over_365d=0 
+PASS J1b kept: audit 12 months - 1 day, both games' 29-day backups, progress log 364 days  -- 2/1/1/2/0
+PASS J2 second run: zeros, exit code  -- rc=0 kodhane_save_backups=0 acik_ofis_save_backups=0 audit_log_entries=0 audit_batches=0 audit_left_over_12m=0 progress_log_rows=0 progress_log_batches=0 progress_log_left_over_365d=0 
+PASS J3 upper bound 20 batches x 5000 per run (audit and progress log): 100000 deleted each, 5 left for the next night, exit code  -- rc=0 kodhane_save_backups=0 acik_ofis_save_backups=0 audit_log_entries=100000 audit_batches=20 audit_left_over_12m=5 progress_log_rows=100000 progress_log_batches=20 progress_log_left_over_365d=5 
+PASS J3b next run deletes the rest  -- rc=0 kodhane_save_backups=0 acik_ofis_save_backups=0 audit_log_entries=5 audit_batches=1 audit_left_over_12m=0 progress_log_rows=5 progress_log_batches=1 progress_log_left_over_365d=0 
+PASS J4 audit function missing (rollback applied) -> exit code 1, ERROR in the log, nothing deleted from the audit log or the progress log  -- ERROR:  function public.kodhane_cleanup_audit_log(integer) does not exist
+PASS J5 first step fails (Açık Ofis table renamed) -> exit code 1, later steps not run (audit rows still there)
+PASS J6 after the fix the same command succeeds again  -- rc=0 kodhane_save_backups=0 acik_ofis_save_backups=0 audit_log_entries=2 audit_batches=1 audit_left_over_12m=0 progress_log_rows=2 progress_log_batches=1 progress_log_left_over_365d=0 
+PASS J7 container's own postgres database restored  -- t
+PASS J8 progress log function missing -> exit 1 at the last step; backups and audit already deleted and committed  -- kodhane_save_backups=1 acik_ofis_save_backups=1 audit_log_entries=3 audit_batches=1 audit_left_over_12m=0 
+PASS J9 progress log migration re-applied: the command succeeds again  -- rc=0 kodhane_save_backups=0 acik_ofis_save_backups=0 audit_log_entries=0 audit_batches=0 audit_left_over_12m=0 progress_log_rows=4 progress_log_batches=1 progress_log_left_over_365d=0 
+PASS JS1 retention installed alone (no progress log table / function): first command succeeds  -- rc=0 kodhane_save_backups=0 acik_ofis_save_backups=0 audit_log_entries=2 audit_batches=1 audit_left_over_12m=0 0
+PASS JS2 first command with the progress log present: exit 0, progress log rows untouched  -- rc=0 kodhane_save_backups=0 acik_ofis_save_backups=0 audit_log_entries=0 audit_batches=0 audit_left_over_12m=0 3
+PASS M0 postgres without DELETE on auth.audit_log_entries -> migration stops with an error, function not created  -- ERROR:  kodhane audit retention: role postgres cannot DELETE auth.audit_log_entries: the cleanup would fail; nothing created
+PASS M0b wrong target (no public.kodhane_saves) -> error, nothing created
+PASS M1 migration applies: owner | security definer | search_path | ACL (postgres + service_role only)  -- postgres|true|search_path=""|{postgres=X/postgres,service_role=X/postgres}
+PASS M2 second run (idempotent): same definition and ACL  -- postgres|true|search_path=""|{postgres=X/postgres,service_role=X/postgres}|9468d28de3eb62ab89b25c6eb7be6391
+PASS M3 the migration adds only kodhane_cleanup_audit_log (public + auth schema diff without its blocks)  -- 0
+PASS M3b function, ACL and comment blocks present (3)  -- 3
+PASS M4 progress log migration (20261003020000) applied on top, for the S / J steps
+PASS P-anon anon cannot EXECUTE kodhane_cleanup_audit_log (42501)
+PASS P-anon-acik_ofis_cleanup_save_backups anon cannot EXECUTE acik_ofis_cleanup_save_backups() (42501)
+PASS P-anon-kodhane_cleanup_save_backups anon cannot EXECUTE kodhane_cleanup_save_backups() (42501)
+PASS P-authenticated authenticated cannot EXECUTE kodhane_cleanup_audit_log (42501)
+PASS P-authenticated-acik_ofis_cleanup_save_backups authenticated cannot EXECUTE acik_ofis_cleanup_save_backups() (42501)
+PASS P-authenticated-kodhane_cleanup_save_backups authenticated cannot EXECUTE kodhane_cleanup_save_backups() (42501)
+PASS P-postgres postgres (owner) can EXECUTE  -- 0
+PASS P-public no PUBLIC EXECUTE and exactly postgres + service_role on the three cleanup functions  -- acik_ofis_cleanup_save_backups={postgres=X/postgres,service_role=X/postgres} kodhane_cleanup_audit_log={postgres=X/postgres,service_role=X/postgres} kodhane_cleanup_save_backups={postgres=X/postgres,service_role=X/postgres}
+PASS P-service_role service_role can EXECUTE (security definer deletes in auth) and gets the count  -- 3 0 0 
+PASS Q0 connected as role postgres (session_user postgres, not a superuser)  -- postgres|postgres|false
+PASS Q1 postgres calls the three functions: kodhane backups / acik_ofis backups / audit counts  -- 2 2 3 
+PASS Q2 the rows are really gone, the young ones stay (audit / kodhane / ao: old | kept)  -- 0/0/0|1/1/1
+PASS R1 rollback drops the function
+PASS R2 public + auth schema after rollback = before the migration (diff empty)
+PASS R3 rollback twice (idempotent)
+PASS R4 apply -> rollback -> apply -> rollback: same ACL, schema back to before
+PASS R5 failed migration (M0): nothing left behind (schema diff vs before, apart from the test's own revoke / re-grant ACL)  -- absent|0
+PASS S0b no credential, no set -x in the local job script and the Dokploy command
+PASS S1 daily job: both backup tables + audit in batches, then progress log (365 days) in batches, exit 0  -- 0|kodhane retention OK: kodhane_save_backups 1, acik_ofis_save_backups 1, audit_log_entries 10 (3 batch(es) of <= 4); audit rows older than 12 months left 0#kodhane retention progress log OK: kodhane_progress_log 10 (3 batch(es) of <= 4); rows older than 365 days left 0#kodhane retention deletion log skipped: migration 20261003040000 not applied in database kr_main#
+PASS S1b kept: the 11-month audit row and the 364-day progress log row  -- 1/1/0
+PASS S2 second run: nothing to delete  -- 0|kodhane retention OK: kodhane_save_backups 0, acik_ofis_save_backups 0, audit_log_entries 0 (1 batch(es) of <= 5000); audit rows older than 12 months left 0#kodhane retention progress log OK: kodhane_progress_log 0 (1 batch(es) of <= 5000); rows older than 365 days left 0#kodhane retention deletion log skipped: migration 20261003040000 not applied in database kr_main#
+PASS S3 batch cap: 8 of 10 deleted, 2 left for the next run, exit 0
+PASS S4 wrong database -> exit 3, nothing run
+PASS S5 migration not applied -> exit 3, nothing deleted
+PASS S6 KD_AUDIT_BATCH=0 -> exit 2
+PASS S6 KD_AUDIT_BATCH=50001 -> exit 2
+PASS S6 KD_AUDIT_BATCH=abc -> exit 2
+PASS S7 a failing step (Açık Ofis cleanup, table renamed) stops the job: exit 1, no OK line, the audit and progress log steps did not run
+PASS S7b table name restored  -- t
+PASS S8 progress log migration missing: backups + audit deleted (s8 rows 0), progress log step skipped, exit 0
+PASS S8b migration re-applied: the job succeeds again and deletes the 366-day progress log rows
