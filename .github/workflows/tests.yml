@@ -1,0 +1,58 @@
+# PR'larda hızlı testler: yalnız ağsız ve tarayıcısız Node setleri (tests/test_*.js).
+# Dışarıda kalanlar: tests/test_*.py (Playwright/Chromium; test_cloud.py jsDelivr'den supabase-js de çeker),
+# tests/balance_*.js ve tests/honest_sim.js (simülasyon/rapor, PASS/FAIL testi değil; balance_parity_v44.js
+# ayrıca repoda olmayan /workspace/kodhane-sim44 ister). Canlı sunuculara istek atan bir adım yok.
+# Dağıtım pages.yml'dadır; bu iş akışı hiçbir şey yayınlamaz.
+name: Testler (PR)
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  node-tests:
+    name: Node testleri (tests/test_*.js)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # Simülasyon çapraz kontrolü yerel klasör ister; CI'da yok -> test kendi içinde SKIP eder.
+      # (job düzeyindeki env'de runner bağlamı kullanılamaz; sabit, var olmayan bir yol)
+      KODHANE_SIM: /tmp/kodhane-sim-yok
+    steps:
+      # Tam geçmiş: test_v44.js eski sürümleri (879f67b, 6358db4) git show ile karşılaştırır.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # test_reset.js eski oyunu `git show v4-local:game.js` ile okur. v4-local yalnız yerel bir dal;
+      # işaret ettiği commit (203affe) main geçmişinde var. Aynı adla yerel dal oluşturulur (yalnız runner'da).
+      - name: v4-local karşılaştırma dalı (yalnız runner'da)
+        run: |
+          git merge-base --is-ancestor 203affeb53dda031c027b3ee61281703a47db981 HEAD
+          git branch v4-local 203affeb53dda031c027b3ee61281703a47db981
+
+      # package.json / .nvmrc yok, bağımlılık yok; Fenomen ile aynı LTS
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Testler
+        run: |
+          fail=0
+          for t in tests/test_*.js; do
+            echo "::group::$t"
+            start=$(date +%s%N)
+            if node "$t"; then res=GEÇTİ; else res=KALDI; fail=1; fi
+            echo "::endgroup::"
+            echo "$t: $res ($(( ($(date +%s%N) - start) / 1000000 )) ms)" | tee -a "$GITHUB_STEP_SUMMARY"
+          done
+          exit $fail
