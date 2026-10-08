@@ -579,3 +579,11 @@ html.nb-open body { padding-bottom: calc(var(--nb-space, 160px) + 8px); }
   /* olay kartı bandın üstündeki alana sığmazsa kendi içinde kayar ("Sonra" ve seçimler ulaşılabilir kalır) */
   html.nb-open .event-card { max-height: calc(100vh - var(--nb-space, 160px) - 8px); overflow-y: auto; overscroll-behavior: contain; padding: 10px 12px; }
 }
+
+/* Ortam işareti: yalnız kodhane-dev.teserix.com (game.js ENV.badge). Küçük, tıklanamaz, köşede; oyunu örtmez. */
+.env-badge {
+  position: fixed; top: calc(2px + env(safe-area-inset-top, 0px)); left: calc(2px + env(safe-area-inset-left, 0px));
+  z-index: 9999; pointer-events: none; user-select: none;
+  padding: 1px 4px; border-radius: 4px; background: #e5484d; color: #fff;
+  font: 700 9px/1.25 system-ui, -apple-system, sans-serif; letter-spacing: .06em; opacity: .85;
+}

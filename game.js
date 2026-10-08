@@ -20,6 +20,20 @@
   var SAVE_KEY = 'kodhane_ajans_save_v2';
   var LEGACY_KEYS = ['kodhane_ajans_save_v1'];
   var SETTINGS_KEY = 'kodhane_ayarlar_v1';
+  // Ortam: hosta göre TEK yerde seçilir (dev dalı; oyun sürümü değil). cloud.js (Kodhane.ENV) ve Umami kapısı (tel.hostOk) bunu okur.
+  //   live  = LIVE_HOSTS: bugünkü davranış birebir (canlı Supabase kodhane-api.teserix.com + canlı Umami).
+  //   dev   = DEV_HOST (Cloudflare Access arkasında): bulut kapalı (test Supabase'i cloud.js TEST_CLOUD'a yazılırsa açılır),
+  //           Umami yok, köşede küçük "TEST" işareti.
+  //   local = bilinmeyen her host (localhost, 127.0.0.1, önizleme, file:, boş): bulut kapalı, Umami yok, işaret yok.
+  // Karşılaştırma küçük harfle, port olmadan.
+  var LIVE_HOSTS = ['kodhane.teserix.com', 'thejackaltr.github.io'];
+  var DEV_HOST = 'kodhane-dev.teserix.com';
+  function hostEnv(hostname) {
+    var h = String(hostname == null ? '' : hostname).toLowerCase().replace(/:\d*$/, '');
+    var name = LIVE_HOSTS.indexOf(h) !== -1 ? 'live' : h === DEV_HOST ? 'dev' : 'local';
+    return { name: name, host: h, live: name === 'live', badge: name === 'dev' };
+  }
+  var ENV = hostEnv((function () { try { return root && root.location ? root.location.hostname : ''; } catch (e) { return ''; } })());
   var COST_GROWTH = 1.15;
   var AUTOSAVE_MS = 10000;
   var BASE_CLICK = 1;
@@ -2469,7 +2483,7 @@
   var TEL_KEYS = { pref: 'kodhane_tel', notice: 'kodhane_tel_notice', umamiOff: 'umami.disabled' };
   var UMAMI_SRC = 'https://analiz.teserix.com/script.js';
   var UMAMI_WEBSITE_ID = '6a036eb3-5974-482f-bcce-dbdf0a383f36';
-  var UMAMI_DOMAINS = 'kodhane.teserix.com,thejackaltr.github.io';
+  var UMAMI_DOMAINS = 'kodhane.teserix.com,thejackaltr.github.io';  // = LIVE_HOSTS (ENV); tests/test_env.js ikisinin aynı olduğunu denetler
   var UMAMI_BEFORE_SEND = '__kodhaneUmamiBeforeSend';
   // Anonim Supabase sayacı (kodhane_count_event: haber gösterimi/tıklaması) da AYNI izne bağlı. Yönetici kararı
   // değişirse yalnızca bu bayrak false yapılır. Giriş, bulut kaydı ve sıralama izinden bağımsızdır (oyun özellikleri).
@@ -2485,7 +2499,7 @@
       try {
         var l = root.location;
         if (!l || !/^https?:$/.test(l.protocol) || LOCAL_HOST.test(l.hostname)) return false;
-        return UMAMI_DOMAINS.split(',').indexOf(l.hostname) !== -1;
+        return hostEnv(l.hostname).live && UMAMI_DOMAINS.split(',').indexOf(l.hostname) !== -1;  // yalnız canlı hostlar (ENV)
       } catch (e) { return false; }
     },
     allowed: function () { return tel.consent() && tel.hostOk(); },
@@ -3010,7 +3024,16 @@
     save();
     initUndo();
     initServiceWorker();
+    showEnvBadge();
     track('game_start');
+  }
+  // "TEST" işareti: yalnız ENV.badge (hostname tam olarak kodhane-dev.teserix.com). Küçük, tıklanamaz (pointer-events: none), köşede.
+  function showEnvBadge() {
+    if (!ENV.badge || !document.body || document.getElementById('envBadge')) return;
+    var b = document.createElement('div');
+    b.id = 'envBadge'; b.className = 'env-badge'; b.textContent = 'TEST';
+    b.setAttribute('aria-hidden', 'true'); b.setAttribute('data-test', 'env-badge');
+    document.body.appendChild(b);
   }
 
   // Test ve hata ayıklama için
@@ -3026,6 +3049,7 @@
   Core.onResetCloudRender = onCloudRenderReset; Core.refreshRestoreBox = refreshRestoreBox; Core.openResetDialog = openResetDialog;
   Core.EPOCH_KEY = EPOCH_KEY; Core.UNDO_KEY = UNDO_KEY; Core.RESET_HOLD_MS = RESET_HOLD_MS; Core.LOG_CARRY_KEY = LOG_CARRY_KEY;
   Core.undoActive = function () { return !!undoState.marker; };
+  Core.ENV = ENV; Core.hostEnv = hostEnv; Core.LIVE_HOSTS = LIVE_HOSTS; Core.DEV_HOST = DEV_HOST;
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();

@@ -79,6 +79,12 @@ with sync_playwright() as p:
     sb_hits = []
     for _h in ('https://kodhane-api.teserix.com/**', 'https://supabase.teserix.com/**'):
         ctx.route(_h, lambda r: (sb_hits.append(r.request.url), r.abort('connectionrefused')))
+    # Hosta göre ortam (dev dalı): 127.0.0.1 bilinmeyen host -> bulut kapalı, canlı adrese istek gitmez. Sıralama hata durumunu
+    # denemek için erişilemeyen sahte bir test Supabase'i KODHANE_CLOUD_CONFIG ile verilir; canlı adrese istek 0 kalmalı (sb_hits).
+    FAKE_SB = 'https://kodhane-test.supabase.co'
+    fake_hits = []
+    ctx.add_init_script("window.KODHANE_CLOUD_CONFIG = { url: '%s', key: 'sb_publishable_test_key' };" % FAKE_SB)
+    ctx.route(FAKE_SB + '/**', lambda r: (fake_hits.append(r.request.url), r.abort('connectionrefused')))
     # Umami (analiz.teserix.com) de gerçekten çağrılmaz: boş betik (window.umami tanımsız = izleyici yok yolu; çevrimdışı denemede konsol hatası olmasın)
     ctx.route('https://analiz.teserix.com/**', lambda r: r.fulfill(status=200, content_type='application/javascript', body=''))
     page = ctx.new_page()
@@ -425,7 +431,8 @@ with sync_playwright() as p:
     check('lb tab: friendly error when service unreachable (+ Yenile button)', ok and page.is_visible('#lbRetry') and page.inner_text('#lbRetry') == 'Yenile', page.inner_text('#lbStatus'))
     check('lb tab: guest CTA to sign in and join', page.is_visible('#lbSignIn') and page.inner_text('#lbSignIn') == 'Giriş yap'
           and 'Listeye girmek için giriş yap. İlerlemen de buluta kaydolur.' in page.inner_text('#lbJoin'))
-    check('lb tab: guest request is the public RPC only', sb_hits and all('/rest/v1/rpc/kodhane_leaderboard' in u for u in sb_hits), str(sb_hits))
+    check('lb tab: guest request is the public RPC only (test address; live API 0)', fake_hits and all('/rest/v1/rpc/kodhane_leaderboard' in u for u in fake_hits) and not sb_hits,
+          str(fake_hits) + ' live=' + str(sb_hits))
     ctx.set_offline(True)
     page.click('#lbRefresh'); page.wait_for_timeout(200)
     check('lb tab: offline message', page.inner_text('#lbStatus').strip() == '📡 Sıralama için internet bağlantısı gerekli', page.inner_text('#lbStatus'))
