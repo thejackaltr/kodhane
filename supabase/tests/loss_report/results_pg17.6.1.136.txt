@@ -1,0 +1,118 @@
+== container kd47-136: supabase/postgres:17.6.1.136 sha256:f519727303f0af6862882be2a30f420e28710d4209226e681aaddb
+PASS M0a without package B: refused, nothing created  -- 1|t
+PASS M0b without the progress log: refused, nothing created  -- 1|t
+PASS M1 migration applies (supabase_admin, own transaction, no -1)
+PASS M2 idempotent: second run OK, whole schema unchanged
+PASS M3 install verify  -- LRVERIFY|PASS|9
+PASS M5 B / A / progress log untouched: other public function definitions, kodhane_saves triggers, kodhane_score_plausible md5  -- b9e28f67b3e654c3c9924c33bd011c14||463f2109c35b825827e57b8098b49947
+PASS M5b public schema: only the two player RPCs are new  -- kodhane_loss_report_create,kodhane_loss_report_status|0
+PASS M4 migration as role postgres (DevOps connects as postgres): applies, verify PASS  -- 0|LRVERIFY|PASS|9
+PASS M6a deletion log first, then this migration: both install verifies PASS  -- DLVERIFY|PASS|LRVERIFY|PASS|9
+PASS P1 anon / authenticated / service_role: select, insert, update, delete on the table -> 42501 (no schema USAGE)  --  42501 42501 42501 42501 42501 42501 42501 42501 42501 42501 42501 42501
+PASS P2 the same roles: ops functions (queue, apply, approve, cleanup) -> 42501  --  42501 42501 42501 42501 42501 42501 42501 42501 42501 42501 42501 42501
+PASS P3 player RPCs: anon / service_role no EXECUTE; authenticated without a uid -> not_authenticated (all 42501)  -- 42501 42501 42501 42501 42501 42501
+PASS P4 RLS forced, no policy: even a mistaken GRANT shows the player 0 rows (own row exists)  -- 0
+PASS P5 a mistaken GRANT EXECUTE to service_role: the ops function still refuses (caller check)  -- 42501|1
+PASS C14 lost_since accepted: Bugün / Dün start in UTC+3, UTC+14 (Kiritimati), UTC-12; now - 7 / 30 days; NULL; ISO 'Z' text; +4 min clock skew; 364 days  --  in_review in_review in_review in_review in_review in_review in_review in_review in_review in_review in_review in_review
+PASS C14b lost_since 6 minutes ahead / 366 days back -> refused (loss_report_invalid)  -- ERROR:  loss_report_invalid ERROR:  loss_report_invalid
+PASS C14c the rolled-back tries left no report  -- 0
+PASS C1 create: id + status in_review  -- {"status":"in_review"}|true
+PASS C1b stored: uid, sorted distinct lost_items, lost_since, trimmed description (CRLF -> LF), client_version, save revision, status pending  -- 22222222-2222-4222-8222-222222222222|{agac,yatirim_turu}|true|hisselerim\n gitti|4.5.0|3|pending
+PASS C3 lost_items empty / unknown / NULL element / NULL / unknown 6th -> 22023 loss_report_invalid (lost_items)  --  22023|loss_report_invalid|lost_items 22023|loss_report_invalid|lost_items 22023|loss_report_invalid|lost_items 22023|loss_report_invalid|lost_items 22023|loss_report_invalid|lost_items
+PASS C4 lost_since in the future / older than 365 days -> 22023 (lost_since)  -- 22023|loss_report_invalid|lost_since 22023|loss_report_invalid|lost_since
+PASS C5 description > 280 / with @ (e-mail) / control character -> 22023 (description)  --  22023|loss_report_invalid|description 22023|loss_report_invalid|description 22023|loss_report_invalid|description
+PASS C7 no Kodhane cloud save -> PT404 no_cloud_save  -- PT404|no_cloud_save
+PASS C8 a second report while one is open -> PT409 loss_report_open  -- PT409|loss_report_open
+PASS C13 one open report per player is enforced by the DB too (direct insert -> 23505)  -- 23505
+PASS C6 description of exactly 280 characters accepted; invalid client_version is not stored (NULL)  -- 280|NULL
+PASS C10 after a rejection, within 24 hours -> PT429 loss_report_daily_limit, detail = retry time (created + 24 h, UTC)  -- PT429|loss_report_daily_limit|x2026-10-10T01:52:20Z
+PASS C11 25 hours later a new report is accepted  -- in_review
+PASS C12 5 reports in 30 days (oldest 22 days ago) -> PT429 loss_report_monthly_limit  -- PT429|loss_report_monthly_limit
+PASS C12b with the oldest report 31 days back: accepted again  -- in_review
+PASS S1 result columns: no description, no ops field; applied_revision last  -- TABLE(id bigint, created_at timestamp with time zone, lost_items text[], lost_since timestamp with time zone, status text, status_changed_at timestamp with time zone, reason text, applied_at timestamp
+PASS S2 own reports only (U1 sees its 2, U2 its 1; ids match)  -- 16:rejected:diger,17:in_review:-/14:in_review
+PASS S3 p_limit clamped to 1..50 (0 -> 1 row, newest first)  -- 17
+PASS A1 apply of a pending report -> 55000 'not approved', save untouched  -- 55000|c2946db849b15fb4a57e6a1253a379ec
+PASS A2 approval_ref with @ , " \ control character / bad month / no real date / empty / wrong format -> 22023, still pending  --  22023 22023 22023 22023 22023 22023 22023 22023 22023|pending
+PASS A3 proposal (at lost_since): shares 2 -> 10, tree + kod_2, kod_3; other fields unchanged  -- [{"tree":{"to":3,"from":1},"shares":{"to":10,"from":2}},["kod_2","kod_3"],false,3]
+PASS A4 approve -> approved; approved values = only what changes; approved revision = save revision  -- approved|approved|{"tree": ["kod_2", "kod_3"], "shares": 10}|true|true
+PASS A4b approve again: same reference -> already_approved; another reference -> 55000 (only pending / needs_review)  -- already_approved|55000
+PASS A4c player sees 'approved' (no ref, no values, applied_revision NULL)  -- approved|-|NULL
+PASS A5 apply with another approval_ref -> 42501, save untouched  -- 42501|c2946db849b15fb4a57e6a1253a379ec
+PASS A6 apply -> applied: shares 10, tree kod_1..3 back, revision + 1 (strict), log rows 3  -- ["applied",3,4,3]|10/10/10/0/0/0/["kod_1", "kod_2", "kod_3"]|true
+PASS A6b nothing else in the save changed (totalEarned, money, saveVersion ...), best_score / best_stage kept  -- 600000000|3|d0420c1d63ae7450c17c464c032abadd|5
+PASS A7 one 'manual' backup = the save before the restore (revision, payload)  -- 1|true|true|true
+PASS A8 progress log: own telafi rows with the approval reference, actor supabase_admin  -- telafi:shares:2>10 telafi:tree:1>3:kod_2 telafi:tree:1>3:kod_3|KD-TLF-2026-10-03-11/supabase_admin
+PASS A9 second apply -> already_applied, save / backups / log identical, other players untouched  -- already_applied|79a7c3f75c9c3bef3fb07847081c4c63|df550aea424ae43623846285533e2ce3
+PASS A10 player sees 'applied' with applied_at; status_changed_at = applied_at; applied_revision = revision written by the restore  -- applied|true|true|4
+PASS A13 leaderboards (v7 + v6 kodhane: rank, nickname, score, stage) identical before / after the restore  -- ad3b0d52b933b6955116077220610d27
+PASS A14 applied report: approve -> 55000, reject -> 55000  -- 55000|55000
+PASS A11 after the restore: the old tab's write (old revision) -> PT409 stale_revision; older saveVersion -> PT426 (B); a normal write works  -- PT409 PT426 none
+PASS N1 save revision changed after the approval: apply -> needs_review, nothing written, review_count 1  -- needs_review|fe1e5d8fc9c05e320023a9f39caa5c6f|needs_review|1
+PASS N1b player sees in_review + review_reason save_changed (no note, no reference, applied_revision NULL); status_changed_at = the re-review time  -- in_review|save_changed|-|save_changed|true
+PASS N1c apply again while needs_review -> 55000  -- 55000
+PASS N2 approve again with another reference -> 22023; with the same reference -> approved at the new revision  -- 22023|approved|t
+PASS N2b after the second approval: player sees approved, review_reason NULL (only while in_review)  -- approved|NULL
+PASS N3 apply -> applied; the telafi flag + reference are cleared right after the write (same transaction)  -- applied / 
+PASS N3b ipoShares 0 -> 3 restored, one telafi row  -- 3|ipoShares:0>3
+PASS N4 save gone after the approval: apply -> needs_review, review_reason no_cloud_save; player sees in_review|no_cloud_save  -- needs_review|no_cloud_save|in_review|no_cloud_save
+PASS N5 CHECK: another review_reason value -> 23514; needs_review without a reason -> 23514; pending with a reason -> 23514  -- 23514 23514 23514
+PASS N6 rejected after a re-review: player sees rejected|kayip_bulunamadi|review_reason NULL|applied_revision NULL  -- rejected|kayip_bulunamadi|NULL|NULL
+PASS V1 proposal without lost_since and without p_at -> 22023 (asks for p_at)  -- 22023|1
+PASS V2 p_values: unknown key / negative / string / > 1e50 / bad node id / array / empty -> 22023  --  22023 22023 22023 22023 22023 22023 22023
+PASS V3 p_values not above the current save (shares 2 -> 1) -> 22023 nothing to restore  -- 1
+PASS V4 U3's save passes the score rule now; shares 1e6 would fail it -> 22023, still pending  -- t|1|pending
+PASS V5 with p_accept_implausible => true: approved, plausible_before t / after f recorded  -- ["approved",true,false]
+PASS V6 reject: unknown reason -> 22023; kayip_bulunamadi -> rejected; again -> already_rejected  -- 22023|rejected|already_rejected
+PASS V6b rejected report: apply -> 55000, approve -> 55000; player sees rejected + reason  -- 55000|55000|rejected:kayip_bulunamadi
+PASS V7 one reference per report: U1's report with U2's reference -> 23505  -- 23505
+PASS V8 corrected amounts (no log needed): shares 3 -> 4 and tree + kod_1 approved and applied  -- approved|applied|4["kod_1"]
+PASS A15 progress log trigger switched off (emergency switch): apply refuses (no telafi row), save untouched, still approved  -- 1|04d937ab39c78227c2ddd868d81e60d1|approved
+PASS Q1 queue('open') empty now; queue('all') shows every report with description (ops view); bad status -> 22023  -- 0|t|22023
+PASS Q2 timeline of U2's report: the loss rows and the telafi rows  -- yatirim_turu:shares,telafi:shares,telafi:tree,telafi:tree
+PASS K1 cleanup: closed reports older than 12 months go (2), an old OPEN report stays  -- 2|0|1
+PASS K2 12 months, not 365 days: a closed report 11 months 28 days old stays; at 12 months + 1 day it goes  -- 0|1|12/280
+PASS K3 status RPC review_reason over every row a player can see: only save_changed / no_cloud_save / NULL (U1: NULL)  -- NULL|0
+PASS K4 Dokploy command with the loss report step (-U postgres, -d -> test DB): exit 0, loss_report_rows 1  -- 0|loss_report_rows|1
+PASS K5 kodhane_retention_daily.sh step 6 (deletion log absent -> skipped, then loss reports): exit 0, 1 report deleted  -- 0|1|loss_report 1 closed
+PASS D1 preflight lists kodhane_loss.loss_report (2 rows of u3), deleted in both modes  -- 1
+PASS D6 a report filed after the preflight changes the token -> delete refused, nothing deleted  -- 3|1|3
+PASS D2 kodhane_only delete: reports gone; own notice line; summary line unchanged  -- 0|0|1|1
+PASS D3 verify kodhane_only: OK, then fails on a leftover report  -- 0|3|1
+PASS D4 full delete: reports gone, verify OK, notice line  -- 0|0|0|1
+PASS D5 bystander u2's report unchanged  -- 6150078258ac1f814d38e2bbd2c2cfea
+PASS D7 auth user deleted directly (dashboard / GoTrue): FK cascade removes the reports  -- 0
+PASS D8a kodhane_only delete with the deletion log: reports gone, list row, notice line  -- 0|0|kodhane|1
+PASS D8b restored old report (before the deletion): reapply verify LEFT, reapply deletes it  -- 1|1|0|0|REAPPLY|PASS
+PASS D8c a report filed after the deletion (played again): newer, kept  -- 0|1|1
+PASS R1 rollback with reports -> refused, nothing dropped  -- 3|1|LRVERIFY|PASS|9
+PASS R2 rollback with allow_loss: schema identical to before the migration (kodhane_loss gone)  -- 0|same|t
+PASS R6 rollback does not undo an applied restore: save + telafi log row stay  -- 7|1
+PASS R3 rollback again (nothing left): OK  -- 0
+PASS R4 account delete after the rollback: works, no loss report line (old behaviour)  -- 0|0
+PASS R5 install again after the rollback: verify PASS  -- 0|LRVERIFY|PASS|9
+PASS M6b deletion log installed AFTER this migration: both verifies PASS  -- DLVERIFY|PASS|LRVERIFY|PASS|9
+PASS R7 rollback with the deletion log installed: kodhane_loss gone, kodhane_private.deletion_log untouched, its verify PASS  -- 0|t|deletion_log|DLVERIFY|PASS|0
+PASS I1 build / preflight / dryrun PASS (dry run leaves no kodhane_loss)  --  BUILD|PASS PREFLIGHT|PASS DRYRUN|PASS|t
+PASS I2 install / verify PASS (9 checks + delete path: account delete preflight lists kodhane_loss.loss_report delete|delete)  --  INSTALL|PASS VERIFY|PASS|1
+PASS I3 old (pre-v4.5 fixture, 4 files present with the expected md5) account delete script as KODHANE_ACCOUNT_DELETE_DIR: delete-script-check / build / preflight / verify STOP (4 md5 + 2 marker failures)  -- old_files_ok=1| 1 1 1 1|6
+PASS I5 verify delete check: both modes (real DO block) + FK cascade + cleanup then delete, each undone -> DELCHECK|PASS|5; nothing stays  -- 5|DELCHECK|PASS|5|0:4|VERIFY|PASS
+PASS I6 same delete check with the OLD (pre-v4.5 fixture) account delete block: DELCHECK|FAIL (kodhane_only leaves reports, full BLOCKED, cleanup + delete leaves one), FK cascade passes, rolled back  -- old_files_ok=1|DELCHECK|FAIL|delcheck_1,delcheck_2,delcheck_4|1|1|0:4
+PASS I4 unchanged copy of this branch's files -> PASS; one changed byte (md5 differs) -> STOP  -- DELETECHECK|PASS|1
+PASS L1 anon (no JWT) -> 401  -- HTTP 401 {"code":"42501","details":null,"hint":null,"message":"permission denied for function kodhane_loss_report_create"}
+PASS L1b anon key as bearer (role anon JWT, what supabase-js sends without a session) -> create + status: 401 42501 permission denied (anon has no EXECUTE)  -- create 401 42501|permission denied for function kodhane_loss_report_create|None, status 401 42501|permission denied for function kodhane_loss_report_status|None
+PASS L1c authenticated JWT without sub (no user id) -> create + status: 403 42501 not_authenticated  -- create 403 42501|not_authenticated|None, status 403 42501|not_authenticated|None
+PASS L2 unknown lost_items -> 400 22023 loss_report_invalid, details lost_items  -- HTTP 400 22023|loss_report_invalid|lost_items
+PASS L3 lost_since 1 h ahead -> 400, details lost_since  -- HTTP 400 22023|loss_report_invalid|lost_since
+PASS L3b description 281 characters -> 400, details description  -- HTTP 400 22023|loss_report_invalid|description
+PASS L4 no cloud save -> 404 PT404 no_cloud_save  -- HTTP 404 PT404|no_cloud_save|None
+PASS L5 valid (Bugün in UTC+14 = 2026-10-08T10:00:00.000Z, description 280) -> 200 {id, status in_review, created_at}  -- HTTP 200 {"id": 1, "status": "in_review", "created_at": "2026-10-09T01:52:50.516929+00:00"}
+PASS L6 second report while one is open -> 409 PT409 loss_report_open  -- HTTP 409 PT409|loss_report_open|None
+PASS L7 after a rejection, same day -> 429 PT429 loss_report_daily_limit, details = created_at + 24 h (UTC ISO Z)  -- HTTP 429 PT429|loss_report_daily_limit|2026-10-10T01:52:50Z (expected 2026-10-10T01:52:50Z)
+PASS L7b same 429 again: no Retry-After header (the retry time is only in details, UTC ISO Z)  -- HTTP/1.1 429 loss_report_daily_limit, headers: 0 Retry-After, details 2026-10-10T01:52:50Z
+PASS L8 5 reports in 30 days -> 429 PT429 loss_report_monthly_limit, details = oldest + 30 days  -- HTTP 429 PT429|loss_report_monthly_limit|2026-11-02T01:52:51Z (expected 2026-11-02T01:52:51Z)
+PASS L9 status RPC -> 200, 5 own rows, exactly the 10 columns, rejected + reason code, review_reason and applied_revision null  -- HTTP 200 [{"id":2,"created_at":"2026-10-07T01:52:51.346961+00:00","lost_items":["diger"],"lost_since":null,"status":"rejected","status_changed_at":"2026-10-09T0
+PASS L10 lost_since null (Bilmiyorum) report -> approve + apply -> status RPC: applied, applied_at set, applied_revision = revision written by the restore  -- create 200, ops: approved applied , status 200: applied True None 6
+PASS L11 old tab after the restore writes revision 6 (= server revision) -> 409 PT409 stale_revision; restored save kept  -- HTTP 409 PT409|stale_revision|sent revision 6, server revision 6
+PASS L11b status applied_revision 6; old tab 409 details sent revision 6 <= applied_revision -> restore detected exactly  -- status 200 applied_revision 6; HTTP 409 sent 6
+== done: 116 pass / 0 fail ( A 17, C 16, D 10, I 6, K 5, L 16, M 10, N 10, P 5, Q 2, R 7, S 3, V 9,); image f519727303f0; artefacts in /tmp/p7f-lr

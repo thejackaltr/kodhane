@@ -1,0 +1,9 @@
+eb4ab96f78bb503ef0f40cc7a3417c2e  migrations/20261003080000_v4_5_kodhane_score_rule.sql
+ff85f1e058cd315a236b3dd3c70213fe  rollback/20261003080000_v4_5_kodhane_score_rule.rollback.sql
+beae3580a65a10372e0a3948c95d9ac4  ops/kodhane_score_rule/curve_literal.sql
+e25f2538d0fd592856a63d60df9d3b73  ops/kodhane_score_rule/preflight_head.sql
+10a23318843782a4990be178aca12e17  ops/kodhane_score_rule/pre_tx.sql
+696bfa0f9564df29e2254c08c66d5e2b  ops/kodhane_score_rule/postcheck.sql
+dda9cfb450ec48f6bbc880f3e59ce0f1  ops/kodhane_score_rule/verify.sql
+44532490f38d0b8e258faad27ba80060  ops/kodhane_score_rule/rollback_preview.sql
+f21a7c78fe0e4007c28b1dadc5b7a873  ops/kodhane_deletion_log/lib.sh

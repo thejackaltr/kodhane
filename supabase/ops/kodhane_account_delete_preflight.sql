@@ -3,6 +3,8 @@
 -- and the expect token the delete needs (covers the rows of BOTH games + id, e-mail, created_at of the auth user).
 -- public.kodhane_progress_log (if the table exists) is listed and deleted in both modes but NOT part of the token: it grows
 -- with every save write, so a player who keeps playing would otherwise invalidate the token again and again.
+-- kodhane_loss.loss_report (Kayıp bildir, migration 20261003060000; if installed) is listed, deleted in both modes and IS
+-- part of the token (a new report after the preflight = run the preflight again).
 --   psql "$DB_URL" -X -v ON_ERROR_STOP=1 -v uid=<auth user id> -f supabase/ops/kodhane_account_delete_preflight.sql
 -- Runbook: docs/kodhane-account-delete-runbook.md. Output has no e-mail in clear (masked) and no nickname.
 \set ON_ERROR_STOP on
@@ -34,11 +36,12 @@ select * from (
               when t.cat = 'auth' and t.rel not in ('auth.users', 'auth.refresh_tokens', 'auth.flow_state') then 'cascade'
               else 'delete' end as act_full,
          case when t.rel in ('public.kodhane_saves', 'public.kodhane_save_backups', 'public.kodhane_event_log_carry',
-                             'public.kodhane_progress_log', 'auth.sessions', 'auth.refresh_tokens') then 'delete'
+                             'public.kodhane_progress_log', 'kodhane_loss.loss_report', 'auth.sessions', 'auth.refresh_tokens') then 'delete'
               else 'keep' end as act_kodhane_only
     from (
       select distinct
              case when n.nspname = 'public' and c.relname like 'kodhane\_%' then 'kodhane'
+                  when n.nspname = 'kodhane_loss' and c.relname = 'loss_report' then 'kodhane'   -- Kayıp bildir (20261003060000)
                   when n.nspname = 'public' and c.relname like 'acik\_ofis\_%' then 'acik_ofis'
                   when n.nspname = 'auth' then 'auth'
                   else 'other' end as cat,
@@ -49,6 +52,7 @@ select * from (
         join pg_catalog.pg_attribute a on a.attrelid = c.oid and a.attnum > 0 and not a.attisdropped
        where c.relkind in ('r', 'p')
          and ((n.nspname = 'public' and (c.relname like 'kodhane\_%' or c.relname like 'acik\_ofis\_%') and a.attname = 'user_id')
+           or (n.nspname = 'kodhane_loss' and c.relname = 'loss_report' and a.attname = 'user_id')
            or (n.nspname = 'auth' and c.relname = 'users' and a.attname = 'id')
            or (n.nspname = 'auth' and a.attname = 'user_id')
            or (n.nspname = 'storage' and c.relname = 'objects' and a.attname in ('owner', 'owner_id'))
@@ -123,11 +127,12 @@ select case when not x.user_exists then 'STOP: auth user not found'
               when t.cat = 'auth' and t.rel not in ('auth.users', 'auth.refresh_tokens', 'auth.flow_state') then 'cascade'
               else 'delete' end as act_full,
          case when t.rel in ('public.kodhane_saves', 'public.kodhane_save_backups', 'public.kodhane_event_log_carry',
-                             'public.kodhane_progress_log', 'auth.sessions', 'auth.refresh_tokens') then 'delete'
+                             'public.kodhane_progress_log', 'kodhane_loss.loss_report', 'auth.sessions', 'auth.refresh_tokens') then 'delete'
               else 'keep' end as act_kodhane_only
     from (
       select distinct
              case when n.nspname = 'public' and c.relname like 'kodhane\_%' then 'kodhane'
+                  when n.nspname = 'kodhane_loss' and c.relname = 'loss_report' then 'kodhane'   -- Kayıp bildir (20261003060000)
                   when n.nspname = 'public' and c.relname like 'acik\_ofis\_%' then 'acik_ofis'
                   when n.nspname = 'auth' then 'auth'
                   else 'other' end as cat,
@@ -138,6 +143,7 @@ select case when not x.user_exists then 'STOP: auth user not found'
         join pg_catalog.pg_attribute a on a.attrelid = c.oid and a.attnum > 0 and not a.attisdropped
        where c.relkind in ('r', 'p')
          and ((n.nspname = 'public' and (c.relname like 'kodhane\_%' or c.relname like 'acik\_ofis\_%') and a.attname = 'user_id')
+           or (n.nspname = 'kodhane_loss' and c.relname = 'loss_report' and a.attname = 'user_id')
            or (n.nspname = 'auth' and c.relname = 'users' and a.attname = 'id')
            or (n.nspname = 'auth' and a.attname = 'user_id')
            or (n.nspname = 'storage' and c.relname = 'objects' and a.attname in ('owner', 'owner_id'))
