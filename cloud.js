@@ -304,6 +304,16 @@
     pushDelayMs: 45000,
     sdkTimeoutMs: 15000
   };
+  // Ortam (game.js Kodhane.ENV, hosta göre tek yerde seçilir). Canlı hostlarda yukarıdaki CFG birebir kullanılır.
+  // kodhane-dev.teserix.com: TEST_CLOUD (test Supabase'i: adres + herkese açık anon anahtar YALNIZ burada eklenir; ikisi
+  // de boşken bulut kapalı, configured false). Bilinmeyen her host (localhost, önizleme...): bulut kapalı, adres/anahtar boş;
+  // canlı Supabase'e hiçbir istek gitmez. (Testlerin KODHANE_CLOUD_CONFIG geçersiz kılması aşağıda, bundan sonra uygulanır.)
+  var TEST_CLOUD = { url: '', key: '' };
+  var ENV = (K.ENV && typeof K.ENV === 'object') ? K.ENV : { name: 'local', live: false };
+  if (!ENV.live) {
+    CFG.url = ENV.name === 'dev' ? String(TEST_CLOUD.url || '') : '';
+    CFG.key = ENV.name === 'dev' ? String(TEST_CLOUD.key || '') : '';
+  }
   // Testler için geçersiz kılma (ör. sahte Supabase adresi)
   if (root.KODHANE_CLOUD_CONFIG && typeof root.KODHANE_CLOUD_CONFIG === 'object') {
     for (var ck in root.KODHANE_CLOUD_CONFIG) CFG[ck] = root.KODHANE_CLOUD_CONFIG[ck];
@@ -313,7 +323,10 @@
   var PENDING_KEY = 'kodhane_auth_pending';
   var PENDING_TTL_MS = 60 * 60 * 1000;
   // Supabase Cloud (*.supabase.co/in) ya da Teserix'te Kodhane'nin kendi Supabase'i (kodhane-api.teserix.com; eski adı supabase.teserix.com da geçerli)
-  var configured = /^https:\/\/([a-z0-9-]+\.supabase\.(co|in)|(kodhane-api|supabase)\.teserix\.com)$/.test(CFG.url) && CFG.key.indexOf('__') !== 0 ||
+  // Canlı hostta bugünkü kural birebir; kodhane-dev'de yalnız dolu bir TEST_CLOUD (https adres + anahtar); bilinmeyen hostta kapalı.
+  // Test geçersiz kılması (KODHANE_CLOUD_CONFIG.url) her hostta eskisi gibi açar.
+  var configured = /^https:\/\/([a-z0-9-]+\.supabase\.(co|in)|(kodhane-api|supabase)\.teserix\.com)$/.test(CFG.url) && CFG.key.indexOf('__') !== 0 && !!ENV.live ||
+    ENV.name === 'dev' && /^https:\/\/[a-z0-9.-]+$/.test(CFG.url) && !!CFG.key && CFG.key.indexOf('__') !== 0 ||
     !!(root.KODHANE_CLOUD_CONFIG && root.KODHANE_CLOUD_CONFIG.url);
 
   var C = {
