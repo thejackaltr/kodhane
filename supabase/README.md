@@ -11,8 +11,9 @@ Aşağıdaki listede yalnız dosya adıyla anılırlar.
 ## Kaynak
 Dosyalar 2026-10-04'te Açık Ofis reposundaki `v4.4-backend` (`63838e1`) ve `v4.5-kayip-bildir` (`518968d`) dallarından
 alındı. Şu dosyalar dışında içerikleri bayt bayt aynı: altyapı adlarını ortam değişkenine taşıyan altı dosya ve `lib.sh`'ı
-listeleyen iki `inputs.md5` (`kodhane_loss_report`, `kodhane_score_rule`), kayıp bildir testi (I3/I6 eski sürüm olarak bu
-repodaki `51a812a`'yı okur) ve .136 sonuç dosyası (md5 tablosu ve fark gerekçeleri PR'da). **Kurulum bu repodaki dalın
+listeleyen iki `inputs.md5` (`kodhane_loss_report`, `kodhane_score_rule`), kayıp bildir testi (I3/I6 eski sürüm olarak
+`tests/loss_report/fixtures/pre_v45_account_deletion/` altındaki dört dosyayı okur: v4.4 / B hesap silme dosyalarının
+bayt bayt kopyası, git geçmişine bağlı değil) ve .136 sonuç dosyası (md5 tablosu ve fark gerekçeleri PR'da). **Kurulum bu repodaki dalın
 commit'inden yapılır.** Paket B'nin üretilen `install.sql` md5'i `deefef0e5c52cc3679dc997374d2edbb` (63838e1 ile aynı).
 Skor kuralı migration/rollback'i ve kayıp bildir (P7) migration'ı `518968d` ile aynı.
 

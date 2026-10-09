@@ -357,12 +357,13 @@ r=""; for st in build preflight dryrun; do r="$r $(STEP_=$st ins ins1 | grep -E 
 check "I1 build / preflight / dryrun PASS (dry run leaves no kodhane_loss)" "$r|$(q lr_i -c "select to_regnamespace('kodhane_loss') is null")" " BUILD|PASS PREFLIGHT|PASS DRYRUN|PASS|t"
 r=""; for st in install verify; do r="$r $(STEP_=$st ins ins1 | tail -n1)"; done
 check "I2 install / verify PASS (9 checks + delete path: account delete preflight lists kodhane_loss.loss_report delete|delete)" "$r|$(grep -c '^CHECK|delete_path|t' <<< "$(STEP_=verify ins ins1)")" " INSTALL|PASS VERIFY|PASS|1"
-# the account delete files BEFORE the loss report (= v4.4-backend): commit 51a812a of this repository (thejackaltr/kodhane;
-# byte for byte the files of be96e03 in the Açık Ofis repository, where this branch started). OLDOK=1 only if all four
-# exist with exactly these md5s: a missing commit or an empty / different file makes I3 and I6 FAIL (never pass on empty files).
-OLD_REV=51a812a; OLD="$OUT/old_ops"; mkdir -p "$OLD/kodhane_deletion_log"; OLDOK=1
+# the account delete files BEFORE the loss report (v4.4, package B = dev before this branch): test fixture
+# tests/loss_report/fixtures/pre_v45_account_deletion/ (byte for byte the four files of dev / v4.4 B; no git history needed).
+# OLDOK=1 only if all four exist with exactly these md5s: a missing, empty or different fixture file makes I3 and I6 FAIL
+# (never pass on empty files).
+OLD_REV="pre-v4.5 fixture"; OLD_SRC="$HERE/fixtures/pre_v45_account_deletion"; OLD="$OUT/old_ops"; rm -rf "$OLD"; mkdir -p "$OLD/kodhane_deletion_log"; OLDOK=1
 while read -r m f; do
-  git -C "$ROOT" -c safe.directory='*' show "$OLD_REV:supabase/ops/$f" > "$OLD/$f" 2>>"$OUT/stderr" || OLDOK=0
+  cp "$OLD_SRC/$f" "$OLD/$f" 2>>"$OUT/stderr" || OLDOK=0
   [[ -s "$OLD/$f" && "$(md5sum < "$OLD/$f" | cut -c1-32)" == "$m" ]] || OLDOK=0
 done <<'OLDMD5'
 28f379a49cc799f21cdee108999e5d8b kodhane_account_delete.sql
@@ -373,7 +374,7 @@ OLDMD5
 r=""; for st in delete-script-check build preflight verify; do r="$r $(STEP_=$st ins ins2 KODHANE_ACCOUNT_DELETE_DIR="$OLD" | grep -cE '^STOP: delete-script-check failed$|^STOP: the account delete script' | sed 's/^2$/1/')"; done
 check "I3 old ($OLD_REV, 4 files present with the expected md5) account delete script as KODHANE_ACCOUNT_DELETE_DIR: delete-script-check / build / preflight / verify STOP (4 md5 + 2 marker failures)" "old_files_ok=$OLDOK|$r|$(STEP_=delete-script-check ins ins2 KODHANE_ACCOUNT_DELETE_DIR="$OLD" | grep -c '^DELETECHECK|FAIL')" "old_files_ok=1| 1 1 1 1|6"
 # I5 / I6: the verify's delete check (behaviour, one transaction, ROLLBACK): this branch's account delete -> PASS 5; the old
-# (51a812a) DO block put into the same generated SQL -> kodhane_only + full + cleanup fail, the FK cascade (3) still passes
+# (pre-v4.5 fixture) DO block put into the same generated SQL -> kodhane_only + full + cleanup fail, the FK cascade (3) still passes
 LRN0=$(q lr_i -c "select count(*) || ':' || (select count(*) from auth.users) from kodhane_loss.loss_report")
 v=$(STEP_=verify ins ins1)
 check "I5 verify delete check: both modes (real DO block) + FK cascade + cleanup then delete, each undone -> DELCHECK|PASS|5; nothing stays" \
